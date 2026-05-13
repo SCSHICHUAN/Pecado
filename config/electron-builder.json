@@ -9,7 +9,6 @@
   },
   "files": [
     "**/*",
-    "!node_modules/**",
     "!release/**",
     "!dist/**"
   ],

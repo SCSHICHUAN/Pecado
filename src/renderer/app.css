@@ -343,6 +343,134 @@ body {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
+.message-bubble.streaming {
+    border: 1px solid rgba(74, 144, 217, 0.4);
+    min-height: 1.5em;
+}
+
+/* 助手气泡内 Markdown（markdown-it 输出） */
+.message-bubble.markdown-body {
+    max-width: 85%;
+    font-size: 14px;
+    line-height: 1.65;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.message-bubble.markdown-body > :first-child {
+    margin-top: 0;
+}
+
+.message-bubble.markdown-body > :last-child {
+    margin-bottom: 0;
+}
+
+.message-bubble.markdown-body p {
+    margin: 0.55em 0;
+}
+
+.message-bubble.markdown-body h1,
+.message-bubble.markdown-body h2,
+.message-bubble.markdown-body h3,
+.message-bubble.markdown-body h4 {
+    font-weight: 600;
+    margin: 1em 0 0.45em;
+    line-height: 1.35;
+    color: #f0f0f0;
+}
+
+.message-bubble.markdown-body h1 { font-size: 1.35rem; border-bottom: 1px solid var(--line-strong); padding-bottom: 0.25em; }
+.message-bubble.markdown-body h2 { font-size: 1.2rem; }
+.message-bubble.markdown-body h3 { font-size: 1.08rem; color: #e8e8e8; }
+.message-bubble.markdown-body h4 { font-size: 1rem; color: #d0d0d0; }
+
+.message-bubble.markdown-body hr {
+    border: none;
+    border-top: 1px solid var(--line-strong);
+    margin: 14px 0;
+}
+
+.message-bubble.markdown-body ul,
+.message-bubble.markdown-body ol {
+    margin: 0.5em 0 0.5em 1.25em;
+    padding-left: 0.25em;
+}
+
+.message-bubble.markdown-body li {
+    margin: 0.25em 0;
+}
+
+.message-bubble.markdown-body blockquote {
+    margin: 0.6em 0;
+    padding: 0.35em 0 0.35em 12px;
+    border-left: 3px solid #4a90d9;
+    color: #c8c8c8;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 0 6px 6px 0;
+}
+
+.message-bubble.markdown-body strong {
+    font-weight: 600;
+    color: #fff;
+}
+
+.message-bubble.markdown-body a {
+    color: #6eb3f7;
+    text-decoration: none;
+}
+
+.message-bubble.markdown-body a:hover {
+    text-decoration: underline;
+}
+
+.message-bubble.markdown-body pre {
+    margin: 10px 0;
+    padding: 12px 14px;
+    background: #141414;
+    border: 1px solid #3a3a3a;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 12.5px;
+    line-height: 1.5;
+}
+
+.message-bubble.markdown-body pre code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+    color: #e0e0e0;
+    background: transparent;
+    padding: 0;
+    border-radius: 0;
+    white-space: pre;
+    display: block;
+}
+
+.message-bubble.markdown-body :not(pre) > code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.9em;
+    background: #141414;
+    color: #f0c674;
+    padding: 2px 7px;
+    border-radius: 5px;
+    border: 1px solid #3a3a3a;
+}
+
+.message-bubble.markdown-body table {
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 13px;
+}
+
+.message-bubble.markdown-body th,
+.message-bubble.markdown-body td {
+    border: 1px solid #444;
+    padding: 6px 10px;
+    text-align: left;
+}
+
+.message-bubble.markdown-body th {
+    background: #2f2f2f;
+}
+
 .code-block {
     background: #2a2a2a;
     border-radius: 8px;

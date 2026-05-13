@@ -5,7 +5,10 @@ module.exports = {
     OPEN_WEB: 'open-qqmusic-web',
   },
   VOLC_ARK: {
+    /** invoke：{ messages, streamId }，流中增量见 BOTS_STREAM_EVENT */
     BOTS_CHAT_COMPLETION: 'volc-ark-bots-chat-completion',
+    /** main → renderer：{ streamId, phase: 'delta'|'error', text?, error? } */
+    BOTS_STREAM_EVENT: 'volc-ark-bots-stream-event',
   },
   VOLC_USER_CONFIG: {
     GET: 'volc-user-config-get',

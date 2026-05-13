@@ -80,6 +80,7 @@ app.whenReady().then(() => {
 
   qqMusicIpc.register(ipcMain);
   arkChatIpc.register(ipcMain);
+  volcUserConfigIpc.register(ipcMain);
   createWindow();
 
   app.on('activate', function () {
