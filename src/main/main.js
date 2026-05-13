@@ -52,7 +52,6 @@ function createWindow() {
   );
 
   mainWindow.loadFile(RENDERER_HTML);
-  mainWindow.webContents.openDevTools();
 
   mainWindow.webContents.on('preload-error', (event, preloadPath, error) => {
     console.error('Preload script error:', preloadPath, error);
