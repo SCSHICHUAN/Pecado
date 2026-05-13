@@ -1,0 +1,29 @@
+{
+  "appId": "com.example.hello-electron",
+  "productName": "Hello Electron",
+  "electronDownload": {
+    "mirror": "https://npmmirror.com/mirrors/electron/"
+  },
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "**/*",
+    "!node_modules/**",
+    "!release/**",
+    "!dist/**"
+  ],
+  "mac": {
+    "target": "dir",
+    "category": "Utility",
+    "identity": null,
+    "icon": "assets/icons/icon.icns"
+  },
+  "win": {
+    "target": "dir"
+  },
+  "linux": {
+    "target": "dir",
+    "category": "Utility"
+  }
+}

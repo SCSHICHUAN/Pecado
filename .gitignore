@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output (electron-builder)
+release/
+dist/
+
+# Secrets & local env — 与 src/main/load-env.js 中 nameVariants 对齐
+.env*
+!.env.example
+local.env
+/env
+
+config/secrets.json
+
+# Logs & OS
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# Editor（若不想提交 JetBrains 配置）
+.idea/
+
+# Misc
+final_screenshot.png
+
+# Claude Code / local agent
+.claude/
+
+# macOS 代码签名（若以后用到）
+*.p12
+*.mobileprovision

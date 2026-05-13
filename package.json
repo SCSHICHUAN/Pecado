@@ -1,0 +1,30 @@
+{
+  "name": "hello-electron",
+  "version": "1.0.0",
+  "description": "A simple Electron app that says Hello Electron!",
+  "config": {
+    "electron_mirror": "https://npmmirror.com/mirrors/electron/"
+  },
+  "main": "src/main/main.js",
+  "scripts": {
+    "postinstall": "node ./node_modules/electron/install.js",
+    "start": "electron .",
+    "dev": "electron .",
+    "start:shell": "bash scripts/shell/quick-start.sh",
+    "env:init": "node scripts/init-env.js",
+    "build": "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"
+  },
+  "build": {
+    "extends": "./config/electron-builder.json"
+  },
+  "keywords": [
+    "electron",
+    "hello-world"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^42.0.1",
+    "electron-builder": "^26.8.1"
+  }
+}
