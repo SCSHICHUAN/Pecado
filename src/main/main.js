@@ -19,9 +19,9 @@ const PRELOAD_SCRIPT = path.join(__dirname, '..', 'preload', 'preload.js');
 function createWindow() {
   const display = screen.getPrimaryDisplay();
   const { bounds, workArea } = display;
-  // 按整屏 bounds 取 2/3，再限制在可用 workArea 内，避免被系统忽略初始尺寸或超出可视区
+  // 宽度按整屏 bounds 取 2/3；高度取可用工作区 workArea 的 8/10。再限制在 workArea 内，避免超出可视区
   let winWidth = Math.floor((bounds.width * 2) / 3);
-  let winHeight = Math.floor((bounds.height * 2) / 3);
+  let winHeight = Math.floor((workArea.height * 8) / 10);
   winWidth = Math.max(480, Math.min(winWidth, workArea.width));
   winHeight = Math.max(400, Math.min(winHeight, workArea.height));
   const x = Math.floor(workArea.x + (workArea.width - winWidth) / 2);

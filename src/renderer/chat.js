@@ -111,24 +111,42 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     const el = workspaceScroll;
     const streamFollow = opts.streamFollow === true;
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const behavior = streamFollow || reduceMotion ? 'auto' : 'smooth';
+    const instant = streamFollow || reduceMotion;
 
     chatProgrammaticScrollActive = true;
-    const top = Math.max(0, el.scrollHeight - el.clientHeight);
-    el.scrollTo({ top, behavior });
 
-    const release = () => {
-      chatProgrammaticScrollActive = false;
+    /** 大段 Markdown 同帧写入时 scrollHeight 可能尚未涨够，需多帧滚底否则会「离底」>20px 跟读断掉 */
+    const flushInstant = () => {
+      const top = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTo({ top, behavior: 'auto' });
     };
-    if (streamFollow || reduceMotion) {
-      requestAnimationFrame(() => {
+
+    if (instant) {
+      flushInstant();
+      let passes = 0;
+      const maxPasses = 20;
+      const settle = () => {
+        passes += 1;
+        flushInstant();
+        if (chatScrollGapFromBottom() > 2 && passes < maxPasses) {
+          requestAnimationFrame(settle);
+          return;
+        }
         requestAnimationFrame(() => {
-          requestAnimationFrame(release);
+          requestAnimationFrame(() => {
+            chatProgrammaticScrollActive = false;
+          });
         });
-      });
-    } else {
-      setTimeout(release, 480);
+      };
+      requestAnimationFrame(settle);
+      return;
     }
+
+    const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    el.scrollTo({ top, behavior: 'smooth' });
+    setTimeout(() => {
+      chatProgrammaticScrollActive = false;
+    }, 480);
   }
 
   /**
@@ -262,6 +280,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
           clearAssistantMarkdownClass(bubble);
           bubble.textContent = raw;
         }
+
         if (follow) scrollChatToBottomForced({ streamFollow: true });
       })
     );
