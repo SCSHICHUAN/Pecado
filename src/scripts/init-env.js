@@ -1,3 +1,11 @@
+/**
+ * @file init-env.js
+ *
+ * CLI：`npm run env:init`（在仓库根执行时 `process.cwd()` 为项目根）。
+ *
+ * 若根目录尚无 `.env`，从 `.env.example` 复制一份并提示编辑 `VOLC_ARK_API_KEY`；已存在则跳过。
+ * 不参与运行时加载；运行时由主进程 `load-env.js` 读取。
+ */
 const fs = require('fs');
 const path = require('path');
 

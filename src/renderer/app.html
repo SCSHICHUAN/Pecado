@@ -1,4 +1,12 @@
 <!DOCTYPE html>
+<!--
+  app.html — Pecado AI 主窗口静态结构
+
+  侧栏功能入口与历史占位；右侧主面板含标题、#workspace-scroll 包裹 #chat-content（消息列表 + #chat-scroll-anchor）、
+  底部多行输入 #chat-input、技能按钮条。
+  脚本顺序：volc-chat.js → command-handlers.js → chat.js；样式：highlight github-dark + app.css。
+  node_modules/highlight.js 与本文件路径相对引用，electron-builder 打包时需确保依赖被打入。
+-->
 <html lang="zh-CN">
 <head>
   <link rel="stylesheet" href="../../node_modules/highlight.js/styles/github-dark.min.css">

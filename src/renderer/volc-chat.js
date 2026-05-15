@@ -1,7 +1,12 @@
 /**
- * 火山方舟 · 豆包 bots（JS 侧）
- * 流式：主进程 SSE → IPC 增量；invoke 结束返回全文 { content } 或 { error }。
- * 密钥不得写在本文件；见主进程 ark-chat.js。
+ * @file volc-chat.js
+ *
+ * 渲染进程侧的「调用豆包」封装（不触碰密钥）。
+ *
+ * - 拼装 `messages`（system + 历史 + 当前 user），生成 `streamId`，调用 `electronAPI.volcArkBotsChatStream`；
+ * - 订阅 `onVolcArkStreamEvent`：过滤同 `streamId` 的 `delta`/`error`，`onDelta` 把文本片交给上层（chat.js）累加并重渲染；
+ * - Promise 解析为结束时返回的 `{ content }` 或 `{ error }`。
+ * - 挂载 `window.volcChat` / `window.runVolcDemo` 等与页面脚本约定入口。
  */
 (function () {
   const SYSTEM_PROMPT = 'You are a helpful assistant.';

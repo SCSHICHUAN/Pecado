@@ -1,3 +1,12 @@
+/**
+ * @file load-env.js
+ *
+ * 主进程侧环境变量加载：在项目根、`config/`、`appPath` 等路径查找 `.env` 与可选 `secrets`/示例文件，
+ * 解析 `KEY=value`（支持 `#`、`export `、简单引号）后写入 `process.env`，并打 `[env]` 日志。
+ *
+ * - `getDefaultSearchRoots` / `loadEnvFromSearchRoots`：供 `main.js` 启动与 IPC 处理前多次合并加载（如发消息前刷新密钥）。
+ * - 通过 `MAIN_SRC_DIR`（本文件所在 `src/main`）反推项目根，避免依赖仅 `cwd`。
+ */
 const fs = require('fs');
 const path = require('path');
 

@@ -1,3 +1,14 @@
+/**
+ * @file chat.js
+ *
+ * 渲染进程对话主逻辑（依赖 `app.html` 中 `#chat-input`、`#chat-content`、`#workspace-scroll` 等）。
+ *
+ * - 维护 `chatHistory`、用户消息气泡、助手气泡；发送时调用 `volcChat.runBotAgent`，流式阶段用 `scheduleStreamMarkdownRender`（rAF 合并多 delta）+
+ *   `electronAPI.renderMarkdown` + `enhanceAssistantCodeBlocks`（代码块 wrap、复制按钮、hljs class）。
+ * - 滚动：`shouldStreamFollowBottom` / 用户滚轮上滑与 touch 上滑会 `chatUserDetachedFromStream`，避免与用户抢滚动；
+ *   `scrollChatToBottomForced({ streamFollow })` 在流式/减少动画时用多帧 `scrollTo` 收敛，避免大块 Markdown 写入后 `scrollHeight` 未及时更新导致跟丢。
+ * - 回合结束或错误时 `setAssistantBubbleMarkdown` / 纯文本，`command-handlers` 可改写展示文案。
+ */
 const chatInput = document.getElementById('chat-input');
 const sendButton = document.querySelector('.send-button');
 const chatContent = document.getElementById('chat-content');

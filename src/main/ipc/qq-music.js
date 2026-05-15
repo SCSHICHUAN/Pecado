@@ -1,3 +1,11 @@
+/**
+ * @file qq-music.js
+ *
+ * 主进程 IPC 处理器：响应 preload 的 `OPEN_DESKTOP` / `OPEN_WEB`。
+ *
+ * - 桌面端：按 `process.platform` 使用 `exec` 调起 QQMusic 可执行文件或 macOS `open -a`；
+ * - 失败或 Linux 等未覆盖路径时 `shell.openExternal` 打开 y.qq.com。
+ */
 const { shell } = require('electron');
 const { exec } = require('child_process');
 const { QQ_MUSIC } = require('../../shared/ipc-channels');

@@ -8,14 +8,12 @@
 firstElectron/
 ├── assets/icons/          # 打包用图标等资源
 ├── config/                # electron-builder 等构建配置
-├── scripts/
-│   ├── electron/          # 本地调试用的 Electron 小脚本
-│   └── shell/             # 命令行快速启动脚本
 ├── src/                   # 全部应用源码
 │   ├── main/              # 主进程：main.js、ipc/（按功能的 IPC，如 qq-music.js）
 │   ├── preload/           # preload.js（暴露 electronAPI，与 shared 通道名对齐）
 │   ├── shared/            # 主进程与 preload 共用（如 ipc-channels.js）
-│   └── renderer/          # app.html、app.css、chat.js、volc-chat.js、command-handlers.js
+│   ├── renderer/          # app.html、app.css、chat.js、volc-chat.js、command-handlers.js
+│   └── scripts/           # init-env、shell 启动、electron 调试小脚本
 ├── release/               # electron-builder 输出目录（npm run build）
 ├── package.json
 └── README.md
@@ -38,8 +36,8 @@ npm start
 或使用 shell 脚本（从仓库根目录执行）：
 
 ```bash
-chmod +x scripts/shell/start.sh scripts/shell/quick-start.sh
-./scripts/shell/quick-start.sh
+chmod +x src/scripts/shell/start.sh src/scripts/shell/quick-start.sh
+./src/scripts/shell/quick-start.sh
 ```
 
 ## 开发

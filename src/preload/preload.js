@@ -1,3 +1,13 @@
+/**
+ * @file preload.js
+ *
+ * 隔离上下文下的预加载桥：唯一适合放 `require('markdown-it')` / `highlight.js` 且能安全暴露给页面的地方。
+ *
+ * - `contextBridge.exposeInMainWorld('electronAPI', …)`：QQ 音乐 invoke、方舟 `volcArkBotsChatStream` + `onVolcArkStreamEvent`、
+ *   用户配置 get/set、`renderMarkdown`（markdown-it，围栏代码走 highlight，当前仅注册 cpp，未知语言按 cpp）。
+ * - 渲染进程不持有 API Key；网络与密钥只在主进程 `ark-chat.js`。
+ * - 通道名来自 `../shared/ipc-channels.js`，与主进程注册保持一致。
+ */
 const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');

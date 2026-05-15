@@ -1,3 +1,12 @@
+/**
+ * @file volc-user-config.js
+ *
+ * 方舟相关用户偏好：读写 `app.getPath('userData')` 下 JSON（`volcArkApiKey`、`volcArkModel`），并带默认 bot id。
+ *
+ * - `getResolvedApiKey`：`VOLC_ARK_API_KEY` / `ARK_API_KEY` / `DOUBAO_API_KEY` 环境变量优先，否则读用户文件。
+ * - `getResolvedModel`：`VOLC_ARK_MODEL` 优先，否则用户文件，再退回 `DEFAULT_MODEL`。
+ * - `register`：暴露 IPC GET（脱敏返回 hasApiKey 等）/ SET（写回 JSON）。
+ */
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');

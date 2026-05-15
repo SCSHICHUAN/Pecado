@@ -1,3 +1,9 @@
+/**
+ * @file screenshot_app.js
+ *
+ * 独立 Electron 脚本：单窗口加载主页面，首屏 `did-finish-load` 后截图为 `final_screenshot.png` 并退出。
+ * 用于 CI/本地快速肉眼看布局；默认打开 DevTools（若需关可改本文件）。
+ */
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -7,13 +13,13 @@ function createWindow() {
     width: 1098,
     height: 1144,
     webPreferences: {
-      preload: path.join(__dirname, '..', '..', 'src', 'preload', 'preload.js'),
+      preload: path.join(__dirname, '..', '..', 'preload', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', '..', 'renderer', 'app.html'));
   mainWindow.webContents.openDevTools();
 
   mainWindow.webContents.on('did-finish-load', () => {

@@ -1,3 +1,14 @@
+/**
+ * @file main.js
+ *
+ * Pecado AI 主进程入口。
+ *
+ * - `app.whenReady` 后扩展 `load-env` 搜索根、注册 IPC（QQ 音乐、方舟对话、方舟用户配置），再 `createWindow`。
+ * - `createWindow`：按主显示器 `bounds/workArea` 计算初始宽高（宽约 2/3 屏、高约工作区 8/10，并夹在最小尺寸与 workArea 内）、居中；
+ *   `BrowserWindow` 加载 `src/renderer/app.html` 与 `preload.js`（沙盒关闭与其它 webPreferences 与项目一致）。
+ * - macOS：`disable-features=OverlayScrollbar`，否则 `::-webkit-scrollbar` 自定义常不生效。
+ * - `activate` 时若无窗口则再建一扇；非 macOS `window-all-closed` 时 `quit`。
+ */
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');
 

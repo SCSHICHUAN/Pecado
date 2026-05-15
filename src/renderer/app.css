@@ -1,3 +1,12 @@
+/**
+ * app.css — Pecado AI 全局与对话界面样式
+ *
+ * - `body`/`app` 网格布局：侧栏、主面板（标题栏、可滚对话区 `#workspace-scroll`、输入区）。
+ * - 深色主题、滚动条变量与 WebKit/Firefox 滚动条、`#workspace-scroll` 与代码块外包层横向条的胶囊轨道。
+ * - `.message-*`：用户渐变气泡、助手灰气泡、`markdown-body` 下标题/列表/引用/表格/围栏与行内 code。
+ * - `.code-block-wrap`：`backdrop + scroll` 分层，保留圆角且横向滚动条不破坏背景形状；hljs 样式由 HTML 外链 github-dark。
+ */
+
 * {
     margin: 0;
     padding: 0;

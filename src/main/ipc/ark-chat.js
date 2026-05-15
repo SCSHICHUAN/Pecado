@@ -1,3 +1,13 @@
+/**
+ * @file ark-chat.js
+ *
+ * 火山方舟 Bots Chat Completions（主进程）。
+ *
+ * - `register(ipcMain)`：`BOTS_CHAT_COMPLETION` invoke 内 `loadEnv` + 取 `getResolvedApiKey/model`，对北京 endpoint 发起 `stream: true` POST；
+ *   用 `ReadableStream` 按行消费，兼容 `data: {json}` SSE 与整行 JSON；从 choice delta 抽文本，`safeSend` 推送 `BOTS_STREAM_EVENT`。
+ * - 流结束后 resolve `{ content }`；网络/解析错误 resolve `{ error }` 或向渲染端推 `phase: 'error'`。
+ * - 不负责 UI；密钥仅出现在本进程内存与请求头。
+ */
 const { VOLC_ARK } = require('../../shared/ipc-channels');
 const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('../load-env');
 const { getResolvedApiKey, getResolvedModel } = require('./volc-user-config');

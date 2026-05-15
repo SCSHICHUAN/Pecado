@@ -1,5 +1,10 @@
 /**
- * 解析助手返回的 JSON 指令（如 {"cmd":"open music"}）并调用主进程能力
+ * @file command-handlers.js
+ *
+ * 助手最终文本的后处理扩展点：尝试从正文里解出 JSON 对象（整块、Markdown fenced 代码块、或首尾 `{` `}` 截取），
+ * 根据 `cmd` 等字段调用 `electronAPI`（如打开音乐），并向下游返回可能要显示的 `displayText`。
+ *
+ * 由 `chat.js` 在流式结束、`setAssistantBubbleMarkdown` 之前调用 `handleAssistantContent`（若存在）。
  */
 (function () {
   function tryParseJsonObject(text) {

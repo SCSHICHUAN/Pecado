@@ -1,3 +1,10 @@
+/**
+ * @file simple_check.js
+ *
+ * 独立运行的 Electron 小工具（非主应用入口）：创建临时窗口加载 `src/renderer/app.html`，
+ * `did-finish-load` 后在页面内执行简单 JS（如数 `.message`）、`capturePage` 写入 `simple_check_screenshot.png` 后退出。
+ * 路径相对 `src/scripts/electron` 指向 `preload`/`renderer`。
+ */
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -7,13 +14,13 @@ function createWindow() {
     width: 1098,
     height: 1144,
     webPreferences: {
-      preload: path.join(__dirname, '..', '..', 'src', 'preload', 'preload.js'),
+      preload: path.join(__dirname, '..', '..', 'preload', 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
 
-  mainWindow.loadFile(path.join(__dirname, '..', '..', 'src', 'renderer', 'app.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', '..', 'renderer', 'app.html'));
   mainWindow.webContents.openDevTools();
 
   mainWindow.webContents.on('did-finish-load', async () => {
