@@ -10,6 +10,9 @@
  */
 (function () {
   const SYSTEM_PROMPT = 'You are a helpful assistant.';
+  const MCP_TOOLS_SYSTEM =
+    (window.mcpPrompts && window.mcpPrompts.MCP_TOOLS_SYSTEM) ||
+    '你是代码编辑器助手。用户已打开本地工程；需要查看目录、读文件或修改代码时，请调用提供的 tools，不要编造文件内容。修改源码请用 write_file（整文件）或 edit_file（局部）。';
 
   function makeStreamId() {
     return `s-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -19,17 +22,28 @@
    * @param {string} text 当前用户输入
    * @param {Array<{ role: string, content: string }>} priorHistory 不含本轮 user
    * @param {{ onDelta?: (piece: string) => void }} [streamHandlers]
+   * @param {{ projectContext?: string, useMcpTools?: boolean, xcodeStreamPath?: string }} [options]
+   *   projectContext：未启用 tools 时拼进 system；useMcpTools：主进程走 MCP Function Calling 循环
    * @returns {Promise<{ content?: string, error?: string }>}
    */
-  async function runBotAgent(text, priorHistory, streamHandlers) {
+  async function runBotAgent(text, priorHistory, streamHandlers, options) {
     const api = window.electronAPI;
     if (!api || typeof api.volcArkBotsChatStream !== 'function') {
       return { error: 'electronAPI.volcArkBotsChatStream 不可用' };
     }
+    const opts = options && typeof options === 'object' ? options : {};
+    const useMcpTools = !!opts.useMcpTools;
+    let systemContent = useMcpTools ? MCP_TOOLS_SYSTEM : SYSTEM_PROMPT;
+    if (!useMcpTools && opts.projectContext && String(opts.projectContext).trim()) {
+      systemContent += '\n\n' + String(opts.projectContext).trim();
+    }
     const history = Array.isArray(priorHistory) ? priorHistory : [];
     const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'system', content: systemContent },
+      ...history.map((m) => ({
+        role: m.role,
+        content: m.content == null ? '' : String(m.content),
+      })),
       { role: 'user', content: text },
     ];
 
@@ -40,11 +54,15 @@
       unsubscribe = api.onVolcArkStreamEvent((payload) => {
         if (!payload || payload.streamId !== streamId) return;
         if (payload.phase === 'delta' && payload.text) onDelta(payload.text);
+        if (payload.phase === 'tool_stream' && payload.text) onDelta(payload.text);
       });
     }
 
     try {
-      const r = await api.volcArkBotsChatStream(messages, streamId);
+      const r = await api.volcArkBotsChatStream(messages, streamId, {
+        useMcpTools,
+        xcodeStreamPath: opts.xcodeStreamPath || undefined,
+      });
       if (r && r.error) return { error: r.error };
       if (typeof r?.content !== 'string') return { error: '响应缺少 content' };
       return { content: r.content };

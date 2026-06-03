@@ -377,12 +377,37 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     };
 
     try {
-      const result = await volc.runBotAgent(message, priorHistory, {
-        onDelta: (piece) => {
-          rawAccum += piece;
-          scheduleStreamMarkdownRender(streamCtx);
+      const mcp = window.mcpClient;
+      let useMcpTools = false;
+      if (mcp && typeof mcp.isMcpConnected === 'function') {
+        useMcpTools = await mcp.isMcpConnected();
+      }
+
+      let projectContext = '';
+      if (!useMcpTools && mcp && typeof mcp.buildProjectContextForAi === 'function') {
+        try {
+          projectContext = await mcp.buildProjectContextForAi(message);
+        } catch (ctxErr) {
+          console.warn('[chat] buildProjectContextForAi', ctxErr);
+        }
+      }
+
+      const xcodeStreamPath =
+        useMcpTools && mcp && typeof mcp.pickXcodeStreamTarget === 'function'
+          ? mcp.pickXcodeStreamTarget(message)
+          : null;
+
+      const result = await volc.runBotAgent(
+        message,
+        priorHistory,
+        {
+          onDelta: (piece) => {
+            rawAccum += piece;
+            scheduleStreamMarkdownRender(streamCtx);
+          },
         },
-      });
+        { useMcpTools, projectContext, xcodeStreamPath: xcodeStreamPath || undefined }
+      );
 
       cancelStreamMarkdownRender(streamRafRef);
       bubble.classList.remove('streaming');
@@ -450,5 +475,13 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     chatContent.insertBefore(messageDiv, scrollAnchor);
     if (type === 'user') scrollChatToBottomForced();
     else if (stickAssistant) scrollChatToBottomForced();
+  }
+
+  if (window.mcpClient && typeof window.mcpClient.init === 'function') {
+    window.mcpClient.init({
+      addMessage,
+      scrollChatToBottomForced,
+      pushChatHistory: (entry) => chatHistory.push(entry),
+    });
   }
 }

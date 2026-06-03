@@ -3,7 +3,7 @@
  *
  * Pecado AI 主进程入口。
  *
- * - `app.whenReady` 后扩展 `load-env` 搜索根、注册 IPC（QQ 音乐、方舟对话、方舟用户配置），再 `createWindow`。
+ * - `app.whenReady` 后扩展 `load-env` 搜索根、注册 IPC（QQ 音乐、方舟对话、方舟用户配置、`mcp/` 模块），再 `createWindow`。
  * - `createWindow`：按主显示器 `bounds/workArea` 计算初始宽高（宽约 2/3 屏、高约工作区 8/10，并夹在最小尺寸与 workArea 内）、居中；
  *   `BrowserWindow` 加载 `src/renderer/app.html` 与 `preload.js`（沙盒关闭与其它 webPreferences 与项目一致）。
  * - macOS：`disable-features=OverlayScrollbar`，否则 `::-webkit-scrollbar` 自定义常不生效。
@@ -21,11 +21,15 @@ const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('./load-env');
 const qqMusicIpc = require('./ipc/qq-music');
 const arkChatIpc = require('./ipc/ark-chat');
 const volcUserConfigIpc = require('./ipc/volc-user-config');
+const mcpIpc = require('./mcp');
 
 loadEnvFromSearchRoots(getDefaultSearchRoots());
 
 const RENDERER_HTML = path.join(__dirname, '..', 'renderer', 'app.html');
 const PRELOAD_SCRIPT = path.join(__dirname, '..', 'preload', 'preload.js');
+
+/** @type {import('electron').BrowserWindow | null} */
+let mainWindowRef = null;
 
 function createWindow() {
   const display = screen.getPrimaryDisplay();
@@ -52,6 +56,8 @@ function createWindow() {
       sandbox: false
     }
   });
+
+  mainWindowRef = mainWindow;
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.setBounds({ x, y, width: winWidth, height: winHeight });
@@ -94,9 +100,12 @@ app.whenReady().then(() => {
   } catch (_) {}
   loadEnvFromSearchRoots(roots);
 
+  app.setName('Pecado AI');
+
   qqMusicIpc.register(ipcMain);
   arkChatIpc.register(ipcMain);
   volcUserConfigIpc.register(ipcMain);
+  mcpIpc.register(ipcMain, () => mainWindowRef);
   createWindow();
 
   app.on('activate', function () {

@@ -9,6 +9,8 @@
  * - QQ_MUSIC：打开桌面/Web QQ 音乐
  * - VOLC_ARK：豆包流式 completion + 增量 stream 推送
  * - VOLC_USER_CONFIG：方舟 apiKey/model 在用户数据目录中的读写
+ *
+ * MCP 通道见 `src/main/mcp/ipc-channels.js`。
  */
 
 module.exports = {
@@ -19,7 +21,7 @@ module.exports = {
   VOLC_ARK: {
     /** invoke：{ messages, streamId }，流中增量见 BOTS_STREAM_EVENT */
     BOTS_CHAT_COMPLETION: 'volc-ark-bots-chat-completion',
-    /** main → renderer：{ streamId, phase: 'delta'|'error', text?, error? } */
+    /** main → renderer：{ streamId, phase: 'delta'|'tool_stream'|'tool'|'error', text?, error? } */
     BOTS_STREAM_EVENT: 'volc-ark-bots-stream-event',
   },
   VOLC_USER_CONFIG: {

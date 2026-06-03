@@ -3,16 +3,26 @@
  *
  * 火山方舟 Bots Chat Completions（主进程）。
  *
- * - `register(ipcMain)`：`BOTS_CHAT_COMPLETION` invoke 内 `loadEnv` + 取 `getResolvedApiKey/model`，对北京 endpoint 发起 `stream: true` POST；
- *   用 `ReadableStream` 按行消费，兼容 `data: {json}` SSE 与整行 JSON；从 choice delta 抽文本，`safeSend` 推送 `BOTS_STREAM_EVENT`。
+ * - `register(ipcMain)`：`BOTS_CHAT_COMPLETION` invoke 内 `loadEnv` + 取 `getResolvedApiKey/model`，对北京 endpoint 发起 POST；
+ *   默认 `stream: true` SSE；`useMcpTools` 时委托 `mcp/chat-integration`（MCP agent 循环）。
  * - 流结束后 resolve `{ content }`；网络/解析错误 resolve `{ error }` 或向渲染端推 `phase: 'error'`。
  * - 不负责 UI；密钥仅出现在本进程内存与请求头。
  */
 const { VOLC_ARK } = require('../../shared/ipc-channels');
 const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('../load-env');
 const { getResolvedApiKey, getResolvedModel } = require('./volc-user-config');
+const mcp = require('../mcp');
 
 const ARK_BOTS_URL = 'https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions';
+
+/**
+ * 火山方舟 Bots Chat Completions — 纯对话（无 tools）：
+ * POST ARK_BOTS_URL
+ * Headers: Authorization Bearer, Content-Type application/json, Accept text/event-stream
+ * Body: { model, messages, stream:true, stream_options:{ include_usage:true } }
+ * SSE 响应: data: {"choices":[{"delta":{"content":"..."}}]}  结束 data: [DONE]
+ * useMcpTools:true → mcp/chat-integration.js（tools + tool_call，见 postChatCompletion 注释）
+ */
 
 function safeSend(sender, channel, payload) {
   try {
@@ -50,9 +60,11 @@ function streamJsonErrorMessage(json) {
  * @param {import('electron').WebContents} sender
  * @param {string} streamId
  * @param {ReadableStream<Uint8Array>} body
+ * @param {{ xcodeAbsPath?: string }} [opts]
  * @returns {Promise<{ ok: true, text: string } | { error: string }>}
  */
-async function readSseStream(sender, streamId, body) {
+async function readSseStream(sender, streamId, body, opts = {}) {
+  const xcodeAbsPath = opts.xcodeAbsPath;
   const reader = body.getReader();
   const decoder = new TextDecoder('utf-8');
   let carry = '';
@@ -100,6 +112,7 @@ async function readSseStream(sender, streamId, body) {
           phase: 'delta',
           text: piece,
         });
+        mcp.writeSseDeltaToXcode(xcodeAbsPath, piece);
       }
     }
   }
@@ -132,10 +145,13 @@ async function readSseStream(sender, streamId, body) {
             phase: 'delta',
             text: piece,
           });
+          mcp.writeSseDeltaToXcode(xcodeAbsPath, piece);
         }
       } catch (_) {}
     }
   }
+
+  await mcp.finalizeSseXcodeStream(xcodeAbsPath);
 
   return { ok: true, text: full };
 }
@@ -149,7 +165,7 @@ function register(ipcMain) {
     } catch (_) {}
     loadEnvFromSearchRoots(roots);
 
-    const { messages, streamId } = payload || {};
+    const { messages, streamId, useMcpTools, xcodeStreamPath } = payload || {};
     if (!streamId || typeof streamId !== 'string') {
       return { error: '缺少 streamId（流式对话需要）' };
     }
@@ -179,8 +195,16 @@ function register(ipcMain) {
       messages,
     };
 
+    const xcodeAbsPath = mcp.resolveXcodeStreamAbsPath(xcodeStreamPath);
     const sender = event.sender;
 
+    if (useMcpTools) {
+      return mcp.handleMcpToolsChat(sender, streamId, apiKey, model, messages, {
+        xcodeStreamPath,
+      });
+    }
+
+    // 火山 POST：纯流式对话（无 tools），规范见 ARK_BOTS_URL 上方注释
     try {
       const res = await fetch(ARK_BOTS_URL, {
         method: 'POST',
@@ -219,7 +243,7 @@ function register(ipcMain) {
         return { error: msg };
       }
 
-      const out = await readSseStream(sender, streamId, res.body);
+      const out = await readSseStream(sender, streamId, res.body, { xcodeAbsPath });
       if ('error' in out) return { error: out.error };
       if (!out.text || !String(out.text).trim()) {
         const msg = '流式响应中无有效文本内容';
