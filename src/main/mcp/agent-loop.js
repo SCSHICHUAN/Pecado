@@ -13,7 +13,6 @@ const mcpFs = require('./filesystem-client');
 const { mcpToolsToFunctionTools } = require('./tools-schema');
 const { formatToolResultForMessage } = require('./tool-result');
 const { resolveUnderProject } = require('./project-path');
-const { shouldLiveStreamToXcode } = require('./xcode-stream-target');
 const xcodeWrite = require('./xcode-write-stream');
 const { getMainWindow } = require('./context');
 const { confirmCreateOperation, integrateAfterCreate } = require('./xcode-prompt');
@@ -162,8 +161,11 @@ async function readSseMcpRound(sender, streamId, body, ctx) {
   const writeSeeded = new Set();
 
   const projectRoot = ctx.projectRoot;
-  const xcodeTextLiveStream =
-    ctx.xcodeAbsPath && IS_DARWIN ? shouldLiveStreamToXcode(ctx.xcodeAbsPath) : false;
+  const xcodeTextLiveStream = ctx.xcodeAbsPath && IS_DARWIN;
+  if (xcodeTextLiveStream) {
+    const exists = fs.existsSync(ctx.xcodeAbsPath);
+    xcodeWrite.beginWriteSession(ctx.xcodeAbsPath, { preserveExisting: exists });
+  }
 
   function ensureWriteParser(index) {
     if (writeParsers.has(index)) return writeParsers.get(index);
@@ -173,7 +175,7 @@ async function readSseMcpRound(sender, streamId, body, ctx) {
         try {
           const absPath = resolveUnderProject(projectRoot, relPath);
           const isNew = !fs.existsSync(absPath);
-          let xcodeLiveStream = isNew && shouldLiveStreamToXcode(absPath);
+          let xcodeLiveStream = IS_DARWIN;
           let cancelled = false;
           let xcodeIntegrate = false;
           let xcodeMeta = null;
@@ -204,11 +206,17 @@ async function readSseMcpRound(sender, streamId, body, ctx) {
             return;
           }
 
-          if (xcodeLiveStream) xcodeWrite.prepareNewFile(absPath);
+          if (xcodeLiveStream) {
+            xcodeWrite.beginWriteSession(absPath, { preserveExisting: !isNew });
+          }
           console.log(
             '[xcode-stream] write_file →',
             absPath,
-            xcodeLiveStream ? '(live stream)' : '(existing file, defer disk until done)'
+            xcodeLiveStream
+              ? isNew
+                ? '(live stream, new file)'
+                : '(live stream, overlay existing)'
+              : '(skipped)'
           );
         } catch (e) {
           console.warn('[xcode-stream] path rejected:', e.message);
@@ -218,9 +226,8 @@ async function readSseMcpRound(sender, streamId, body, ctx) {
         const target = writeTargets.get(index);
         if (target?.cancelled) return;
         if (target?.absPath && target.xcodeLiveStream && IS_DARWIN && delta) {
-          const truncate = !target.fileStarted;
           target.fileStarted = true;
-          xcodeWrite.scheduleLiveDelta(target.absPath, delta, { truncate });
+          xcodeWrite.scheduleLiveDelta(target.absPath, delta);
         }
         if (delta) {
           safeSend(sender, {

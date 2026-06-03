@@ -3,23 +3,18 @@
  *
  * 将渲染进程传入的相对路径解析为工程内绝对路径（macOS Xcode 流式写入）。
  */
-const fs = require('fs');
 const mcpFs = require('./filesystem-client');
 const { resolveUnderProject } = require('./project-path');
 
 const IS_DARWIN = process.platform === 'darwin';
 
 /**
- * 仅对新文件做 Xcode 流式预览；已存在文件避免首片 truncate 清空（编辑时 Xcode 会先变空）。
+ * 是否对该路径做 Xcode 流式落盘（macOS）。
  * @param {string} absPath
  */
 function shouldLiveStreamToXcode(absPath) {
   if (!IS_DARWIN || !absPath) return false;
-  try {
-    return !fs.existsSync(absPath);
-  } catch {
-    return false;
-  }
+  return true;
 }
 
 /**
