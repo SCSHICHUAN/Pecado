@@ -5,8 +5,7 @@
  * 一次火山 stream 请求 → 对外 AsyncGenerator<VolcStreamEvent>。
  */
 const { postChatCompletion, parseApiError } = require('./client');
-const { extractDeltaText, streamJsonErrorMessage } = require('./delta');
-const { parseSseJsonStream } = require('./sse-reader');
+const { extractDeltaText, streamJsonErrorMessage, parseSseJsonStream } = require('./sse-reader');
 const { createToolCallAccumulator } = require('./tool-call-acc');
 
 /**
@@ -16,7 +15,7 @@ const { createToolCallAccumulator } = require('./tool-call-acc');
  *   messages: Array<Record<string, unknown>>,
  *   tools?: Array<object>,
  * }} opts
- * @returns {AsyncGenerator<import('./events').VolcStreamEvent, void, void>}
+ * @returns {AsyncGenerator<object, void, void>}
  */
 async function* streamChat(opts) {
   let res;

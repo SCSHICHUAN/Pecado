@@ -2,19 +2,12 @@
  * @file preload.js
  *
  * 隔离上下文下的预加载桥：唯一适合放 `require('markdown-it')` / `highlight.js` 且能安全暴露给页面的地方。
- *
- * - `contextBridge.exposeInMainWorld('electronAPI', …)`：QQ 音乐 invoke、方舟 `volcArkBotsChatStream` + `onVolcArkStreamEvent`、
- *   用户配置 get/set、`renderMarkdown`（markdown-it，围栏代码走 highlight，当前仅注册 cpp，未知语言按 cpp）；
- *   工程 filesystem 见 `filesystem-bridge.js`。
- * - 渲染进程不持有 API Key；网络与密钥只在主进程 `ipc/chat.js`。
- * - 通道名来自 `../shared/ipc-channels.js`，与主进程注册保持一致。
  */
 const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');
 hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
-const { QQ_MUSIC, VOLC_ARK, VOLC_USER_CONFIG } = require('../shared/ipc-channels');
-const { createFilesystemBridge } = require('./filesystem-bridge');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS } = require('../shared/ipc-channels');
 
 /** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -34,19 +27,9 @@ md.options.highlight = (str, lang) => {
 
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
-    openQQMusic: () => ipcRenderer.invoke(QQ_MUSIC.OPEN_DESKTOP),
-    openQQMusicWeb: () => ipcRenderer.invoke(QQ_MUSIC.OPEN_WEB),
-    /** 流式豆包：invoke 结束后返回 { content } 或 { error }；增量通过 onVolcArkStreamEvent 推送 */
-    /** @param {object} [opts] @param {'plain'|'context'|'agent'} [opts.mode] 对话模式 */
-    volcArkBotsChatStream: (messages, streamId, opts) =>
-      ipcRenderer.invoke(VOLC_ARK.BOTS_CHAT_COMPLETION, {
-        messages,
-        streamId,
-        ...(opts && typeof opts === 'object' ? opts : {}),
-      }),
-    /** @param {(payload: { streamId: string, phase: string, text?: string, error?: string, name?: string, path?: string }) => void} callback
-     * @returns {() => void} 取消订阅
-     */
+    volcArkBotsChatStream: (payload) => ipcRenderer.invoke(VOLC_ARK.BOTS_CHAT_COMPLETION, payload),
+    handleBotCommand: (rawContent) =>
+      ipcRenderer.invoke(QQ_MUSIC.HANDLE_BOT_COMMAND, { rawContent }),
     onVolcArkStreamEvent: (callback) => {
       const ch = VOLC_ARK.BOTS_STREAM_EVENT;
       const fn = (_evt, payload) => {
@@ -59,10 +42,19 @@ try {
       ipcRenderer.on(ch, fn);
       return () => ipcRenderer.removeListener(ch, fn);
     },
-    volcGetUserConfig: () => ipcRenderer.invoke(VOLC_USER_CONFIG.GET),
-    volcSetUserConfig: (data) => ipcRenderer.invoke(VOLC_USER_CONFIG.SET, data),
-    ...createFilesystemBridge(),
-    /** 助手气泡 Markdown → HTML（highlight.js 仅 cpp 语法集；样式见 app.html 引入的 github-dark） */
+    mcpFsDirectoryTree: (opts) => ipcRenderer.invoke(MCP_FS.DIRECTORY_TREE, opts || {}),
+    onMcpFsProjectChanged: (callback) => {
+      const ch = MCP_FS.PROJECT_CHANGED;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onMcpFsProjectChanged', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
     renderMarkdown: (src) => md.render(String(src ?? '')),
   });
 } catch (error) {

@@ -10,8 +10,8 @@
     "postinstall": "node ./node_modules/electron/install.js",
     "start": "electron .",
     "dev": "electron .",
-    "start:shell": "bash src/scripts/shell/quick-start.sh",
-    "env:init": "node src/scripts/init-env.js",
+    "start:shell": "bash src/electron/shell/quick-start.sh",
+    "env:init": "node src/electron/init/init-env.js",
     "build": "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"
   },
   "build": {

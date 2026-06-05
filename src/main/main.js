@@ -3,9 +3,9 @@
  *
  * Pecado AI 主进程入口。
  *
- * - `app.whenReady` 后扩展 `load-env` 搜索根、注册 IPC（QQ 音乐、方舟对话、方舟用户配置、`mcp/` 模块），再 `createWindow`。
+ * - `app.whenReady` 后扩展 `bootstrap/load-env` 搜索根、注册 agent IPC（router、agent-commands）与 mcp-filesystem，再 `createWindow`。
  * - `createWindow`：按主显示器 `bounds/workArea` 计算初始宽高（宽约 2/3 屏、高约工作区 8/10，并夹在最小尺寸与 workArea 内）、居中；
- *   `BrowserWindow` 加载 `src/renderer/app.html` 与 `preload.js`（沙盒关闭与其它 webPreferences 与项目一致）。
+ *   `BrowserWindow` 加载 `src/renderer/html/app.html` 与 `preload.js`（沙盒关闭与其它 webPreferences 与项目一致）。
  * - macOS：`disable-features=OverlayScrollbar`，否则 `::-webkit-scrollbar` 自定义常不生效。
  * - `activate` 时若无窗口则再建一扇；非 macOS `window-all-closed` 时 `quit`。
  */
@@ -17,15 +17,14 @@ if (process.platform === 'darwin') {
   app.commandLine.appendSwitch('disable-features', 'OverlayScrollbar');
 }
 
-const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('./load-env');
-const qqMusicIpc = require('./ipc/qq-music');
-const chatIpc = require('./ipc/chat');
-const volcUserConfigIpc = require('./ipc/volc-user-config');
-const mcpIpc = require('./mcp');
+const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('./bootstrap/load-env');
+const agentRouter = require('./agent/router');
+const agentCommands = require('./agent/agent-commands');
+const mcpFilesystemIpc = require('./mcp-filesystem/ipc');
 
 loadEnvFromSearchRoots(getDefaultSearchRoots());
 
-const RENDERER_HTML = path.join(__dirname, '..', 'renderer', 'app.html');
+const RENDERER_HTML = path.join(__dirname, '..', 'renderer', 'html', 'app.html');
 const PRELOAD_SCRIPT = path.join(__dirname, '..', 'preload', 'preload.js');
 
 /** @type {import('electron').BrowserWindow | null} */
@@ -102,10 +101,9 @@ app.whenReady().then(() => {
 
   app.setName('Pecado AI');
 
-  qqMusicIpc.register(ipcMain);
-  chatIpc.register(ipcMain);
-  volcUserConfigIpc.register(ipcMain);
-  mcpIpc.register(ipcMain, () => mainWindowRef);
+  agentRouter.register(ipcMain);
+  agentCommands.register(ipcMain);
+  mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
   createWindow();
 
   app.on('activate', function () {

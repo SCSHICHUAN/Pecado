@@ -1,14 +1,11 @@
 /**
  * @file client.js
- * @domain volc
- * @protocol volc-sse
  *
- * 火山方舟 Bots Chat Completions HTTP 客户端（无 Electron / 业务副作用）。
+ * 火山方舟 Bots Chat Completions HTTP 客户端。
  */
-const { ARK_BOTS_URL } = require('./constants');
-const { extractDeltaText, streamJsonErrorMessage } = require('./delta');
 const { sanitizeMessagesForVolcApi } = require('./messages');
-const { parseSseJsonStream } = require('./sse-reader');
+
+const ARK_BOTS_URL = 'https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions';
 
 /**
  * @param {Response} res
@@ -60,34 +57,4 @@ async function postChatCompletion(opts) {
   });
 }
 
-/**
- * 纯文本 SSE：聚合全文，可选每片 delta 回调。
- * @param {ReadableStream<Uint8Array>} body
- * @param {{ onTextDelta?: (piece: string) => void }} [handlers]
- * @returns {Promise<{ ok: true, text: string } | { error: string }>}
- */
-async function collectPlainTextStream(body, handlers = {}) {
-  let full = '';
-  for await (const json of parseSseJsonStream(body)) {
-    const errMsg = streamJsonErrorMessage(json);
-    if (errMsg) return { error: errMsg };
-
-    const piece = extractDeltaText(json);
-    if (piece) {
-      full += piece;
-      if (handlers.onTextDelta) handlers.onTextDelta(piece);
-    }
-  }
-  return { ok: true, text: full };
-}
-
-module.exports = {
-  ARK_BOTS_URL,
-  postChatCompletion,
-  parseApiError,
-  collectPlainTextStream,
-  parseSseJsonStream,
-  extractDeltaText,
-  streamJsonErrorMessage,
-  sanitizeMessagesForVolcApi,
-};
+module.exports = { ARK_BOTS_URL, postChatCompletion, parseApiError };
