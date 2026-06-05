@@ -37,7 +37,7 @@ try {
     openQQMusic: () => ipcRenderer.invoke(QQ_MUSIC.OPEN_DESKTOP),
     openQQMusicWeb: () => ipcRenderer.invoke(QQ_MUSIC.OPEN_WEB),
     /** 流式豆包：invoke 结束后返回 { content } 或 { error }；增量通过 onVolcArkStreamEvent 推送 */
-    /** @param {object} [opts] @param {boolean} [opts.useMcpTools] 启用 MCP Function Calling */
+    /** @param {object} [opts] @param {'plain'|'context'|'agent'} [opts.mode] 对话模式 */
     volcArkBotsChatStream: (messages, streamId, opts) =>
       ipcRenderer.invoke(VOLC_ARK.BOTS_CHAT_COMPLETION, {
         messages,

@@ -378,22 +378,26 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
     try {
       const mcp = window.mcpClient;
-      let useMcpTools = false;
-      if (mcp && typeof mcp.isMcpConnected === 'function') {
-        useMcpTools = await mcp.isMcpConnected();
-      }
-
+      const CHAT_MODE = (volc && volc.CHAT_MODE) || { PLAIN: 'plain', CONTEXT: 'context', AGENT: 'agent' };
+      let mode = CHAT_MODE.PLAIN;
       let projectContext = '';
-      if (!useMcpTools && mcp && typeof mcp.buildProjectContextForAi === 'function') {
+
+      const connected =
+        mcp && typeof mcp.isMcpConnected === 'function' && (await mcp.isMcpConnected());
+
+      if (connected) {
+        mode = CHAT_MODE.AGENT;
+      } else if (mcp && typeof mcp.buildProjectContextForAi === 'function') {
         try {
           projectContext = await mcp.buildProjectContextForAi(message);
+          if (projectContext.trim()) mode = CHAT_MODE.CONTEXT;
         } catch (ctxErr) {
           console.warn('[chat] buildProjectContextForAi', ctxErr);
         }
       }
 
       const xcodeStreamPath =
-        useMcpTools && mcp && typeof mcp.pickXcodeStreamTarget === 'function'
+        mode === CHAT_MODE.AGENT && mcp && typeof mcp.pickXcodeStreamTarget === 'function'
           ? mcp.pickXcodeStreamTarget(message)
           : null;
 
@@ -406,7 +410,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
             scheduleStreamMarkdownRender(streamCtx);
           },
         },
-        { useMcpTools, projectContext, xcodeStreamPath: xcodeStreamPath || undefined }
+        { mode, projectContext, xcodeStreamPath: xcodeStreamPath || undefined }
       );
 
       cancelStreamMarkdownRender(streamRafRef);

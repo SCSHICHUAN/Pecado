@@ -18,12 +18,21 @@
     return `s-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
+  const CHAT_MODE = { PLAIN: 'plain', CONTEXT: 'context', AGENT: 'agent' };
+
+  function resolveMode(opts) {
+    if (opts.mode === CHAT_MODE.AGENT || opts.mode === 'agent') return CHAT_MODE.AGENT;
+    if (opts.mode === CHAT_MODE.CONTEXT || opts.mode === 'context') return CHAT_MODE.CONTEXT;
+    if (opts.useMcpTools) return CHAT_MODE.AGENT;
+    return CHAT_MODE.PLAIN;
+  }
+
   /**
    * @param {string} text 当前用户输入
    * @param {Array<{ role: string, content: string }>} priorHistory 不含本轮 user
    * @param {{ onDelta?: (piece: string) => void }} [streamHandlers]
-   * @param {{ projectContext?: string, useMcpTools?: boolean, xcodeStreamPath?: string }} [options]
-   *   projectContext：未启用 tools 时拼进 system；useMcpTools：主进程走 MCP Function Calling 循环
+   * @param {{ mode?: string, projectContext?: string, useMcpTools?: boolean, xcodeStreamPath?: string }} [options]
+   *   mode: plain | context | agent；context 时将 projectContext 拼进 system
    * @returns {Promise<{ content?: string, error?: string }>}
    */
   async function runBotAgent(text, priorHistory, streamHandlers, options) {
@@ -32,9 +41,9 @@
       return { error: 'electronAPI.volcArkBotsChatStream 不可用' };
     }
     const opts = options && typeof options === 'object' ? options : {};
-    const useMcpTools = !!opts.useMcpTools;
-    let systemContent = useMcpTools ? MCP_TOOLS_SYSTEM : SYSTEM_PROMPT;
-    if (!useMcpTools && opts.projectContext && String(opts.projectContext).trim()) {
+    const mode = resolveMode(opts);
+    let systemContent = mode === CHAT_MODE.AGENT ? MCP_TOOLS_SYSTEM : SYSTEM_PROMPT;
+    if (mode !== CHAT_MODE.AGENT && opts.projectContext && String(opts.projectContext).trim()) {
       systemContent += '\n\n' + String(opts.projectContext).trim();
     }
     const history = Array.isArray(priorHistory) ? priorHistory : [];
@@ -60,8 +69,8 @@
 
     try {
       const r = await api.volcArkBotsChatStream(messages, streamId, {
-        useMcpTools,
-        xcodeStreamPath: opts.xcodeStreamPath || undefined,
+        mode,
+        xcodeStreamPath: mode === CHAT_MODE.AGENT ? opts.xcodeStreamPath || undefined : undefined,
       });
       if (r && r.error) return { error: r.error };
       if (typeof r?.content !== 'string') return { error: '响应缺少 content' };
@@ -84,5 +93,5 @@
     return runBotAgent(last.content, prior);
   }
 
-  window.volcChat = { SYSTEM_PROMPT, runBotAgent, complete };
+  window.volcChat = { SYSTEM_PROMPT, CHAT_MODE, runBotAgent, complete };
 })();

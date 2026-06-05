@@ -1,18 +1,16 @@
 /**
  * @file index.js
  *
- * MCP 模块统一入口：IPC、菜单、方舟对话集成。
+ * MCP 模块启动入口：注册 filesystem IPC、应用菜单、主窗口上下文。
+ * 业务 API（对话、Xcode 流等）请直接 require 对应子模块，勿经此 barrel 再导出。
  */
 const filesystemIpc = require('./filesystem-ipc');
 const { setupApplicationMenu } = require('./app-menu');
-const { handleMcpToolsChat } = require('./chat-integration');
-const { resolveXcodeStreamAbsPath } = require('./xcode-stream-target');
-const { writeSseDeltaToXcode, finalizeSseXcodeStream } = require('./sse-xcode-stream');
-const { setMainWindowGetter, getMainWindow } = require('./context');
+const { setMainWindowGetter } = require('./context');
 
 /**
  * @param {import('electron').IpcMain} ipcMain
- * @param {() => import('electron').BrowserWindow | null} getMainWindow
+ * @param {() => import('electron').BrowserWindow | null} getMainWindowFn
  */
 function register(ipcMain, getMainWindowFn) {
   setMainWindowGetter(getMainWindowFn);
@@ -20,11 +18,4 @@ function register(ipcMain, getMainWindowFn) {
   setupApplicationMenu(getMainWindowFn);
 }
 
-module.exports = {
-  register,
-  getMainWindow,
-  handleMcpToolsChat,
-  resolveXcodeStreamAbsPath,
-  writeSseDeltaToXcode,
-  finalizeSseXcodeStream,
-};
+module.exports = { register };
