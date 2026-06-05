@@ -1,10 +1,8 @@
 /**
- * @file stream-tool-acc.js
+ * @file write-file-args-stream.js
  *
- * write_file arguments 增量解析（边收边写 Xcode / UI）。
- * tool_calls 聚合见 `llm-volc/tool-call-acc.js`。
+ * write_file 的 function.arguments 流式片段 → 解析 path + content 增量。
  */
-const { createToolCallAccumulator } = require('../llm-volc/tool-call-acc');
 
 function tryExtractJsonStringField(argsAcc, field) {
   const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
@@ -69,7 +67,6 @@ function decodePartialJsonString(raw) {
 }
 
 /**
- * write_file 的 function.arguments 流式片段 → 解析 path + content 增量
  * @param {{ onPath?: (relPath: string) => void, onContentDelta?: (delta: string, relPath: string) => void }} hooks
  */
 function createWriteFileArgsStreamer(hooks) {
@@ -125,8 +122,4 @@ function createWriteFileArgsStreamer(hooks) {
   };
 }
 
-module.exports = {
-  createToolCallAccumulator,
-  createWriteFileArgsStreamer,
-  decodePartialJsonString,
-};
+module.exports = { createWriteFileArgsStreamer, decodePartialJsonString };

@@ -14,6 +14,7 @@ const { ARK_BOTS_URL } = require('./constants');
 const { streamChat, collectPlainChat } = require('./stream-chat');
 const { resolveVolcCredentials, MISSING_KEY_ERROR } = require('./credentials');
 const { sanitizeMessagesForVolcApi, sanitizeToolCallsForApi } = require('./messages');
+const { mcpToolsToFunctionTools } = require('./tools-bridge');
 
 module.exports = {
   ARK_BOTS_URL,
@@ -25,4 +26,5 @@ module.exports = {
   MISSING_KEY_ERROR,
   sanitizeMessagesForVolcApi,
   sanitizeToolCallsForApi,
+  mcpToolsToFunctionTools,
 };

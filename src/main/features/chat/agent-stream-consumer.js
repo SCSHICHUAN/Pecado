@@ -1,8 +1,8 @@
 /**
- * @file agent-round.js
+ * @file agent-stream-consumer.js
  * @domain chat
  *
- * 消费火山 VolcStreamEvent，处理 write_file 流式解析与 UI / Xcode 副作用。
+ * 消费 llm-volc 事件流，处理 write_file 流式解析与 UI / Xcode 副作用。
  */
 const fs = require('fs');
 const volc = require('../../llm-volc');
@@ -10,7 +10,7 @@ const { resolveUnderProject } = require('../../mcp/project-path');
 const xcodeWrite = require('../../mcp/xcode-write-stream');
 const { getMainWindow } = require('../../mcp/context');
 const { confirmCreateOperation } = require('../../mcp/xcode-prompt');
-const { createWriteFileArgsStreamer } = require('../../mcp/stream-tool-acc');
+const { createWriteFileArgsStreamer } = require('../../mcp/write-file-args-stream');
 
 const IS_DARWIN = process.platform === 'darwin';
 
@@ -24,7 +24,7 @@ const IS_DARWIN = process.platform === 'darwin';
  * }} chatOpts
  * @param {{ projectRoot: string, xcodeAbsPath?: string|null }} ctx
  */
-async function consumeAgentRound(uiSink, chatOpts, ctx) {
+async function consumeAgentStream(uiSink, chatOpts, ctx) {
   /** @type {Map<number, ReturnType<typeof createWriteFileArgsStreamer>>} */
   const writeParsers = new Map();
   /** @type {Map<number, object>} */
@@ -155,4 +155,4 @@ async function consumeAgentRound(uiSink, chatOpts, ctx) {
   return { error: '流式响应未正常结束' };
 }
 
-module.exports = { consumeAgentRound };
+module.exports = { consumeAgentStream };

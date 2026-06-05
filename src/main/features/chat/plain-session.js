@@ -2,10 +2,13 @@
  * @file plain-session.js
  * @domain chat
  *
- * 纯流式对话：消费火山事件流，推 UI + 可选 Xcode 落盘。
+ * 纯流式对话：消费 llm-volc 事件，推 UI + 可选 Xcode 落盘。
  */
 const volc = require('../../llm-volc');
-const { writeSseDeltaToXcode, finalizeSseXcodeStream } = require('../../mcp/sse-xcode-stream');
+const {
+  writePlainTextDeltaToXcode,
+  finalizePlainTextXcodeStream,
+} = require('../../mcp/xcode-plain-text-stream');
 
 /**
  * @param {{
@@ -24,12 +27,12 @@ async function runPlainSession(opts) {
     {
       onTextDelta(piece) {
         uiSink.onTextDelta(piece);
-        writeSseDeltaToXcode(xcodeAbsPath, piece);
+        writePlainTextDeltaToXcode(xcodeAbsPath, piece);
       },
     }
   );
 
-  await finalizeSseXcodeStream(xcodeAbsPath);
+  await finalizePlainTextXcodeStream(xcodeAbsPath);
 
   if (out.error) {
     uiSink.onError(out.error);

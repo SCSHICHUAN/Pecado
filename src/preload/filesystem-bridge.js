@@ -1,12 +1,12 @@
 /**
- * @file mcp-bridge.js
+ * @file filesystem-bridge.js
  *
- * preload 侧 MCP filesystem IPC 桥（暴露给 electronAPI）。
+ * preload 侧工程文件系统 IPC 桥（暴露给 electronAPI.mcpFs*）。
  */
 const { ipcRenderer } = require('electron');
 const { MCP_FS } = require('../main/mcp/ipc-channels');
 
-function createMcpBridge() {
+function createFilesystemBridge() {
   return {
     mcpFsGetStatus: () => ipcRenderer.invoke(MCP_FS.GET_STATUS),
     mcpFsPickProject: () => ipcRenderer.invoke(MCP_FS.PICK_PROJECT),
@@ -40,4 +40,4 @@ function createMcpBridge() {
   };
 }
 
-module.exports = { createMcpBridge };
+module.exports = { createFilesystemBridge };

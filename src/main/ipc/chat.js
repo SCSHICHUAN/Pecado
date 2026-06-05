@@ -1,7 +1,7 @@
 /**
- * @file ark-chat.js
+ * @file chat.js
  *
- * 火山对话 IPC 入口（薄层）：校验 payload、解析密钥、按 mode 路由到 chat session。
+ * LLM 对话 IPC 入口：校验 payload、解析密钥、按 mode 路由到 chat session。
  */
 const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('../load-env');
 const { VOLC_ARK } = require('../../shared/ipc-channels');

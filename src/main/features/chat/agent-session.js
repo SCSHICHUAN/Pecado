@@ -3,15 +3,13 @@
  * @domain chat
  *
  * Agent 模式会话：多轮 Function Calling 编排。
- * 火山数据经 `llm-volc` 事件流进出。
  */
 const volc = require('../../llm-volc');
 const mcpFs = require('../../mcp/filesystem-client');
-const { mcpToolsToFunctionTools } = require('../../mcp/tools-schema');
 const { formatToolResultForMessage } = require('../../mcp/tool-result');
 const { resolveUnderProject } = require('../../mcp/project-path');
 const xcodeWrite = require('../../mcp/xcode-write-stream');
-const { consumeAgentRound } = require('./agent-round');
+const { consumeAgentStream } = require('./agent-stream-consumer');
 const { executeMcpTool } = require('./mcp-tool-executor');
 
 const IS_DARWIN = process.platform === 'darwin';
@@ -32,7 +30,7 @@ async function runAgentSession(uiSink, _streamId, apiKey, model, messages, loopO
 
   let tools;
   try {
-    tools = mcpToolsToFunctionTools(await mcpFs.listTools());
+    tools = volc.mcpToolsToFunctionTools(await mcpFs.listTools());
   } catch (e) {
     return { error: `读取 MCP tools 失败：${e.message || String(e)}` };
   }
@@ -56,7 +54,7 @@ async function runAgentSession(uiSink, _streamId, apiKey, model, messages, loopO
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      const roundOut = await consumeAgentRound(uiSink, chatOpts, {
+      const roundOut = await consumeAgentStream(uiSink, chatOpts, {
         projectRoot,
         xcodeAbsPath,
       });
@@ -141,4 +139,4 @@ async function runAgentSession(uiSink, _streamId, apiKey, model, messages, loopO
   }
 }
 
-module.exports = { runAgentSession, mcpToolsToFunctionTools };
+module.exports = { runAgentSession };

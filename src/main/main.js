@@ -19,7 +19,7 @@ if (process.platform === 'darwin') {
 
 const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('./load-env');
 const qqMusicIpc = require('./ipc/qq-music');
-const arkChatIpc = require('./ipc/ark-chat');
+const chatIpc = require('./ipc/chat');
 const volcUserConfigIpc = require('./ipc/volc-user-config');
 const mcpIpc = require('./mcp');
 
@@ -103,7 +103,7 @@ app.whenReady().then(() => {
   app.setName('Pecado AI');
 
   qqMusicIpc.register(ipcMain);
-  arkChatIpc.register(ipcMain);
+  chatIpc.register(ipcMain);
   volcUserConfigIpc.register(ipcMain);
   mcpIpc.register(ipcMain, () => mainWindowRef);
   createWindow();

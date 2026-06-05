@@ -3,7 +3,7 @@
  *
  * 渲染进程对话主逻辑（依赖 `app.html` 中 `#chat-input`、`#chat-content`、`#workspace-scroll` 等）。
  *
- * - 维护 `chatHistory`、用户消息气泡、助手气泡；发送时调用 `volcChat.runBotAgent`，流式阶段用 `scheduleStreamMarkdownRender`（rAF 合并多 delta）+
+ * - 维护 `chatHistory`、用户消息气泡、助手气泡；发送时调用 `chatStream.runBotAgent`，流式阶段用 `scheduleStreamMarkdownRender`（rAF 合并多 delta）+
  *   `electronAPI.renderMarkdown` + `enhanceAssistantCodeBlocks`（代码块 wrap、复制按钮、hljs class）。
  * - 滚动：`shouldStreamFollowBottom` / 用户滚轮上滑与 touch 上滑会 `chatUserDetachedFromStream`，避免与用户抢滚动；
  *   `scrollChatToBottomForced({ streamFollow })` 在流式/减少动画时用多帧 `scrollTo` 收敛，避免大块 Markdown 写入后 `scrollHeight` 未及时更新导致跟丢。
@@ -355,9 +355,9 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     chatInput.style.height = 'auto';
 
     sendButton.disabled = true;
-    const volc = window.volcChat;
-    if (!volc || typeof volc.runBotAgent !== 'function') {
-      const t = '未加载 volc-chat.js';
+    const chatStream = window.chatStream;
+    if (!chatStream || typeof chatStream.runBotAgent !== 'function') {
+      const t = '未加载 chat-stream-client.js';
       chatHistory.push({ role: 'assistant', content: t });
       addMessage(t, 'assistant');
       sendButton.disabled = false;
@@ -377,19 +377,19 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     };
 
     try {
-      const mcp = window.mcpClient;
-      const CHAT_MODE = (volc && volc.CHAT_MODE) || { PLAIN: 'plain', CONTEXT: 'context', AGENT: 'agent' };
+      const CHAT_MODE = (chatStream && chatStream.CHAT_MODE) || { PLAIN: 'plain', CONTEXT: 'context', AGENT: 'agent' };
       let mode = CHAT_MODE.PLAIN;
       let projectContext = '';
 
+      const project = window.projectClient;
       const connected =
-        mcp && typeof mcp.isMcpConnected === 'function' && (await mcp.isMcpConnected());
+        project && typeof project.isMcpConnected === 'function' && (await project.isMcpConnected());
 
       if (connected) {
         mode = CHAT_MODE.AGENT;
-      } else if (mcp && typeof mcp.buildProjectContextForAi === 'function') {
+      } else if (project && typeof project.buildProjectContextForAi === 'function') {
         try {
-          projectContext = await mcp.buildProjectContextForAi(message);
+          projectContext = await project.buildProjectContextForAi(message);
           if (projectContext.trim()) mode = CHAT_MODE.CONTEXT;
         } catch (ctxErr) {
           console.warn('[chat] buildProjectContextForAi', ctxErr);
@@ -397,11 +397,11 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       }
 
       const xcodeStreamPath =
-        mode === CHAT_MODE.AGENT && mcp && typeof mcp.pickXcodeStreamTarget === 'function'
-          ? mcp.pickXcodeStreamTarget(message)
+        mode === CHAT_MODE.AGENT && project && typeof project.pickXcodeStreamTarget === 'function'
+          ? project.pickXcodeStreamTarget(message)
           : null;
 
-      const result = await volc.runBotAgent(
+      const result = await chatStream.runBotAgent(
         message,
         priorHistory,
         {
@@ -481,8 +481,8 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     else if (stickAssistant) scrollChatToBottomForced();
   }
 
-  if (window.mcpClient && typeof window.mcpClient.init === 'function') {
-    window.mcpClient.init({
+  if (window.projectClient && typeof window.projectClient.init === 'function') {
+    window.projectClient.init({
       addMessage,
       scrollChatToBottomForced,
       pushChatHistory: (entry) => chatHistory.push(entry),

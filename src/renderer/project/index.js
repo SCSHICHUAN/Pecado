@@ -1,7 +1,7 @@
 /**
  * @file index.js
  *
- * 渲染进程 MCP 客户端：目录树格式化、工程上下文、Open Folder 监听。
+ * 渲染进程工程助手：目录树、工程上下文、Open Folder 监听。
  */
 (function () {
   const MCP_CONTEXT_MAX_TOTAL = 55000;
@@ -186,7 +186,7 @@
     setupProjectListener();
   }
 
-  window.mcpClient = {
+  window.projectClient = {
     init,
     extractRequestedPaths,
     pickXcodeStreamTarget,

@@ -5,8 +5,8 @@
  *
  * - `contextBridge.exposeInMainWorld('electronAPI', …)`：QQ 音乐 invoke、方舟 `volcArkBotsChatStream` + `onVolcArkStreamEvent`、
  *   用户配置 get/set、`renderMarkdown`（markdown-it，围栏代码走 highlight，当前仅注册 cpp，未知语言按 cpp）；
- *   MCP filesystem 见 `mcp-bridge.js`。
- * - 渲染进程不持有 API Key；网络与密钥只在主进程 `ark-chat.js`。
+ *   工程 filesystem 见 `filesystem-bridge.js`。
+ * - 渲染进程不持有 API Key；网络与密钥只在主进程 `ipc/chat.js`。
  * - 通道名来自 `../shared/ipc-channels.js`，与主进程注册保持一致。
  */
 const { contextBridge, ipcRenderer } = require('electron');
@@ -14,7 +14,7 @@ const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');
 hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
 const { QQ_MUSIC, VOLC_ARK, VOLC_USER_CONFIG } = require('../shared/ipc-channels');
-const { createMcpBridge } = require('./mcp-bridge');
+const { createFilesystemBridge } = require('./filesystem-bridge');
 
 /** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -61,7 +61,7 @@ try {
     },
     volcGetUserConfig: () => ipcRenderer.invoke(VOLC_USER_CONFIG.GET),
     volcSetUserConfig: (data) => ipcRenderer.invoke(VOLC_USER_CONFIG.SET, data),
-    ...createMcpBridge(),
+    ...createFilesystemBridge(),
     /** 助手气泡 Markdown → HTML（highlight.js 仅 cpp 语法集；样式见 app.html 引入的 github-dark） */
     renderMarkdown: (src) => md.render(String(src ?? '')),
   });

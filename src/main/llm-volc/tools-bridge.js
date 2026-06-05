@@ -1,10 +1,8 @@
 /**
- * @file tools-schema.js
+ * @file tools-bridge.js
+ * @domain llm-volc
  *
- * MCP listTools → 火山 Function Calling 的 tools 数组。
- * 火山 tools 格式（OpenAI 兼容）:
- *   { type:"function", function:{ name, description, parameters:JSONSchema } }
- * parameters 来自 MCP 的 inputSchema（见 listTools 返回）。
+ * MCP listTools → 火山 Function Calling tools 数组（OpenAI 兼容格式）。
  */
 
 /** @param {unknown} schema */

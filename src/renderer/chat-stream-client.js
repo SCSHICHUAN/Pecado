@@ -1,17 +1,12 @@
 /**
- * @file volc-chat.js
+ * @file chat-stream-client.js
  *
- * 渲染进程侧的「调用豆包」封装（不触碰密钥）。
- *
- * - 拼装 `messages`（system + 历史 + 当前 user），生成 `streamId`，调用 `electronAPI.volcArkBotsChatStream`；
- * - 订阅 `onVolcArkStreamEvent`：过滤同 `streamId` 的 `delta`/`error`，`onDelta` 把文本片交给上层（chat.js）累加并重渲染；
- * - Promise 解析为结束时返回的 `{ content }` 或 `{ error }`。
- * - 挂载 `window.volcChat` / `window.runVolcDemo` 等与页面脚本约定入口。
+ * 渲染进程 LLM 对话客户端（拼 messages、订阅 IPC 流，不触碰密钥）。
  */
 (function () {
   const SYSTEM_PROMPT = 'You are a helpful assistant.';
-  const MCP_TOOLS_SYSTEM =
-    (window.mcpPrompts && window.mcpPrompts.MCP_TOOLS_SYSTEM) ||
+  const AGENT_SYSTEM_PROMPT =
+    (window.projectPrompts && window.projectPrompts.AGENT_SYSTEM_PROMPT) ||
     '你是代码编辑器助手。用户已打开本地工程；需要查看目录、读文件或修改代码时，请调用提供的 tools，不要编造文件内容。修改源码请用 write_file（整文件）或 edit_file（局部）。';
 
   function makeStreamId() {
@@ -28,12 +23,10 @@
   }
 
   /**
-   * @param {string} text 当前用户输入
-   * @param {Array<{ role: string, content: string }>} priorHistory 不含本轮 user
+   * @param {string} text
+   * @param {Array<{ role: string, content: string }>} priorHistory
    * @param {{ onDelta?: (piece: string) => void }} [streamHandlers]
    * @param {{ mode?: string, projectContext?: string, useMcpTools?: boolean, xcodeStreamPath?: string }} [options]
-   *   mode: plain | context | agent；context 时将 projectContext 拼进 system
-   * @returns {Promise<{ content?: string, error?: string }>}
    */
   async function runBotAgent(text, priorHistory, streamHandlers, options) {
     const api = window.electronAPI;
@@ -42,7 +35,7 @@
     }
     const opts = options && typeof options === 'object' ? options : {};
     const mode = resolveMode(opts);
-    let systemContent = mode === CHAT_MODE.AGENT ? MCP_TOOLS_SYSTEM : SYSTEM_PROMPT;
+    let systemContent = mode === CHAT_MODE.AGENT ? AGENT_SYSTEM_PROMPT : SYSTEM_PROMPT;
     if (mode !== CHAT_MODE.AGENT && opts.projectContext && String(opts.projectContext).trim()) {
       systemContent += '\n\n' + String(opts.projectContext).trim();
     }
@@ -80,7 +73,6 @@
     }
   }
 
-  /** 已含本轮 user 在末尾时的便捷封装 */
   async function complete(chatHistory) {
     if (!Array.isArray(chatHistory) || chatHistory.length === 0) {
       return { error: 'chatHistory 不能为空' };
@@ -93,5 +85,5 @@
     return runBotAgent(last.content, prior);
   }
 
-  window.volcChat = { SYSTEM_PROMPT, CHAT_MODE, runBotAgent, complete };
+  window.chatStream = { SYSTEM_PROMPT, CHAT_MODE, runBotAgent, complete };
 })();
