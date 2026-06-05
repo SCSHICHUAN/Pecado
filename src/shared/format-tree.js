@@ -1,7 +1,17 @@
 /**
  * @file format-tree.js
  *
- * MCP directory_tree → ASCII 目录树（主进程 require / 渲染进程 script 共用）。
+ * 【功能】MCP directory_tree JSON 转为 ASCII 目录树文本（双端共用：Node require + 浏览器 script）。
+ *   - formatMcpTreeBox：递归 ├── / └── 前缀，maxLines 截断
+ *   - formatMcpTreeAscii：根为 '.'，超长追加「…（目录过多，已截断）」
+ *   - 浏览器端挂载 window.formatMcpTree；Node 端 module.exports
+ *
+ * 【调用方】
+ *   main/mcp-filesystem/project-context.js（拼 AI context，maxLines=400）
+ *   renderer/js/index.js（Open Folder 气泡展示，经 window.formatMcpTree）
+ *   renderer/html/app.html 以 script src 加载（路径 ../../shared/format-tree.js）
+ *
+ * 【对外能力】formatMcpTreeAscii(tree, maxLines?) / formatMcpTreeBox（内部）
  */
 function formatMcpTreeBox(nodes, prefix, lines, maxLines) {
   if (!Array.isArray(nodes) || lines.length >= maxLines) return;

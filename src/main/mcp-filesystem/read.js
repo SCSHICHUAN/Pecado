@@ -1,7 +1,19 @@
 /**
  * @file read.js
  *
- * 工程读 + 路径沙箱（MCP 沙箱，与业务无关）。
+ * 【功能】工程读操作 + 路径沙箱（防止 MCP 路径逃逸 projectRoot）。
+ *   - resolveUnderProject：相对/绝对路径归一化，超出 .. 则 throw
+ *   - readText：MCP read_text_file，可选 head/tail 截断
+ *   - readDirectoryTree：MCP directory_tree，默认排除 node_modules/.git/dist 等，返回 JSON 树
+ *   - listAllowedDirectories：MCP list_allowed_directories
+ *
+ * 【调用方】mcp-filesystem/index.js；project-context.js；xcode/live-stream.js（resolveUnderProject）
+ *
+ * 【对外能力】
+ *   resolveUnderProject(projectRoot, filePath) → absPath
+ *   readText(relPath, { head?, tail? }) → string
+ *   readDirectoryTree({ path?, excludePatterns? }) → tree JSON
+ *   listAllowedDirectories() / DEFAULT_TREE_EXCLUDES
  */
 const path = require('path');
 const transport = require('./mcp-transport');

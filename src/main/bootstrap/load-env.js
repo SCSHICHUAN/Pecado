@@ -1,13 +1,20 @@
 /**
  * @file load-env.js
  *
- * 启动时合并 `.env` / `config/secrets.json` 到 `process.env`（位于 `bootstrap/`）。
+ * 【功能】主进程环境变量加载器，将密钥与配置合并进 process.env（空值不覆盖已有变量）。
+ *   - 在多个根目录下查找：.env、.env.local、env、local.env
+ *   - 解析 KEY=value（支持 # 注释、export 前缀、单双引号、UTF-8 BOM）
+ *   - 合并 config/secrets.json 中的 volcArkApiKey / volcArkModel 等
+ *   - 通过 MAIN_SRC_DIR（src/main）反推项目根，不依赖 cwd  alone
  *
- * 主进程侧环境变量加载：在项目根、`config/`、`appPath` 等路径查找 `.env` 与可选 `secrets`/示例文件，
- * 解析 `KEY=value`（支持 `#`、`export `、简单引号）后写入 `process.env`，并打 `[env]` 日志。
+ * 【调用方】
+ *   - main.js：app 启动时 getDefaultSearchRoots + loadEnvFromSearchRoots
+ *   - agent/router.js：每次 BOTS_CHAT_COMPLETION 前再次加载（刷新密钥）
  *
- * - `getDefaultSearchRoots` / `loadEnvFromSearchRoots`：供 `main.js` 启动与 IPC 处理前多次合并加载（如发消息前刷新密钥）。
- * - 通过 `MAIN_SRC_DIR`（本文件所在 `src/main`）反推项目根，避免依赖仅 `cwd`。
+ * 【对外能力】
+ *   - getDefaultSearchRoots() → [项目根, renderer, cwd]
+ *   - loadEnvFromSearchRoots(rootDirs[])：合并 env 文件并打 [env] 日志
+ *   - loadEnvFromProjectRoot(projectRoot)：单根快捷入口
  */
 const fs = require('fs');
 const path = require('path');

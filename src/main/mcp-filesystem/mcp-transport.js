@@ -1,8 +1,17 @@
 /**
  * @file mcp-transport.js
  *
- * MCP 协议传输层（stdio → server-filesystem）：连接、callTool、listTools。
- * 读写语义见 `read.js` / `write.js`。
+ * 【功能】MCP 协议 stdio 传输：spawn @modelcontextprotocol/server-filesystem 子进程并维护 Client 生命周期。
+ *   - Electron 下用 process.execPath + ELECTRON_RUN_AS_NODE=1；否则系统 node
+ *   - connect(root)：单例 connectPromise 防并发；disconnect 关闭 client
+ *   - callTool / callToolText：后者提取 content[].text 拼接，isError 时 throw
+ *   - getStatus() → { connected, projectRoot, toolNames }
+ *
+ * 【调用方】mcp-filesystem/index.js 再导出；read.js / write.js 经 callToolText 间接调用
+ *
+ * 【对外能力】
+ *   connect(absRoot) → { projectRoot, tools }
+ *   disconnect() / getStatus() / listTools() / callTool(name, args) / callToolText(name, args)
  */
 const path = require('path');
 const fs = require('fs');

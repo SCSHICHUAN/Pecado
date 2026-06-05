@@ -1,8 +1,21 @@
 /**
  * @file tool-executor.js
- * @domain agent
  *
- * Agent 工具执行：读/写/建目录（经 mcp-filesystem）+ macOS Xcode 集成。
+ * 【功能】Agent 单步 MCP tool 执行 + macOS/Xcode 集成分支。
+ *   分支逻辑：
+ *     - cancelled → 返回 isError「用户取消」
+ *     - write_file + alreadyStreamedToDisk → 仅补 Xcode integrate 说明，不再写盘
+ *     - create_directory / write_file + 新路径 → confirmCreateOperation 弹窗（加入 Xcode / 仅磁盘 / 取消）
+ *     - macOS write_file → projectIo.writeWholeFileToDisk（本地 fs，非 MCP 流式路径）
+ *     - 其它 → projectIo.callTool(name, args)
+ *   appendXcodeIntegrateNote：integrateAfterCreate 结果追加到 MCP content[0].text
+ *
+ * 【调用方】agent/agent-loop.js → executeTool(name, args, opts) 每个 tool_call 一次
+ *
+ * 【对外能力】
+ *   executeTool(name, args, {
+ *     alreadyStreamedToDisk?, xcodeIntegrate?, xcodeMeta?, cancelled?, skipPrompt?
+ *   }) → { content: [{ type:'text', text }], isError? }
  */
 const projectIo = require('../mcp-filesystem');
 const { getMainWindow } = require('../mcp-filesystem/ipc');

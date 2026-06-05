@@ -1,7 +1,21 @@
 /**
  * @file live-stream.js
  *
- * macOS：SSE / tool 流式生成时，增量写入源码文件（供 Xcode 实时刷新）。
+ * 【功能】macOS 专用：LLM 流式输出增量写入磁盘，使 Xcode 打开的文件实时刷新。
+ *   - createLiveWriter(absPath)：plain/context 下 assistant 正文流式写 @ 目标
+ *   - registerWriteFileStreamTarget：agent write_file 解析到 path 后登记；新文件弹 confirmCreateOperation
+ *   - writeDeltaToTarget：tool 参数 content delta → scheduleWriteDelta
+ *   - resolveOpenProjectPath：MCP 已连接时把 relPath 转 abs（router plain 分支）
+ *   非 darwin 或路径非法时各 API 降级为空操作
+ *
+ * 【调用方】
+ *   agent/router.js、plain-stream.js、agent-stream-consumer.js、agent-loop.js
+ *
+ * 【对外能力】
+ *   IS_DARWIN / resolveAbsInProject(projectRoot, relPath) / resolveOpenProjectPath(relPath)
+ *   createLiveWriter(absPath) → { start, writeDelta, finish, active }
+ *   registerWriteFileStreamTarget(projectRoot, relPath) → target | null
+ *   writeDeltaToTarget(target, delta)
  */
 const fs = require('fs');
 const projectIo = require('../mcp-filesystem');

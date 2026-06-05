@@ -1,9 +1,22 @@
 /**
  * @file agent-stream-consumer.js
  *
- * 消费 llm-volc 事件流，解析 write_file 参数流并推 UI。
+ * 【功能】消费 llm-server 单轮 streamChat 事件，桥接 UI 与 Xcode 流式写盘。
+ *   - text_delta → uiSink.onTextDelta + textXcodeWriter（assistant 正文流式写 @ 目标文件）
+ *   - tool_call_delta（write_file）→ createWriteFileArgsStreamer 增量解析 JSON arguments：
+ *       先提取 path → registerWriteFileStreamTarget → content 字段 delta → writeDeltaToTarget + onToolStream
+ *   - 其它 tool → uiSink.onTool({ name, streaming: true })
+ *   - round_complete → 返回 finishReason、content、toolCalls、writeParsers/Targets 供 agent-loop 执行
+ *
+ * 【调用方】agent/agent-loop.js → consumeAgentStream(uiSink, chatOpts, ctx)
+ *
+ * 【对外能力】
+ *   consumeAgentStream(uiSink, chatOpts, { projectRoot, xcodeAbsPath })
+ *   → { finishReason, content, toolCalls, writeParsers: Map, writeTargets: Map }
+ *     | { error }
+ *   内部工具：createWriteFileArgsStreamer（部分 JSON 字符串解码、getFinalArgs 容错）
  */
-const volc = require('../llm-volc');
+const llm = require('../llm-server');
 const {
   IS_DARWIN,
   createLiveWriter,
@@ -156,7 +169,7 @@ async function consumeAgentStream(uiSink, chatOpts, ctx) {
     return parser;
   }
 
-  for await (const ev of volc.streamChat(chatOpts)) {
+  for await (const ev of llm.streamChat(chatOpts)) {
     if (ev.type === 'error') return { error: ev.message };
 
     if (ev.type === 'text_delta') {

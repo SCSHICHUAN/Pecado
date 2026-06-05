@@ -1,7 +1,19 @@
 /**
  * @file project-context.js
  *
- * 工程上下文：目录树 + 读文件，供 context 模式拼 system（主进程，不经渲染进程 IPC 读文件）。
+ * 【功能】为 router 提供工程上下文与 Xcode 流式目标识别（主进程读文件，不经 renderer）。
+ *   - ensureProjectCached：readDirectoryTree + formatMcpTreeAscii 缓存到 memory（按 projectRoot 失效）
+ *   - buildProjectContextForAi：拼【目录结构】+ MCP_KEY_FILES（package.json 等）+ 用户 @path / `file.ext` 引用
+ *   - 总字符预算 MCP_CONTEXT_MAX_TOTAL≈55k，单文件 MCP_CONTEXT_MAX_PER_FILE≈10k，超出截断
+ *   - pickXcodeStreamTarget：从 @path 中找 .swift/.m/.h 等作为 SSE 流式写目标
+ *   - extractRequestedPaths：@foo 与反引号路径正则
+ *
+ * 【调用方】agent/router.js → selectChatMode
+ *
+ * 【对外能力】
+ *   buildProjectContextForAi(userText) → contextBlock string（空则 context 模式降级 plain）
+ *   pickXcodeStreamTarget(userText) → relPath | null
+ *   extractRequestedPaths(userText) / clearProjectCache()
  */
 const projectIo = require('./index');
 const { formatMcpTreeAscii } = require('../../shared/format-tree');

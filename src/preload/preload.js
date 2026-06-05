@@ -1,7 +1,20 @@
 /**
  * @file preload.js
  *
- * 隔离上下文下的预加载桥：唯一适合放 `require('markdown-it')` / `highlight.js` 且能安全暴露给页面的地方。
+ * 【功能】contextIsolation 下的安全桥：把 IPC 与 Markdown 渲染暴露为 window.electronAPI。
+ *   - contextBridge.exposeInMainWorld，renderer 无法直接 require Node/Electron
+ *   - MarkdownIt：html:false、linkify:false、breaks:true；highlight.js 仅注册 cpp，未知语言 fallback cpp
+ *   - onVolcArkStreamEvent / onMcpFsProjectChanged 返回 unsubscribe 函数
+ *
+ * 【调用方】main/main.js → BrowserWindow webPreferences.preload
+ *
+ * 【对外能力】window.electronAPI：
+ *   volcArkBotsChatStream(payload)     → invoke BOTS_CHAT_COMPLETION { streamId, userText, history }
+ *   onVolcArkStreamEvent(callback)     → listen BOTS_STREAM_EVENT { streamId, phase, text?, ... }
+ *   handleBotCommand(rawContent)       → invoke HANDLE_BOT_COMMAND
+ *   mcpFsDirectoryTree(opts)             → invoke DIRECTORY_TREE
+ *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools? }
+ *   renderMarkdown(src)                  → HTML string（本地 markdown-it，不经 IPC）
  */
 const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');

@@ -1,7 +1,21 @@
 /**
- * @file xcode-project.js
+ * @file project.js
  *
- * 发现 .xcodeproj 后，用 node-xcode 修改 project.pbxproj，将新建文件/目录引入 Xcode 工程。
+ * 【功能】Xcode 工程发现与 project.pbxproj 修改（node-xcode）。
+ *   - findXcodeProject：自 projectRoot 向下扫描深度≤4 找首个 .xcodeproj
+ *   - pathExistsUnderRoot / toXcodeRelPath：路径是否在 xcodeRoot 内及相对路径
+ *   - addFileToProject：按扩展名 .swift/.m/.h 等加入 PBXGroup + PBXBuildFile（Sources/Headers）
+ *   - addDirectoryToProject：PBXGroup 递归或单层目录
+ *   - openXcodeProject：macOS execFile `open` .xcodeproj
+ *   仅 IS_DARWIN 有效；读写 pbxproj 前备份逻辑在函数内部
+ *
+ * 【调用方】xcode/prompt.js；agent/tool-executor.js（pathExistsUnderRoot 判断新文件）
+ *
+ * 【对外能力】
+ *   findXcodeProject(projectRoot) → { xcodeProjDir, pbxPath, xcodeRoot, name } | null
+ *   pathExistsUnderRoot / toXcodeRelPath
+ *   addFileToProject(pbxPath, xcodeRel, absPath) / addDirectoryToProject(pbxPath, xcodeRel)
+ *   openXcodeProject(xcodeProjDir)
  */
 const fs = require('fs');
 const path = require('path');

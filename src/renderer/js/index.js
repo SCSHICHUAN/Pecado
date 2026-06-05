@@ -1,7 +1,15 @@
 /**
  * @file index.js
  *
- * 渲染进程工程 UI：Open Folder 后展示目录树气泡。
+ * 【功能】渲染进程工程 UI 插件：Open Folder 后在对话区插入目录树 Markdown 气泡。
+ *   - 监听 MCP_FS.PROJECT_CHANGED（preload onMcpFsProjectChanged）
+ *   - showProjectTreeBubble：invoke mcpFsDirectoryTree → formatMcpTreeAscii → buildProjectTreeMarkdown
+ *   - 写入 chatHistory（pushChatHistory）并保持滚动到底
+ *   - 挂载 window.projectUi.init(deps)，deps 由 chat.js 在加载完成后传入
+ *
+ * 【调用方】renderer/html/app.html（在 chat.js 之前加载）；chat.js 末尾 projectUi.init(...)
+ *
+ * 【对外能力】window.projectUi.init({ addMessage, scrollChatToBottomForced, pushChatHistory })
  */
 (function () {
   /** @type {null | {

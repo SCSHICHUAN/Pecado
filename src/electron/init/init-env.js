@@ -1,10 +1,14 @@
 /**
  * @file init-env.js
  *
- * CLI：`npm run env:init`（在仓库根执行时 `process.cwd()` 为项目根）。
+ * 【功能】开发环境初始化 CLI：从 .env.example 复制生成项目根 .env（首次配置 API 密钥）。
+ *   - 已存在 .env 则跳过并 exit 0
+ *   - 缺少 .env.example 则报错 exit 1
+ *   - 不参与 Electron 运行时；运行时加载由 bootstrap/load-env.js 负责
  *
- * 若根目录尚无 `.env`，从 `.env.example` 复制一份并提示编辑 `VOLC_ARK_API_KEY`；已存在则跳过。
- * 不参与运行时加载；运行时由主进程 `bootstrap/load-env.js` 读取。
+ * 【调用方】package.json scripts `"env:init": "node src/electron/init/init-env.js"`
+ *
+ * 【对外能力】无 module.exports；进程级副作用 + console 提示后 exit
  */
 const fs = require('fs');
 const path = require('path');

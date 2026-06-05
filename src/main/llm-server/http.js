@@ -1,9 +1,19 @@
 /**
- * @file client.js
+ * @file http.js
  *
- * 火山方舟 Bots Chat Completions HTTP 客户端。
+ * 【功能】火山方舟 Bots Chat Completions HTTP 传输层（不含 SSE 解析、不含 tools schema 转换）。
+ *   - POST https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions
+ *   - 请求体：model、messages（经 format.sanitizeMessagesForVolcApi）、stream、tools + tool_choice=auto
+ *   - 流式时附加 stream_options.include_usage；Accept 为 text/event-stream 或 application/json
+ *   - Authorization: Bearer {apiKey}
+ *
+ * 【调用方】llm-server/stream.js  exclusively
+ *
+ * 【对外能力】（内部模块，经 stream.js 间接使用）
+ *   - postChatCompletion({ apiKey, model, messages, stream?, tools? }) → fetch Response
+ *   - parseApiError(res)：解析 JSON/text 错误体为可读 message
  */
-const { sanitizeMessagesForVolcApi } = require('./messages');
+const { sanitizeMessagesForVolcApi } = require('./format');
 
 const ARK_BOTS_URL = 'https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions';
 
@@ -57,4 +67,4 @@ async function postChatCompletion(opts) {
   });
 }
 
-module.exports = { ARK_BOTS_URL, postChatCompletion, parseApiError };
+module.exports = { postChatCompletion, parseApiError };

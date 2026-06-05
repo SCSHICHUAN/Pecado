@@ -1,13 +1,18 @@
 /**
  * @file main.js
  *
- * Pecado AI 主进程入口。
+ * 【功能】Pecado AI 主进程唯一入口，负责应用生命周期与模块装配。
+ *   - 启动前：load-env 合并 .env / secrets.json 到 process.env
+ *   - whenReady：注册三类 IPC（对话 router、bot 指令 agent-commands、工程 mcp-filesystem）
+ *   - createWindow：计算窗口尺寸（宽约屏宽 2/3、高约 workArea 8/10）、居中、加载 app.html + preload
+ *   - macOS 关闭 OverlayScrollbar，使 renderer 自定义滚动条 CSS 生效
+ *   - activate 无窗口时重建；非 macOS 全部关闭时 quit
  *
- * - `app.whenReady` 后扩展 `bootstrap/load-env` 搜索根、注册 agent IPC（router、agent-commands）与 mcp-filesystem，再 `createWindow`。
- * - `createWindow`：按主显示器 `bounds/workArea` 计算初始宽高（宽约 2/3 屏、高约工作区 8/10，并夹在最小尺寸与 workArea 内）、居中；
- *   `BrowserWindow` 加载 `src/renderer/html/app.html` 与 `preload.js`（沙盒关闭与其它 webPreferences 与项目一致）。
- * - macOS：`disable-features=OverlayScrollbar`，否则 `::-webkit-scrollbar` 自定义常不生效。
- * - `activate` 时若无窗口则再建一扇；非 macOS `window-all-closed` 时 `quit`。
+ * 【调用方】Electron 由 package.json `"main": "src/main/main.js"` 加载；无其它模块 require 本文件。
+ *
+ * 【依赖】bootstrap/load-env；agent/router、agent/agent-commands；mcp-filesystem/ipc
+ *
+ * 【对外能力】无 module.exports；副作用即注册 IPC 与创建 BrowserWindow（mainWindowRef 供 mcp ipc 取窗）
  */
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
 const path = require('path');

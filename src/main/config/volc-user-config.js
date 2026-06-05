@@ -1,7 +1,20 @@
 /**
  * @file volc-user-config.js
  *
- * 方舟用户配置与凭证解析（供 llm-volc / agent/router 使用）。
+ * 【功能】火山方舟（Volc Ark）API 凭证与 Bot 模型 ID 的解析与持久化。
+ *   - 优先级：process.env（VOLC_ARK_API_KEY / ARK_API_KEY / DOUBAO_API_KEY）> userData JSON
+ *   - 模型：env VOLC_ARK_MODEL > userData > 默认 bot-20260424113808-wwggn
+ *   - 持久化路径：app.getPath('userData')/volc-user-config.json
+ *
+ * 【调用方】
+ *   - llm-server/index.js：再导出 resolveVolcCredentials、MISSING_KEY_ERROR
+ *   - agent/router.js：IPC 处理前 resolveVolcCredentials，无 key 则返回 MISSING_KEY_ERROR
+ *
+ * 【对外能力】
+ *   - resolveVolcCredentials() → { apiKey, model }
+ *   - readUserVolcConfig() / writeUserVolcConfig({ volcArkApiKey, volcArkModel })
+ *   - getResolvedApiKey() / getResolvedModel()
+ *   - MISSING_KEY_ERROR：未配置时的用户提示字符串
  */
 const fs = require('fs');
 const path = require('path');

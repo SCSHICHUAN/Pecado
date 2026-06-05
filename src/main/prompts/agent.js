@@ -1,7 +1,14 @@
 /**
  * @file agent.js
  *
- * Agent 模式（MCP tools）system 提示词。
+ * 【功能】Agent 模式（MCP Function Calling）的 system 提示词。
+ *   - 约定：读目录/文件/改代码必须调 tools，禁止编造文件内容
+ *   - 工具语义：edit_file 改已有文件；write_file 新建；create_directory 新建目录
+ *   - 提醒：新建时应用会弹窗询问是否加入 Xcode 工程
+ *
+ * 【调用方】agent/router.js → buildChatMessages（mode === agent 时取 AGENT_SYSTEM_PROMPT）
+ *
+ * 【对外能力】AGENT_SYSTEM_PROMPT 常量（中文，面向代码编辑器助手场景）
  */
 
 const AGENT_SYSTEM_PROMPT =

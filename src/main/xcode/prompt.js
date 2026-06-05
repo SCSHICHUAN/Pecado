@@ -1,7 +1,19 @@
 /**
- * @file xcode-prompt.js
+ * @file prompt.js
  *
- * 创建文件/目录前提示，确认后写入 project.pbxproj 引入 Xcode。
+ * 【功能】新建文件/目录前的用户确认 + 写入后 Xcode 工程集成。
+ *   - confirmCreateOperation：findXcodeProject 无则直接 proceed；有则三按钮对话框
+ *       「加入 Xcode 工程」|「仅写入磁盘」|「取消」
+ *   - integrateAfterCreate：toXcodeRelPath → addFileToProject / addDirectoryToProject → openXcodeProject
+ *   - 返回 proceed/integrateXcode/xcodeMeta/message 供 tool-executor 与 live-stream 使用
+ *
+ * 【调用方】xcode/live-stream.js（write_file 流式新建）；agent/tool-executor.js（MCP tool 执行前）
+ *
+ * 【对外能力】
+ *   confirmCreateOperation(browserWindow, 'create_directory'|'write_file', projectRoot, relPath)
+ *   → { proceed, integrateXcode, xcodeMeta, message }
+ *   integrateAfterCreate(xcodeMeta, kind, relPath, projectRoot)
+ *   → { ok, already?, skipped?, reason?, path? }
  */
 const path = require('path');
 const { dialog } = require('electron');

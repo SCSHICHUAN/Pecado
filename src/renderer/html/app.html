@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <!--
-  app.html — Pecado AI 主窗口静态结构（位于 renderer/html/）
+  @file app.html
 
-  侧栏功能入口与历史占位；右侧主面板含标题、#workspace-scroll 包裹 #chat-content（消息列表 + #chat-scroll-anchor）、
-  底部多行输入 #chat-input、技能按钮条。
-  脚本顺序：shared/format-tree.js → js/index.js → js/chat.js；样式：highlight github-dark + css/app.css。
-  node_modules/highlight.js 与本文件路径相对引用，electron-builder 打包时需确保依赖被打入。
+  【功能】Pecado AI 主窗口静态 DOM 骨架与资源引用。
+    - 布局：aside 侧栏（功能入口 + 历史占位）+ main 面板（标题、#workspace-scroll、#chat-content、#chat-input）
+    - 关键节点：#chat-scroll-anchor（滚底锚点）、.send-button、技能按钮条
+    - 样式：../css/app.css + highlight.js github-dark（node_modules 相对路径，打包需含依赖）
+    - 脚本顺序：../../shared/format-tree.js → ../js/index.js → ../js/chat.js（顺序不可乱）
+
+  【调用方】main/main.js → BrowserWindow.loadFile(RENDERER_HTML)
+
+  【对外能力】无 JS 模块导出；定义页面结构与 preload 注入的 electronAPI 挂载点
 -->
 <html lang="zh-CN">
 <head>

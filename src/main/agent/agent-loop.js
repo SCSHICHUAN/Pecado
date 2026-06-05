@@ -1,10 +1,23 @@
 /**
  * @file agent-loop.js
- * @domain agent
  *
- * Agent 多轮 Function Calling 编排（tool 循环）。
+ * 【功能】Agent 多轮 Function Calling 主编排（最多 MAX_TOOL_ROUNDS=12 轮）。
+ *   单轮流程：consumeAgentStream → 若 finishReason=tool_calls 则逐 tc 执行 executeTool →
+ *     追加 assistant(tool_calls) + tool 消息到 conv → 下一轮 streamChat
+ *   - chatOpts：{ apiKey, model, messages: conv, mcpTools }，格式化交给 llm-server
+ *   - write_file 若已流式落盘（Xcode live stream），跳过 MCP 写、awaitWritePending + closeWriteFile
+ *   - formatToolResultForMessage：MCP result.content[] → 拼成 tool 角色字符串
+ *   - finally：closeAllWriteFiles 清理流式写会话
+ *
+ * 【调用方】agent/router.js → runAgentChat(sender, streamId, ...)
+ *
+ * 【对外能力】
+ *   - runAgentChat(sender, streamId, apiKey, model, messages, { xcodeStreamPath? })
+ *     内部 createUiStreamSink，catch 后 uiSink.onError
+ *   - runAgentLoop(uiSink, streamId, apiKey, model, messages, loopOpts?)
+ *     需 MCP connected；无 tools 或超轮数返回 error
  */
-const volc = require('../llm-volc');
+const llm = require('../llm-server');
 const projectIo = require('../mcp-filesystem');
 const { createUiStreamSink } = require('./stream-ui');
 const { consumeAgentStream } = require('./agent-stream-consumer');
@@ -42,25 +55,25 @@ async function runAgentLoop(uiSink, _streamId, apiKey, model, messages, loopOpts
     return { error: 'MCP 未连接，请先用 File → Open Folder 打开工程目录' };
   }
 
-  let tools;
+  let mcpTools;
   try {
-    tools = volc.mcpToolsToFunctionTools(await projectIo.listTools());
+    mcpTools = await projectIo.listTools();
   } catch (e) {
     return { error: `读取 MCP tools 失败：${e.message || String(e)}` };
   }
-  if (!tools.length) {
+  if (!mcpTools.length) {
     return { error: 'MCP 未返回可用 tools' };
   }
 
   const projectRoot = projectIo.getStatus().projectRoot;
-  const conv = volc.sanitizeMessagesForVolcApi(messages.map((m) => ({ ...m })));
+  const conv = messages.map((m) => ({ ...m }));
 
   let xcodeAbsPath = null;
   if (loopOpts.xcodeStreamPath) {
     xcodeAbsPath = resolveAbsInProject(projectRoot, loopOpts.xcodeStreamPath);
   }
 
-  const chatOpts = { apiKey, model, messages: conv, tools };
+  const chatOpts = { apiKey, model, messages: conv, mcpTools };
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -79,7 +92,7 @@ async function runAgentLoop(uiSink, _streamId, apiKey, model, messages, loopOpts
         conv.push({
           role: 'assistant',
           content: content ? String(content) : '',
-          tool_calls: volc.sanitizeToolCallsForApi(toolCalls),
+          tool_calls: toolCalls,
         });
         chatOpts.messages = conv;
 

@@ -1,7 +1,19 @@
 /**
  * @file write.js
  *
- * 工程写：MCP 沙箱写入 + 本地磁盘流式写入（fs + fsync）。
+ * 【功能】工程写：MCP 工具写 + 本地 fs 流式增量落盘（供 Xcode 实时刷新）。
+ *   MCP：writeText → write_file；createDirectory → create_directory
+ *   流式会话（Map sessions + pending 链）：
+ *     - beginWriteSession(absPath)：preserveExisting 时按 position 覆盖写入，否则 truncate/append
+ *     - scheduleWriteDelta：串行 chainPending，每 chunk fsync
+ *     - closeCodeFile / closeAllCodeFiles：finalize（preserve 模式 ftruncate）并清 pending
+ *   writeWholeFileStreaming：非流式一次性写整文件（tool-executor macOS 分支）
+ *
+ * 【调用方】mcp-filesystem/index.js；xcode/live-stream.js；tool-executor.js
+ *
+ * 【对外能力】
+ *   writeText / createDirectory / beginWriteSession / scheduleWriteDelta /
+ *   awaitWritePending / closeWriteFile / closeAllWriteFiles / writeWholeFileToDisk
  */
 const fs = require('fs');
 const path = require('path');

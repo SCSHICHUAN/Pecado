@@ -1,7 +1,23 @@
 /**
  * @file router.js
  *
- * 对话入口：选模式（plain / context / agent）、拼 messages，注册方舟流式 IPC 并路由到 agent-loop / plain-stream。
+ * 【功能】对话总路由：模式选择、messages 组装、VOLC_ARK IPC 注册与分发。
+ *   模式决策（selectChatMode）：
+ *     - MCP 已连接 → agent（Function Calling + tools）
+ *     - 未连接但有工程上下文（@path / 目录树可读）→ context（system 附加 project-context）
+ *     - 否则 → plain（纯对话）
+ *   agent 模式额外：pickXcodeStreamTarget 从用户输入提取 .swift/.m 等路径供 Xcode 流式写
+ *   IPC：VOLC_ARK.BOTS_CHAT_COMPLETION，payload 含 streamId、userText、history
+ *
+ * 【调用方】main.js → register(ipcMain)
+ *
+ * 【依赖】load-env、volc-user-config、mcp-filesystem、project-context、prompts、plain-stream、agent-loop、stream-ui、live-stream
+ *
+ * 【对外能力】
+ *   - register(ipcMain)：绑定 invoke 处理器，返回 { content } | { error }
+ *   - selectChatMode({ userText, history, legacyMessages, payloadMode, payloadXcodeStreamPath })
+ *   - buildChatMessages(mode, userText, history, contextBlock)
+ *   - CHAT_MODES：plain | context | agent
  */
 const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('../bootstrap/load-env');
 const { VOLC_ARK } = require('../../shared/ipc-channels');

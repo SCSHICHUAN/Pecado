@@ -1,7 +1,19 @@
 /**
  * @file agent-commands.js
  *
- * Agent 最原始的能力：解析助手回复中的结构化 JSON 指令并执行（如打开 QQ 音乐）。
+ * 【功能】助手回复后置处理：解析 JSON 结构化指令并执行本地 OS 动作（与 MCP tools 无关）。
+ *   - tryParseJsonObject：整段 JSON / ```json 代码块 / 首尾 {} 子串 三种解析策略
+ *   - normalizeCmd：小写 + 合并空白
+ *   - 已支持 cmd：open music | open qq music | open qqmusic → 打开 QQ 音乐（失败 fallback 浏览器）
+ *   - 未识别 cmd → displayText 原样返回 raw
+ *
+ * 【调用方】
+ *   - main.js → register(ipcMain)
+ *   - renderer/js/chat.js：流式结束后 invoke handleBotCommand(reply)
+ *
+ * 【对外能力】
+ *   - register(ipcMain)：QQ_MUSIC.HANDLE_BOT_COMMAND，payload { rawContent }
+ *   - handleBotCommand(rawContent) → { displayText: string }
  */
 const { shell } = require('electron');
 const { exec } = require('child_process');

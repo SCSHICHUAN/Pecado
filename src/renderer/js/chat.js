@@ -1,13 +1,17 @@
 /**
  * @file chat.js
  *
- * 渲染进程对话主逻辑（依赖 `app.html` 中 `#chat-input`、`#chat-content`、`#workspace-scroll` 等）。
+ * 【功能】渲染进程对话 UI 主逻辑（IIFE 式脚本，依赖 app.html DOM）。
+ *   - chatHistory 与气泡 DOM 同步；发送 → runBotAgent → volcArkBotsChatStream
+ *   - onVolcArkStreamEvent 按 streamId 匹配助手气泡：delta 流式 Markdown（rAF 合并）、tool_stream/tool 展示
+ *   - scheduleStreamMarkdownRender + electronAPI.renderMarkdown + enhanceAssistantCodeBlocks（复制按钮、hljs）
+ *   - 滚动：shouldStreamFollowBottom / 用户上滑 wheel 冷却 WHEEL_UP_BLOCK_STREAM_MS，避免抢滚动
+ *   - 回合结束 setAssistantBubbleMarkdown；invoke handleBotCommand 处理 JSON cmd
+ *   - 末尾 window.projectUi.init({ addMessage, scrollChatToBottomForced, pushChatHistory })
  *
- * - 维护 `chatHistory`、用户消息气泡、助手气泡；发送时 `runBotAgent` 调主进程流式对话，流式阶段用 `scheduleStreamMarkdownRender`（rAF 合并多 delta）+
- *   `electronAPI.renderMarkdown` + `enhanceAssistantCodeBlocks`（代码块 wrap、复制按钮、hljs class）。
- * - 滚动：`shouldStreamFollowBottom` / 用户滚轮上滑与 touch 上滑会 `chatUserDetachedFromStream`，避免与用户抢滚动；
- *   `scrollChatToBottomForced({ streamFollow })` 在流式/减少动画时用多帧 `scrollTo` 收敛，避免大块 Markdown 写入后 `scrollHeight` 未及时更新导致跟丢。
- * - 回合结束或错误时 `setAssistantBubbleMarkdown` / 纯文本；结构化指令由主进程 `agent-commands` 处理。
+ * 【调用方】renderer/html/app.html 脚本顺序最后一项加载
+ *
+ * 【对外能力】无 export；向 projectUi 注入 UI 回调；内部 runBotAgent / addMessage / sendMessage 等
  */
 const chatInput = document.getElementById('chat-input');
 const sendButton = document.querySelector('.send-button');
