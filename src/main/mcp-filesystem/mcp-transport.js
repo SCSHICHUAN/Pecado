@@ -18,7 +18,7 @@ const fs = require('fs');
 const { Client } = require('@modelcontextprotocol/sdk/client');
 const { StdioClientTransport } = require('@modelcontextprotocol/sdk/client/stdio.js');
 
-const CLIENT_INFO = { name: 'pecado-ai', version: '1.0.0' };
+const CLIENT_INFO = { name: 'pecado', version: '1.0.0' };
 
 /** @type {import('@modelcontextprotocol/sdk/client/index.js').Client | null} */
 let client = null;

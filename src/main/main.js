@@ -1,7 +1,7 @@
 /**
  * @file main.js
  *
- * 【功能】Pecado AI 主进程唯一入口，负责应用生命周期与模块装配。
+ * 【功能】Pecado 主进程唯一入口，负责应用生命周期与模块装配。
  *   - 启动前：load-env 合并 .env / secrets.json 到 process.env
  *   - whenReady：注册三类 IPC（对话 router、bot 指令 agent-commands、工程 mcp-filesystem）
  *   - createWindow：计算窗口尺寸（宽约屏宽 2/3、高约 workArea 8/10）、居中、加载 app.html + preload
@@ -47,7 +47,7 @@ function createWindow() {
   const y = Math.floor(workArea.y + (workArea.height - winHeight) / 2);
 
   const mainWindow = new BrowserWindow({
-    title: 'Pecado AI',
+    title: 'Pecado',
     show: false,
     width: winWidth,
     height: winHeight,
@@ -104,7 +104,7 @@ app.whenReady().then(() => {
   } catch (_) {}
   loadEnvFromSearchRoots(roots);
 
-  app.setName('Pecado AI');
+  app.setName('Pecado');
 
   agentRouter.register(ipcMain);
   agentCommands.register(ipcMain);

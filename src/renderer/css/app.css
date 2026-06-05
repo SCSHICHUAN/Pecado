@@ -1,7 +1,7 @@
 /**
  * @file app.css
  *
- * 【功能】Pecado AI 全局与对话界面样式（深色主题、侧栏 + 主区 CSS Grid）。
+ * 【功能】Pecado 全局与对话界面样式（深色主题、侧栏 + 主区 CSS Grid）。
  *   - :root 滚动条变量；WebKit + Firefox scrollbar 定制（依赖 main.js 关闭 macOS OverlayScrollbar）
  *   - .app 网格：sidebar 240px + main；#workspace-scroll 纵向滚动对话区
  *   - .message-user / .message-assistant 气泡；.markdown-body 标题/列表/表格/围栏

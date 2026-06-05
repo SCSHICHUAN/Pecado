@@ -19,7 +19,7 @@ const chatContent = document.getElementById('chat-content');
 const scrollAnchor = document.getElementById('chat-scroll-anchor');
 const workspaceScroll = document.getElementById('workspace-scroll');
 
-const INITIAL_GREETING = '你好！我是 Pecado AI。有什么可以帮助你的吗？';
+const INITIAL_GREETING = '你好！我是 Pecado。有什么可以帮助你的吗？';
 /** @type {Array<{ role: string, content: string }>} */
 let chatHistory = [{ role: 'assistant', content: INITIAL_GREETING }];
 

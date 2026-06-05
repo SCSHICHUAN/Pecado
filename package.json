@@ -1,7 +1,7 @@
 {
-  "name": "hello-electron",
+  "name": "pecado",
   "version": "1.0.0",
-  "description": "A simple Electron app that says Hello Electron!",
+  "description": "Pecado — Electron desktop AI coding assistant with Volc Ark, MCP filesystem, and Xcode integration.",
   "config": {
     "electron_mirror": "https://npmmirror.com/mirrors/electron/"
   },
@@ -19,7 +19,9 @@
   },
   "keywords": [
     "electron",
-    "hello-world"
+    "pecado",
+    "ai-agent",
+    "mcp"
   ],
   "author": "",
   "license": "MIT",
