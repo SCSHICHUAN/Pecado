@@ -1,24 +1,24 @@
 /**
  * @file ipc.js
  *
- * 【功能】mcp-filesystem 的 Electron 集成：菜单、对话框、IPC、主窗口引用、持久化工程路径。
+ * 【功能】mcp-filesystem 的 Electron 集成：对话框、IPC、主窗口引用、持久化工程路径。
  *   - File → Open Folder：dialog 选目录 → projectIo.connect → saveProjectRoot(userData/mcp-project.json)
  *   - 连接成功 webContents.send MCP_FS.PROJECT_CHANGED → renderer 展示目录树
  *   - ipcMain.handle MCP_FS.DIRECTORY_TREE → readDirectoryTree
  *   - app.before-quit → disconnect
  *   - getMainWindow()：供 xcode 弹窗、tool-executor 取 BrowserWindow
- *   - setupApplicationMenu：macOS 应用菜单 + Edit/View/Window 标准项
  *
- * 【调用方】main.js → register(ipcMain, () => mainWindowRef)
+ * 【调用方】main.js → register(ipcMain, () => mainWindowRef)；settings/app-menu.js → openProjectFolder
  *
  * 【对外能力】
  *   register(ipcMain, getMainWindowFn)
  *   pickAndConnectProject(getMainWindowFn) → { ok, projectRoot, tools } | { canceled } | { error }
+ *   openProjectFolder(getMainWindowFn)
  *   getMainWindow() → BrowserWindow | null
  */
 const fs = require('fs');
 const path = require('path');
-const { app, dialog, Menu } = require('electron');
+const { app, dialog } = require('electron');
 const { MCP_FS } = require('../../shared/ipc-channels');
 const projectIo = require('./index');
 
@@ -52,13 +52,6 @@ function saveProjectRoot(root) {
   const p = projectConfigPath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify({ projectRoot: root }, null, 2), 'utf8');
-}
-
-function clearSavedProjectRoot() {
-  try {
-    const p = projectConfigPath();
-    if (fs.existsSync(p)) fs.unlinkSync(p);
-  } catch (_) {}
 }
 
 async function pickProjectDirectory(browserWindow) {
@@ -96,7 +89,7 @@ async function pickAndConnectProject(getMainWindowFn) {
   }
 }
 
-async function onOpenFolder(getMainWindowFn) {
+async function openProjectFolder(getMainWindowFn) {
   const result = await pickAndConnectProject(getMainWindowFn);
   if (result.canceled) return;
   if (result.error) {
@@ -104,70 +97,6 @@ async function onOpenFolder(getMainWindowFn) {
     return;
   }
   console.log('[menu] Open Folder:', result.projectRoot);
-}
-
-function setupApplicationMenu(getMainWindowFn) {
-  const isMac = process.platform === 'darwin';
-
-  /** @type {import('electron').MenuItemConstructorOptions[]} */
-  const template = [
-    ...(isMac
-      ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' },
-              { type: 'separator' },
-              { role: 'services' },
-              { type: 'separator' },
-              { role: 'hide' },
-              { role: 'hideOthers' },
-              { role: 'unhide' },
-              { type: 'separator' },
-              { role: 'quit' },
-            ],
-          },
-        ]
-      : []),
-    {
-      label: 'File',
-      submenu: [
-        {
-          label: 'Open Folder…',
-          accelerator: 'CmdOrCtrl+O',
-          click: () => {
-            onOpenFolder(getMainWindowFn).catch((e) => {
-              dialog.showErrorBox('Open Folder', e.message || String(e));
-            });
-          },
-        },
-        { type: 'separator' },
-        isMac ? { role: 'close' } : { role: 'quit' },
-      ],
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' },
-      ],
-    },
-    {
-      label: 'View',
-      submenu: [{ role: 'toggleDevTools' }, { role: 'reload' }],
-    },
-    {
-      label: 'Window',
-      submenu: [{ role: 'minimize' }, ...(isMac ? [{ type: 'separator' }, { role: 'front' }] : [{ role: 'close' }])],
-    },
-  ];
-
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
 function registerIpcHandlers(ipcMain) {
@@ -192,7 +121,6 @@ function registerIpcHandlers(ipcMain) {
 function register(ipcMain, getMainWindowFn) {
   setMainWindowGetter(getMainWindowFn);
   registerIpcHandlers(ipcMain);
-  setupApplicationMenu(getMainWindowFn);
 }
 
-module.exports = { register, pickAndConnectProject, getMainWindow };
+module.exports = { register, pickAndConnectProject, openProjectFolder, getMainWindow };

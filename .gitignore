@@ -4,6 +4,7 @@ node_modules/
 # Build output (electron-builder)
 release/
 dist/
+.dev/
 
 # Secrets & local env — 与 src/main/load-env.js 中 nameVariants 对齐
 .env*

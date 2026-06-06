@@ -11,7 +11,7 @@
  *
  * 【调用方】main.js → register(ipcMain)
  *
- * 【依赖】load-env、volc-user-config、mcp-filesystem、project-context、prompts、plain-stream、agent-loop、stream-ui、live-stream
+ * 【依赖】settings/volc-user-config、mcp-filesystem、project-context、prompts、plain-stream、agent-loop、stream-ui、live-stream
  *
  * 【对外能力】
  *   - register(ipcMain)：绑定 invoke 处理器，返回 { content } | { error }
@@ -19,9 +19,8 @@
  *   - buildChatMessages(mode, userText, history, contextBlock)
  *   - CHAT_MODES：plain | context | agent
  */
-const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('../bootstrap/load-env');
 const { VOLC_ARK } = require('../../shared/ipc-channels');
-const { resolveVolcCredentials, MISSING_KEY_ERROR } = require('../config/volc-user-config');
+const { resolveVolcCredentials, MISSING_KEY_ERROR } = require('../../settings/volc-user-config');
 const projectIo = require('../mcp-filesystem');
 const projectContext = require('../mcp-filesystem/project-context');
 const { createUiStreamSink } = require('./stream-ui');
@@ -111,13 +110,6 @@ async function selectChatMode(input = {}) {
 
 function register(ipcMain) {
   ipcMain.handle(VOLC_ARK.BOTS_CHAT_COMPLETION, async (event, payload) => {
-    const roots = getDefaultSearchRoots();
-    try {
-      const { app } = require('electron');
-      if (app && app.isReady && app.isReady()) roots.push(app.getAppPath());
-    } catch (_) {}
-    loadEnvFromSearchRoots(roots);
-
     const { streamId, userText, history, messages: legacyMessages } = payload || {};
     if (!streamId || typeof streamId !== 'string') {
       return { error: '缺少 streamId（流式对话需要）' };

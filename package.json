@@ -1,5 +1,6 @@
 {
   "name": "pecado",
+  "productName": "Pecado",
   "version": "1.0.0",
   "description": "Pecado — Electron desktop AI coding assistant with Volc Ark, MCP filesystem, and Xcode integration.",
   "config": {
@@ -8,8 +9,8 @@
   "main": "src/main/main.js",
   "scripts": {
     "postinstall": "node ./node_modules/electron/install.js",
-    "start": "electron .",
-    "dev": "electron .",
+    "start": "node src/electron/shell/dev.js",
+    "dev": "node src/electron/shell/dev.js",
     "start:shell": "bash src/electron/shell/quick-start.sh",
     "env:init": "node src/electron/init/init-env.js",
     "build": "ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ electron-builder"

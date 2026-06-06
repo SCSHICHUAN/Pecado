@@ -47,10 +47,15 @@ Pecado/
 ├── assets/icons/              # 打包图标等
 ├── config/                    # electron-builder、secrets.example.json
 ├── src/
+│   ├── settings/              # Preferences、Volc 配置、应用菜单
+│   │   ├── index.js           # 模块入口：窗口 + IPC
+│   │   ├── app-menu.js        # 菜单栏
+│   │   ├── volc-user-config.js
+│   │   ├── settings-preload.js
+│   │   └── settings.html
 │   ├── main/
 │   │   ├── main.js            # 主进程入口
 │   │   ├── bootstrap/         # load-env（.env / secrets.json）
-│   │   ├── config/            # 火山 API 凭证 volc-user-config.js
 │   │   ├── prompts/           # plain/context / agent system 提示词
 │   │   ├── llm-server/        # 火山 HTTP/SSE + 消息/tools 格式化
 │   │   ├── agent/             # 路由、Agent 循环、tool 执行、UI 流推送
@@ -97,17 +102,14 @@ npm run build      # 产物在 release/
 
 ## 配置 API 密钥
 
-任选其一（优先级：环境变量 > `config/secrets.json` > userData JSON）：
+在菜单 **Preferences → 火山设置** 中填写并保存：
 
-1. **推荐**：`npm run env:init` 生成根目录 `.env`，填写：
-   ```env
-   VOLC_ARK_API_KEY=你的密钥
-   VOLC_ARK_MODEL=bot-xxxx   # 可选，默认见 volc-user-config.js
-   ```
-2. 复制 `config/secrets.example.json` → `config/secrets.json`，填 `volcArkApiKey`
-3. 应用 userData 内 `volc-user-config.json`（若后续接入设置页）
+- **Volc Ark API Key**
+- **Bot Model ID**（可选，留空时使用默认模型）
 
-运行时由 `bootstrap/load-env.js` 合并进 `process.env`；每次发消息前 router 会再次加载以刷新密钥。
+保存位置：`~/Library/Application Support/pecado/volc-user-config.json`（macOS，具体路径以设置页显示为准）。
+
+应用**仅**从用户配置文件读取密钥与模型（路径见设置页）。
 
 ---
 
