@@ -84,6 +84,94 @@ async function commitAll(cwd, message) {
   return runGit(cwd, ['commit', '-m', msg]);
 }
 
+async function getRemoteOriginUrl(cwd) {
+  try {
+    const { stdout } = await runGit(cwd, ['remote', 'get-url', 'origin']);
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+/** @param {string} remoteUrl @param {string} hash */
+function buildRemoteCommitLink(remoteUrl, hash) {
+  if (!remoteUrl || !hash) return '';
+  const scp = remoteUrl.trim().match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+  if (scp) {
+    const path = scp[2].replace(/\.git$/, '');
+    return `https://${scp[1]}/${path}/commit/${hash}`;
+  }
+  const base = remoteUrl.trim().replace(/\.git$/, '');
+  if (/^https?:\/\//i.test(base)) return `${base}/commit/${hash}`;
+  return '';
+}
+
+async function checkoutCommit(cwd, hash) {
+  return runGit(cwd, ['checkout', hash]);
+}
+
+async function createBranchAt(cwd, branchName, hash) {
+  const name = String(branchName || '').trim();
+  if (!name) throw new Error('分支名不能为空');
+  return runGit(cwd, ['branch', name, hash]);
+}
+
+async function cherryPickCommit(cwd, hash) {
+  return runGit(cwd, ['cherry-pick', hash]);
+}
+
+async function resetToCommit(cwd, hash, mode) {
+  const m = mode === 'soft' || mode === 'hard' ? mode : 'mixed';
+  return runGit(cwd, ['reset', `--${m}`, hash]);
+}
+
+async function revertCommit(cwd, hash) {
+  return runGit(cwd, ['revert', '--no-edit', hash]);
+}
+
+async function formatPatchForCommit(cwd, hash) {
+  return runGit(cwd, ['format-patch', '-1', hash, '--stdout'], { maxBuffer: 50 * 1024 * 1024 });
+}
+
+async function createTagAt(cwd, hash, tagName, annotated, message) {
+  const name = String(tagName || '').trim();
+  if (!name) throw new Error('标签名不能为空');
+  if (annotated) {
+    const msg = String(message || name).trim() || name;
+    return runGit(cwd, ['tag', '-a', name, hash, '-m', msg]);
+  }
+  return runGit(cwd, ['tag', name, hash]);
+}
+
+/**
+ * @param {string} cwd
+ * @param {{ action: string, hash: string, branchName?: string, resetMode?: string, tagName?: string, tagMessage?: string }} payload
+ */
+async function runNodeAction(cwd, payload) {
+  const hash = String(payload?.hash || '').trim();
+  if (!hash) throw new Error('缺少 commit hash');
+  switch (payload.action) {
+    case 'checkout':
+      return checkoutCommit(cwd, hash);
+    case 'branch':
+      return createBranchAt(cwd, payload.branchName, hash);
+    case 'cherry-pick':
+      return cherryPickCommit(cwd, hash);
+    case 'reset':
+      return resetToCommit(cwd, hash, payload.resetMode);
+    case 'revert':
+      return revertCommit(cwd, hash);
+    case 'format-patch':
+      return formatPatchForCommit(cwd, hash);
+    case 'tag':
+      return createTagAt(cwd, hash, payload.tagName, false);
+    case 'tag-annotated':
+      return createTagAt(cwd, hash, payload.tagName, true, payload.tagMessage);
+    default:
+      throw new Error(`未知 Git 操作：${payload.action}`);
+  }
+}
+
 async function getRepoState(cwd) {
   const repo = await isGitRepo(cwd);
   if (!repo) {
@@ -96,10 +184,11 @@ async function getRepoState(cwd) {
       graphData: [],
     };
   }
-  const [branch, status, graphData] = await Promise.all([
+  const [branch, status, graphData, remoteOriginUrl] = await Promise.all([
     getCurrentBranch(cwd),
     getStatus(cwd),
     getGraphData(cwd),
+    getRemoteOriginUrl(cwd),
   ]);
   return {
     ok: true,
@@ -108,6 +197,7 @@ async function getRepoState(cwd) {
     branch,
     status,
     graphData,
+    remoteOriginUrl,
   };
 }
 
@@ -118,6 +208,9 @@ module.exports = {
   getStatus,
   getGraphData,
   getRepoState,
+  getRemoteOriginUrl,
+  buildRemoteCommitLink,
+  runNodeAction,
   pull,
   push,
   commitAll,

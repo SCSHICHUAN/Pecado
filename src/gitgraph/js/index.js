@@ -7,6 +7,11 @@
  *
  * ── 布局（整窗宽叠层，非左右分栏）──
  *
+ * 【显示策略】见 src/gitgraph/README.md
+ * - 节点图 inner = 3×窗宽（左右各 1 窗留白），任意节点可滚到屏幕任意 x
+ * - Commit inner = 1 窗左 pad +（文字宽 + 1 窗），文字可滚到屏幕任意 x
+ * - 同行 row：节点 ↔ 轨道 tint ↔ commit 文字（通过 hash / row-index 对应）
+ *
  * 1. 节点图层 `.git-timeline-graph-scroll`（z-index 1）
  *    - 可滚 inner 宽 = 3 × 窗宽（左/右各 1 窗留白 + 中间 SVG）
  *    - 默认 scroll：最新节点圆心对齐屏幕 x = 窗宽 × 1/4
@@ -59,6 +64,15 @@
   const COMMIT_TEXT_VIEWPORT_RATIO = 1;
   /** 节点圆心目标屏幕 x = 窗宽 × 此比例（1/4） */
   const GRAPH_INITIAL_NODE_X_RATIO = 0.25;
+  /** 节点悬浮作者名气泡背景（固定纯黑） */
+  const NODE_TOOLTIP_FILL = '#000000';
+  /** 节点菜单相对视口边缘留白（px） */
+  const NODE_MENU_VIEWPORT_PAD = 8;
+
+  let currentBranch = '';
+  let remoteOriginUrl = '';
+  /** @type {{ commit: object } | null} */
+  let nodeMenuContext = null;
 
   function getApi() {
     return window.electronAPI;
@@ -192,6 +206,8 @@
       info.textContent = '未打开工程';
       info.disabled = true;
       delete info.dataset.projectRoot;
+      currentBranch = '';
+      remoteOriginUrl = '';
       renderWorkspaceStatus(state);
       return;
     }
@@ -201,6 +217,8 @@
     info.disabled = false;
     info.dataset.projectRoot = state.projectRoot;
     info.title = `在 Finder 中打开：${state.projectRoot}`;
+    currentBranch = state.branch || '';
+    remoteOriginUrl = state.remoteOriginUrl || '';
     renderWorkspaceStatus(state);
   }
 
@@ -272,8 +290,12 @@
       circle.addEventListener('mouseleave', () => {
         tooltip.setAttribute('visibility', 'hidden');
       });
+      circle.addEventListener('contextmenu', (e) => {
+        showNodeContextMenu(e, node.commit, circle);
+      });
       circle.addEventListener('click', (e) => {
         e.stopPropagation();
+        hideNodeContextMenu();
         selectCommit(svg.closest('.git-timeline'), hash, node.commit);
       });
       g.appendChild(circle);
@@ -308,14 +330,14 @@
     rect.setAttribute('height', String(boxH));
     rect.setAttribute('rx', '4');
     rect.setAttribute('ry', '4');
-    rect.setAttribute('fill', '#0a0a0a');
+    rect.setAttribute('fill', NODE_TOOLTIP_FILL);
 
     const arrow = document.createElementNS(ns, 'polygon');
     arrow.setAttribute(
       'points',
       `${nodeX - 5},${arrowBaseY} ${nodeX + 5},${arrowBaseY} ${nodeX},${arrowTipY}`
     );
-    arrow.setAttribute('fill', '#0a0a0a');
+    arrow.setAttribute('fill', NODE_TOOLTIP_FILL);
 
     const labelText = document.createElementNS(ns, 'text');
     labelText.setAttribute('x', String(nodeX));
@@ -331,6 +353,328 @@
     tipG.appendChild(arrow);
     tipG.appendChild(labelText);
     return tipG;
+  }
+
+  function buildRemoteCommitLink(remoteUrl, hash) {
+    if (!remoteUrl || !hash) return '';
+    const scp = String(remoteUrl).trim().match(/^git@([^:]+):(.+?)(?:\.git)?$/);
+    if (scp) {
+      const path = scp[2].replace(/\.git$/, '');
+      return `https://${scp[1]}/${path}/commit/${hash}`;
+    }
+    const base = String(remoteUrl).trim().replace(/\.git$/, '');
+    if (/^https?:\/\//i.test(base)) return `${base}/commit/${hash}`;
+    return '';
+  }
+
+  function hideNodeContextMenu() {
+    const menu = $('git-node-menu');
+    if (menu) {
+      menu.hidden = true;
+      menu.style.visibility = '';
+    }
+    nodeMenuContext = null;
+  }
+
+  /** 菜单左上角对齐节点中心，超出视口时平移以保证完整可见 */
+  function positionNodeContextMenu(menu, anchorX, anchorY) {
+    const pad = NODE_MENU_VIEWPORT_PAD;
+    menu.hidden = false;
+    menu.style.visibility = 'hidden';
+    menu.style.left = `${anchorX}px`;
+    menu.style.top = `${anchorY}px`;
+
+    requestAnimationFrame(() => {
+      const menuW = menu.offsetWidth;
+      const menuH = menu.offsetHeight;
+      const viewW = window.innerWidth;
+      const viewH = window.innerHeight;
+      const maxLeft = Math.max(pad, viewW - menuW - pad);
+      const maxTop = Math.max(pad, viewH - menuH - pad);
+
+      let left = anchorX;
+      let top = anchorY;
+
+      if (left + menuW + pad > viewW) left = maxLeft;
+      if (left < pad) left = pad;
+      if (top + menuH + pad > viewH) top = maxTop;
+      if (top < pad) top = pad;
+
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
+      menu.style.visibility = '';
+    });
+  }
+
+  function showNodeContextMenu(event, commit, nodeEl) {
+    event.preventDefault();
+    event.stopPropagation();
+    const menu = ensureNodeContextMenu();
+    const timeline = event.target.closest('.git-timeline');
+    const circle = nodeEl || event.target;
+    if (!menu || !timeline || !commit?.hash || !circle?.getBoundingClientRect) return;
+
+    selectCommit(timeline, commit.hash, commit);
+    nodeMenuContext = { commit };
+
+    const resetLabel = menu.querySelector('[data-reset-label]');
+    if (resetLabel) {
+      resetLabel.textContent = `Reset ${currentBranch || 'HEAD'} to this commit`;
+    }
+    const linkItem = menu.querySelector('[data-menu-item="copy-link"]');
+    if (linkItem) {
+      linkItem.classList.toggle('is-disabled', !buildRemoteCommitLink(remoteOriginUrl, commit.hash));
+    }
+
+    const rect = circle.getBoundingClientRect();
+    const anchorX = rect.left + rect.width / 2;
+    const anchorY = rect.top + rect.height / 2;
+    positionNodeContextMenu(menu, anchorX, anchorY);
+  }
+
+  async function copyText(text, okMessage) {
+    if (!text) return false;
+    try {
+      await navigator.clipboard.writeText(text);
+      setGitMessage(okMessage, false);
+      return true;
+    } catch (e) {
+      setGitMessage(e.message || '复制失败', true);
+      return false;
+    }
+  }
+
+  async function handleNodeMenuAction(action, resetMode) {
+    const ctx = nodeMenuContext;
+    hideNodeContextMenu();
+    if (!ctx?.commit?.hash) return;
+    const hash = ctx.commit.hash;
+    const api = getApi();
+
+    if (action === 'copy-sha') {
+      await copyText(hash, '已复制 commit sha');
+      return;
+    }
+    if (action === 'copy-link') {
+      const link = buildRemoteCommitLink(remoteOriginUrl, hash);
+      if (!link) {
+        setGitMessage('未配置 remote origin', true);
+        return;
+      }
+      await copyText(link, '已复制远程 commit 链接');
+      return;
+    }
+
+    if (!api || typeof api.gitNodeAction !== 'function') {
+      setGitMessage('Git API 不可用', true);
+      return;
+    }
+
+    if (action === 'branch') {
+      const branchName = window.prompt('新分支名', '');
+      if (branchName === null || !String(branchName).trim()) return;
+      setGitMessage('正在创建分支…', false);
+      const res = await api.gitNodeAction({
+        action: 'branch',
+        hash,
+        branchName: String(branchName).trim(),
+        projectRoot: currentProjectRoot || undefined,
+      });
+      await finishNodeGitAction(res, '分支已创建');
+      return;
+    }
+
+    if (action === 'tag') {
+      const tagName = window.prompt('标签名', '');
+      if (tagName === null || !String(tagName).trim()) return;
+      setGitMessage('正在创建标签…', false);
+      const res = await api.gitNodeAction({
+        action: 'tag',
+        hash,
+        tagName: String(tagName).trim(),
+        projectRoot: currentProjectRoot || undefined,
+      });
+      await finishNodeGitAction(res, '标签已创建');
+      return;
+    }
+
+    if (action === 'tag-annotated') {
+      const tagName = window.prompt('附注标签名', '');
+      if (tagName === null || !String(tagName).trim()) return;
+      const tagMessage = window.prompt('标签说明', tagName);
+      if (tagMessage === null) return;
+      setGitMessage('正在创建附注标签…', false);
+      const res = await api.gitNodeAction({
+        action: 'tag-annotated',
+        hash,
+        tagName: String(tagName).trim(),
+        tagMessage: String(tagMessage).trim(),
+        projectRoot: currentProjectRoot || undefined,
+      });
+      await finishNodeGitAction(res, '附注标签已创建');
+      return;
+    }
+
+    if (action === 'reset') {
+      const mode = resetMode || 'mixed';
+      const label = mode === 'hard' ? 'Hard' : mode === 'soft' ? 'Soft' : 'Mixed';
+      if (
+        !window.confirm(
+          `确定将 ${currentBranch || 'HEAD'} ${label} reset 到 ${hash.slice(0, 7)} 吗？`
+        )
+      ) {
+        return;
+      }
+      setGitMessage(`正在 reset（${label}）…`, false);
+      const res = await api.gitNodeAction({
+        action: 'reset',
+        hash,
+        resetMode: mode,
+        projectRoot: currentProjectRoot || undefined,
+      });
+      await finishNodeGitAction(res, 'Reset 完成');
+      return;
+    }
+
+    if (action === 'checkout' && !window.confirm(`Checkout 到 ${hash.slice(0, 7)}？`)) {
+      return;
+    }
+    if (action === 'revert' && !window.confirm(`Revert commit ${hash.slice(0, 7)}？`)) {
+      return;
+    }
+
+    const labels = {
+      checkout: '正在 checkout…',
+      'cherry-pick': '正在 cherry-pick…',
+      revert: '正在 revert…',
+      'format-patch': '正在生成 patch…',
+    };
+    setGitMessage(labels[action] || '正在执行…', false);
+    const res = await api.gitNodeAction({
+      action,
+      hash,
+      projectRoot: currentProjectRoot || undefined,
+    });
+
+    if (action === 'format-patch' && res?.ok && res.output) {
+      await copyText(res.output, 'Patch 已复制到剪贴板');
+      await refreshGitView();
+      return;
+    }
+    await finishNodeGitAction(res, '操作完成');
+  }
+
+  async function finishNodeGitAction(res, okMessage) {
+    if (!res?.ok) {
+      setGitMessage(res?.error || '操作失败', true);
+      return;
+    }
+    setGitMessage(res.output || okMessage, false);
+    if (res.projectRoot) currentProjectRoot = res.projectRoot;
+    renderStatus(res);
+    renderGraph(res.graphData);
+  }
+
+  function ensureNodeContextMenu() {
+    let menu = $('git-node-menu');
+    if (!menu) {
+      menu = document.createElement('nav');
+      menu.id = 'git-node-menu';
+      menu.className = 'git-node-menu';
+      menu.hidden = true;
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', 'Commit actions');
+      document.body.appendChild(menu);
+    } else if (menu.parentElement !== document.body) {
+      document.body.appendChild(menu);
+    }
+    if (menu.dataset.built === '1') return menu;
+    menu.dataset.built = '1';
+
+    const addButton = (action, label, opts = {}) => {
+      const item = document.createElement('div');
+      item.className = 'git-node-menu-item';
+      if (opts.menuItemId) item.dataset.menuItem = opts.menuItemId;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.dataset.action = action;
+      if (opts.resetMode) btn.dataset.resetMode = opts.resetMode;
+      btn.textContent = label;
+      item.appendChild(btn);
+      menu.appendChild(item);
+      return item;
+    };
+
+    const addSep = () => {
+      const sep = document.createElement('div');
+      sep.className = 'git-node-menu-sep';
+      sep.setAttribute('aria-hidden', 'true');
+      menu.appendChild(sep);
+    };
+
+    addButton('checkout', 'Checkout this commit');
+    addSep();
+    addButton('branch', 'Create branch here');
+    addButton('cherry-pick', 'Cherry pick commit');
+
+    const resetItem = document.createElement('div');
+    resetItem.className = 'git-node-menu-item has-submenu';
+    const resetBtn = document.createElement('button');
+    resetBtn.type = 'button';
+    resetBtn.dataset.resetLabel = '1';
+    resetBtn.innerHTML =
+      '<span data-reset-label>Reset HEAD to this commit</span><span class="git-node-menu-chevron"> ›</span>';
+    resetItem.appendChild(resetBtn);
+    const sub = document.createElement('div');
+    sub.className = 'git-node-menu-submenu';
+    [['mixed', 'Mixed'], ['soft', 'Soft'], ['hard', 'Hard']].forEach(([mode, label]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.action = 'reset';
+      b.dataset.resetMode = mode;
+      b.textContent = label;
+      sub.appendChild(b);
+    });
+    resetItem.appendChild(sub);
+    menu.appendChild(resetItem);
+
+    addButton('revert', 'Revert commit');
+    addSep();
+    addButton('copy-sha', 'Copy commit sha');
+    addButton('copy-link', 'Copy link to this commit on remote: origin', {
+      menuItemId: 'copy-link',
+    });
+    addButton('format-patch', 'Create patch from commit');
+    addSep();
+    addButton('tag', 'Create tag here');
+    addButton('tag-annotated', 'Create annotated tag here');
+
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn || btn.dataset.resetLabel) return;
+      e.stopPropagation();
+      handleNodeMenuAction(btn.dataset.action, btn.dataset.resetMode);
+    });
+
+    if (!menu.dataset.globalBound) {
+      menu.dataset.globalBound = '1';
+      document.addEventListener('click', (e) => {
+        if (menu.hidden) return;
+        if (menu.contains(e.target)) return;
+        hideNodeContextMenu();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') hideNodeContextMenu();
+      });
+      window.addEventListener('scroll', hideNodeContextMenu, true);
+      window.addEventListener('resize', hideNodeContextMenu);
+    }
+
+    return menu;
+  }
+
+  function setupNodeContextMenu() {
+    ensureNodeContextMenu();
   }
 
   function hideGraphHscroll() {
@@ -1067,6 +1411,7 @@
     if (!mount || mount.dataset.toolbarBound === '1') {
       setupPaneHscroll();
       setupProjectInfoClick();
+      setupNodeContextMenu();
       return;
     }
     mount.dataset.toolbarBound = '1';
@@ -1075,6 +1420,7 @@
     $('git-btn-commit')?.addEventListener('click', () => runGitAction('commit'));
     setupPaneHscroll();
     setupProjectInfoClick();
+    setupNodeContextMenu();
   }
 
   function setupProjectListener() {
@@ -1105,6 +1451,7 @@
     setupPaneHscroll();
     setupHscrollWrapWheel();
     setupProjectInfoClick();
+    setupNodeContextMenu();
     setupProjectListener();
     setupSettingsListener();
     showView('chat');

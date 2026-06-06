@@ -294,6 +294,108 @@
     pointer-events: none;
 }
 
+/* 节点右键 / 双指菜单（独立 fixed 浮层，挂 document.body） */
+.git-node-menu {
+    position: fixed;
+    z-index: 100000;
+    min-width: 280px;
+    max-width: min(420px, calc(100vw - 16px));
+    margin: 0;
+    padding: 6px 0;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    background: #2b2b2b;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    color: #e8e8e8;
+    font-size: 13px;
+    line-height: 1.35;
+    pointer-events: auto;
+}
+
+.git-node-menu[hidden] {
+    display: none !important;
+}
+
+.git-node-menu-item {
+    position: relative;
+    display: block;
+}
+
+.git-node-menu-item > button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin: 0;
+    padding: 7px 14px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+.git-node-menu-item > button:hover,
+.git-node-menu-item > button:focus-visible {
+    background: #3a3a3a;
+    outline: none;
+}
+
+.git-node-menu-item.is-disabled > button {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.git-node-menu-sep {
+    height: 1px;
+    margin: 6px 0;
+    background: #3a3a3a;
+}
+
+.git-node-menu-submenu {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 160px;
+    margin: 0;
+    padding: 6px 0;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
+    background: #2b2b2b;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    list-style: none;
+}
+
+.git-node-menu-item.has-submenu:hover > .git-node-menu-submenu,
+.git-node-menu-item.has-submenu:focus-within > .git-node-menu-submenu {
+    display: block;
+}
+
+.git-node-menu-submenu button {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 7px 14px;
+    border: none;
+    background: transparent;
+    color: #e8e8e8;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.git-node-menu-submenu button:hover {
+    background: #3a3a3a;
+}
+
+.git-node-menu-chevron {
+    opacity: 0.65;
+    font-size: 11px;
+}
+
 .git-timeline-commit-layer {
     position: relative;
     z-index: 2;

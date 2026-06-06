@@ -15,6 +15,10 @@
  * - fill：solidTintColor(color) — lane 色叠 #161616 的等效实色，供 commit 色块层
  *
  * 【Lane 算法】assignBranchLanes：首 parent 续 lane；新分支占空 lane 或扩 lane；merge 释放 side lane。
+ *
+ * 【viewport 传入时 scroll 尺寸】
+ * - scrollWidth = 3 × viewportWidth（左右各 1 窗留白 + 中间 graphWidth）
+ * - 保证任意 lane 上的节点/连线都能滚到窗口内任意水平位置
  */
 (function (global) {
   const ROW_HEIGHT = 36;

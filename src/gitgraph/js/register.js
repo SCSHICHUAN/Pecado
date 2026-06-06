@@ -84,6 +84,17 @@ function register(ipcMain) {
       return { ok: false, error: e.message || String(e) };
     }
   });
+
+  ipcMain.handle(GIT.NODE_ACTION, async (_event, payload) => {
+    try {
+      const projectRoot = resolveProjectRoot(payload);
+      const { stdout, stderr } = await gitRunner.runNodeAction(projectRoot, payload || {});
+      const state = await gitRunner.getRepoState(projectRoot);
+      return { ok: true, output: (stdout + stderr).trim(), ...state };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
 }
 
 module.exports = { register };

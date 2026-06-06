@@ -2,6 +2,57 @@
 
 **状态：v1 开发完成**（自研 SVG 时间线，不依赖 `@gitgraph/js` npm 包。）
 
+## 显示策略（核心设计）
+
+整窗宽叠层，**横向可滚区域故意做宽**，以便在极端 commit 数量、最长 subject、多 lane 时，仍能把任意一行滚到窗口内**任意水平位置**。
+
+### 1. 节点图：3 × 窗宽
+
+```
+可滚 inner 总宽 = 3W
+├── 左留白 1W
+├── SVG 分支图（lane + 连线 + 节点）
+└── 右留白 1W
+```
+
+- `W` = 面板可视宽度（`layoutWidth`）。
+- **目的**：左右各留一整窗空白，任意节点的竖线/圆点都能通过图区 `scrollLeft` 出现在屏幕**从左到右的任意 x**（例如默认最新节点在 **W×1/4**，也可滚到贴左/贴右）。
+- 实现：`GRAPH_SCROLL_VIEWPORT_RATIO = 3`；`scrollPadLeft = W`（`timeline-layout.js` + `index.js`）。
+
+### 2. Commit 文字：内容宽 + 1 × 窗宽
+
+```
+commit inner 总宽 = 左留白 1W + 文字区
+文字区宽 = 最长 subject 宽 + 1W
+```
+
+- **目的**：在文字区再留一整窗余量，commit 左缘可通过 commit `scrollLeft` + 底部右滑块出现在屏幕**任意 x**（默认左缘在 **W×1/2**）。
+- 滑块量程：`最长文字宽 + 1W`（以窗宽中心为默认，向左右各可调半量程）。
+- 实现：`COMMIT_SCROLL_PAD_LEFT_RATIO = 1`、`COMMIT_TEXT_VIEWPORT_RATIO = 1`。
+
+### 3. 节点 ↔ commit 对应关系
+
+每一行 commit **共享同一 `row-index`**，不靠横向像素对齐文字与节点，而靠**行 + 轨道**关联：
+
+| 同 row | 元素 |
+|--------|------|
+| SVG 节点圆 | 该 commit 在 lane 上的位置 |
+| 轨道 tint 条 | 从**节点竖线屏幕 x** 画到窗口右缘（随图区 scroll 更新 `--git-bar-left`） |
+| Commit 色块 / 文字 | 同一 hash 的一行 subject |
+
+用户从**节点**认 commit：看圆点颜色（lane）→ 同一行轨道横条 → 同一行 commit 文字。图区 scroll 与 commit scroll **独立**，轨道只跟图区 scroll，避免两层绑死。
+
+### 4. 默认锚点（非量程限制）
+
+| 元素 | 默认屏幕位置 |
+|------|----------------|
+| 最新节点圆心 | W × **1/4**（图区 scroll） |
+| Commit 文字左缘 | W × **1/2**（commit scroll + 右滑块） |
+
+量程由上面的 **3W / 文字+1W** 保证；锚点只是首次打开时的舒适默认值。
+
+---
+
 ## 模块文件
 
 | 文件 | 职责 |

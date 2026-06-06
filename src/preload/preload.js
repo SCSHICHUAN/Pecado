@@ -80,6 +80,7 @@ try {
     gitPull: (payload) => ipcRenderer.invoke(GIT.PULL, payload || {}),
     gitPush: (payload) => ipcRenderer.invoke(GIT.PUSH, payload || {}),
     gitCommit: (payload) => ipcRenderer.invoke(GIT.COMMIT, payload || {}),
+    gitNodeAction: (payload) => ipcRenderer.invoke(GIT.NODE_ACTION, payload || {}),
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {

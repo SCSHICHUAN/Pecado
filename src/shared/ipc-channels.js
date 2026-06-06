@@ -47,5 +47,7 @@ module.exports = {
     PULL: 'git-pull',
     PUSH: 'git-push',
     COMMIT: 'git-commit',
+    /** invoke：节点右键菜单 { action, hash, ... } */
+    NODE_ACTION: 'git-node-action',
   },
 };
