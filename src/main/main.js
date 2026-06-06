@@ -37,6 +37,7 @@ const { loadEnvFromSearchRoots, getDefaultSearchRoots } = require('./bootstrap/l
 const agentRouter = require('./agent/router');
 const agentCommands = require('./agent/agent-commands');
 const mcpFilesystemIpc = require('./mcp-filesystem/ipc');
+const gitgraph = require('../gitgraph');
 const settings = require('../settings');
 
 loadEnvFromSearchRoots(getDefaultSearchRoots());
@@ -120,6 +121,7 @@ app.whenReady().then(() => {
   agentCommands.register(ipcMain);
   settings.register(ipcMain);
   mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
+  gitgraph.register(ipcMain);
   settings.setupApplicationMenu(() => mainWindowRef);
   createWindow();
 

@@ -5,6 +5,7 @@
  *   - VOLC_ARK：流式对话 invoke + 主→渲染 stream event
  *   - QQ_MUSIC：助手 JSON 指令后置处理（历史命名）
  *   - MCP_FS：目录树 invoke + Open Folder 后 project changed 推送
+ *   - GIT：Git 视图状态 / pull / push / commit（gitgraph/index.js）
  *   - SETTINGS：Preferences 窗口 get/save（settings/settings-preload.js）
  *
  * 【调用方】
@@ -32,5 +33,12 @@ module.exports = {
     DIRECTORY_TREE: 'mcp-fs-directory-tree',
     /** main → renderer：用户通过菜单 Open Folder 后推送 */
     PROJECT_CHANGED: 'mcp-fs-project-changed',
+  },
+  GIT: {
+    GET_STATE: 'git-get-state',
+    GET_PANEL_HTML: 'git-get-panel-html',
+    PULL: 'git-pull',
+    PUSH: 'git-push',
+    COMMIT: 'git-commit',
   },
 };

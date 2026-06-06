@@ -2,7 +2,7 @@
  * @file ipc.js
  *
  * 【功能】mcp-filesystem 的 Electron 集成：对话框、IPC、主窗口引用、持久化工程路径。
- *   - File → Open Folder：dialog 选目录 → projectIo.connect → saveProjectRoot(userData/mcp-project.json)
+ *   - File → Open Folder：dialog 选目录 → projectIo.connect → 若有则打开 Xcode 工程 → saveProjectRoot
  *   - 连接成功 webContents.send MCP_FS.PROJECT_CHANGED → renderer 展示目录树
  *   - ipcMain.handle MCP_FS.DIRECTORY_TREE → readDirectoryTree
  *   - app.before-quit → disconnect
@@ -21,6 +21,7 @@ const path = require('path');
 const { app, dialog } = require('electron');
 const { MCP_FS } = require('../../shared/ipc-channels');
 const projectIo = require('./index');
+const xcodeProject = require('../xcode/project');
 
 /** @type {() => import('electron').BrowserWindow | null} */
 let getMainWindowRef = () => null;
@@ -75,7 +76,8 @@ async function pickAndConnectProject(getMainWindowFn) {
   try {
     const r = await projectIo.connect(picked.projectRoot);
     saveProjectRoot(r.projectRoot);
-    const out = { ok: true, canceled: false, ...r };
+    const xcodeOpened = xcodeProject.openXcodeForProjectRoot(r.projectRoot);
+    const out = { ok: true, canceled: false, ...r, xcodeOpened: xcodeOpened || null };
     const notifyWin = getMainWindowFn?.();
     if (notifyWin && !notifyWin.isDestroyed()) {
       notifyWin.webContents.send(MCP_FS.PROJECT_CHANGED, {
@@ -97,6 +99,11 @@ async function openProjectFolder(getMainWindowFn) {
     return;
   }
   console.log('[menu] Open Folder:', result.projectRoot);
+  if (result.xcodeOpened) {
+    console.log('[menu] Open Xcode:', result.xcodeOpened.path);
+  } else if (xcodeProject.IS_DARWIN) {
+    console.log('[menu] Open Folder: no Xcode project found under', result.projectRoot);
+  }
 }
 
 function registerIpcHandlers(ipcMain) {

@@ -1,0 +1,146 @@
+/**
+ * @file git.css
+ *
+ * 【功能】Git 面板样式（toolbar、提交图、status）。
+ * 【调用方】renderer/html/app.html → ../../gitgraph/css/git.css
+ */
+
+.git-panel-mount {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    grid-template-areas:
+        'toolbar'
+        'meta'
+        'graph'
+        'status';
+    background: #1e1e1e;
+}
+
+.git-toolbar {
+    grid-area: toolbar;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--line, #2a2a2a);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    background: #1e1e1e;
+}
+
+.git-toolbar-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #fff;
+}
+
+.git-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.git-action-btn {
+    padding: 6px 14px;
+    border: 1px solid #4a4a4a;
+    border-radius: 6px;
+    background: #2a2a2a;
+    color: #e0e0e0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.git-action-btn:hover {
+    background: #3a3a3a;
+    border-color: #5a5a5a;
+}
+
+.git-action-btn-primary {
+    border-color: #4a90d9;
+    background: #2d4a6a;
+}
+
+.git-action-btn-primary:hover {
+    background: #3a5f8a;
+}
+
+.git-meta {
+    grid-area: meta;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--line, #2a2a2a);
+    background: #1a1a1a;
+}
+
+.git-info {
+    font-size: 12px;
+    color: #a0a0a0;
+    word-break: break-all;
+}
+
+.git-message {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #8fd18f;
+    white-space: pre-wrap;
+}
+
+.git-message-error {
+    color: #f08080;
+}
+
+.git-graph-wrap {
+    grid-area: graph;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 20px;
+    background: #161616;
+}
+
+.git-graph {
+    min-height: 240px;
+}
+
+.git-graph svg {
+    max-width: 100%;
+}
+
+.git-graph-empty {
+    color: #888;
+    font-size: 13px;
+    padding: 24px 0;
+}
+
+.git-status-wrap {
+    grid-area: status;
+    min-height: 0;
+    max-height: 160px;
+    border-top: 1px solid var(--line, #2a2a2a);
+    padding: 10px 20px 14px;
+    background: #1e1e1e;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.git-status-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.git-status {
+    margin: 0;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #c0c0c0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    white-space: pre-wrap;
+    word-break: break-all;
+}

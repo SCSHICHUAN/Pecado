@@ -301,6 +301,19 @@ body {
 }
 
 /* —— 右大格：上中下三格 —— */
+.content-area {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr;
+}
+
+.content-area .main-panel.hidden,
+.content-area .git-panel-mount.hidden {
+    display: none;
+}
+
 .main-panel {
     min-height: 0;
     min-width: 0;

@@ -16,14 +16,19 @@
 <head>
   <link rel="stylesheet" href="../../../node_modules/highlight.js/styles/github-dark.min.css">
   <link rel="stylesheet" href="../css/app.css">
+  <link rel="stylesheet" href="../../gitgraph/css/git.css">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
       <div class="function-list">
-        <div class="function-item active">
+        <div class="function-item active" id="nav-pecado" data-view="chat">
           <div class="function-icon">🤖</div>
           <div>Pecado</div>
+        </div>
+        <div class="function-item" id="nav-git" data-view="git">
+          <div class="function-icon">🌿</div>
+          <div>Git</div>
         </div>
         <div class="function-item">
           <div class="function-icon">🌐</div>
@@ -45,7 +50,8 @@
         </div>
       </div>
     </aside>
-    <div class="main-panel">
+    <div class="content-area">
+    <div class="main-panel" id="panel-chat">
       <header class="chat-header">
         <div class="chat-title">手机版对话</div>
         <div class="chat-actions">
@@ -84,9 +90,12 @@
         </div>
       </div>
     </div>
+    <div id="panel-git" class="git-panel-mount hidden"></div>
+    </div>
   </div>
   <script src="../../shared/format-tree.js"></script>
   <script src="../js/index.js"></script>
+  <script src="../../gitgraph/js/git-ui.js"></script>
   <script src="../js/chat.js"></script>
 </body>
 </html>

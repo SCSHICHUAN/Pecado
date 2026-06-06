@@ -14,13 +14,17 @@
  *   handleBotCommand(rawContent)       → invoke HANDLE_BOT_COMMAND
  *   mcpFsDirectoryTree(opts)             → invoke DIRECTORY_TREE
  *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools? }
+ *   gitGetState(payload?)                → invoke GIT.GET_STATE
+ *   gitPull(payload?)                    → invoke GIT.PULL
+ *   gitPush(payload?)                    → invoke GIT.PUSH
+ *   gitCommit({ message })               → invoke GIT.COMMIT
  *   renderMarkdown(src)                  → HTML string（本地 markdown-it，不经 IPC）
  */
 const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');
 hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
-const { QQ_MUSIC, VOLC_ARK, MCP_FS } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT } = require('../shared/ipc-channels');
 
 /** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -68,6 +72,11 @@ try {
       ipcRenderer.on(ch, fn);
       return () => ipcRenderer.removeListener(ch, fn);
     },
+    gitGetState: (payload) => ipcRenderer.invoke(GIT.GET_STATE, payload || {}),
+    gitGetPanelHtml: () => ipcRenderer.invoke(GIT.GET_PANEL_HTML),
+    gitPull: (payload) => ipcRenderer.invoke(GIT.PULL, payload || {}),
+    gitPush: (payload) => ipcRenderer.invoke(GIT.PUSH, payload || {}),
+    gitCommit: (payload) => ipcRenderer.invoke(GIT.COMMIT, payload || {}),
     renderMarkdown: (src) => md.render(String(src ?? '')),
   });
 } catch (error) {

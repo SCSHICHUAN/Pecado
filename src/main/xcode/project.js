@@ -3,6 +3,8 @@
  *
  * 【功能】Xcode 工程发现与 project.pbxproj 修改（node-xcode）。
  *   - findXcodeProject：自 projectRoot 向下扫描深度≤4 找首个 .xcodeproj
+ *   - findXcodeWorkspace：同上找首个 .xcworkspace（跳过 xcodeproj 内嵌的 project.xcworkspace）
+ *   - openXcodeForProjectRoot：优先打开 workspace，否则 .xcodeproj
  *   - pathExistsUnderRoot / toXcodeRelPath：路径是否在 xcodeRoot 内及相对路径
  *   - addFileToProject：按扩展名 .swift/.m/.h 等加入 PBXGroup + PBXBuildFile（Sources/Headers）
  *   - addDirectoryToProject：PBXGroup 递归或单层目录
@@ -13,6 +15,7 @@
  *
  * 【对外能力】
  *   findXcodeProject(projectRoot) → { xcodeProjDir, pbxPath, xcodeRoot, name } | null
+ *   openXcodeForProjectRoot(projectRoot) → { kind, name, path } | null
  *   pathExistsUnderRoot / toXcodeRelPath
  *   addFileToProject(pbxPath, xcodeRel, absPath) / addDirectoryToProject(pbxPath, xcodeRel)
  *   openXcodeProject(xcodeProjDir)
@@ -65,6 +68,66 @@ function findXcodeProject(projectRoot) {
   }
 
   return scanDir(path.resolve(projectRoot), 0);
+}
+
+/**
+ * @param {string} projectRoot
+ * @returns {{ workspaceDir: string, name: string } | null}
+ */
+function findXcodeWorkspace(projectRoot) {
+  if (!IS_DARWIN || !projectRoot) return null;
+
+  function scanDir(dir, depth) {
+    if (depth > 4) return null;
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return null;
+    }
+    for (const e of entries) {
+      if (!e.isDirectory() || !e.name.endsWith('.xcworkspace')) continue;
+      if (e.name === 'project.xcworkspace') continue;
+      const workspaceDir = path.join(dir, e.name);
+      if (workspaceDir.includes(`${path.sep}.xcodeproj${path.sep}`)) continue;
+      return {
+        workspaceDir,
+        name: e.name.replace(/\.xcworkspace$/, ''),
+      };
+    }
+    if (depth >= 4) return null;
+    for (const e of entries) {
+      if (!e.isDirectory() || e.name.startsWith('.') || e.name === 'node_modules') continue;
+      const found = scanDir(path.join(dir, e.name), depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  return scanDir(path.resolve(projectRoot), 0);
+}
+
+/**
+ * Open Folder 后自动在 Xcode 中打开对应工程（macOS）。
+ * @param {string} projectRoot
+ * @returns {{ kind: 'workspace'|'project', name: string, path: string } | null}
+ */
+function openXcodeForProjectRoot(projectRoot) {
+  if (!IS_DARWIN || !projectRoot) return null;
+
+  const workspace = findXcodeWorkspace(projectRoot);
+  if (workspace) {
+    openXcodeProject(workspace.workspaceDir);
+    return { kind: 'workspace', name: workspace.name, path: workspace.workspaceDir };
+  }
+
+  const meta = findXcodeProject(projectRoot);
+  if (meta) {
+    openXcodeProject(meta.xcodeProjDir);
+    return { kind: 'project', name: meta.name, path: meta.xcodeProjDir };
+  }
+
+  return null;
 }
 
 function getMainGroupKey(proj) {
@@ -250,6 +313,8 @@ function pathExistsUnderRoot(projectRoot, relPath) {
 module.exports = {
   IS_DARWIN,
   findXcodeProject,
+  findXcodeWorkspace,
+  openXcodeForProjectRoot,
   addFileToProject,
   addDirectoryToProject,
   openXcodeProject,
