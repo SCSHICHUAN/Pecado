@@ -290,8 +290,34 @@
     stroke-width: 2;
 }
 
-.git-node-tooltip {
+.git-node-author-tooltip {
+    position: fixed;
+    z-index: 100000;
+    margin: 0;
+    padding: 4px 10px;
+    border: none;
+    border-radius: 4px;
+    background: #000;
+    color: #fff;
+    font-size: 12px;
+    line-height: 1.35;
+    white-space: nowrap;
     pointer-events: none;
+}
+
+.git-node-author-tooltip[hidden] {
+    display: none !important;
+}
+
+.git-node-author-tooltip::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    margin-left: -5px;
+    border-width: 5px 5px 0;
+    border-style: solid;
+    border-color: #000 transparent transparent;
 }
 
 /* 节点右键 / 双指菜单（独立 fixed 浮层，挂 document.body） */

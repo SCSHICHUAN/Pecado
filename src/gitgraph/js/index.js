@@ -64,8 +64,6 @@
   const COMMIT_TEXT_VIEWPORT_RATIO = 1;
   /** 节点圆心目标屏幕 x = 窗宽 × 此比例（1/4） */
   const GRAPH_INITIAL_NODE_X_RATIO = 0.25;
-  /** 节点悬浮作者名气泡背景（固定纯黑） */
-  const NODE_TOOLTIP_FILL = '#000000';
   /** 节点菜单相对视口边缘留白（px） */
   const NODE_MENU_VIEWPORT_PAD = 8;
 
@@ -265,7 +263,6 @@
 
       const authorName =
         node.commit.author?.name || node.commit.committer?.name || 'unknown';
-      const tooltip = createNodeAuthorTooltip(ns, node.x, node.y, authorName);
 
       const circle = document.createElementNS(ns, 'circle');
       circle.setAttribute('cx', String(node.x));
@@ -285,10 +282,10 @@
       text.textContent = node.label;
 
       circle.addEventListener('mouseenter', () => {
-        tooltip.setAttribute('visibility', 'visible');
+        showNodeAuthorTooltip(circle, authorName);
       });
       circle.addEventListener('mouseleave', () => {
-        tooltip.setAttribute('visibility', 'hidden');
+        hideNodeAuthorTooltip();
       });
       circle.addEventListener('contextmenu', (e) => {
         showNodeContextMenu(e, node.commit, circle);
@@ -300,59 +297,59 @@
       });
       g.appendChild(circle);
       g.appendChild(text);
-      g.appendChild(tooltip);
       svg.appendChild(g);
     }
   }
 
-  /** 节点上方作者名气泡（悬浮显示） */
-  function createNodeAuthorTooltip(ns, nodeX, nodeY, authorName) {
-    const tipG = document.createElementNS(ns, 'g');
-    tipG.setAttribute('class', 'git-node-tooltip');
-    tipG.setAttribute('visibility', 'hidden');
+  function ensureAuthorTooltip() {
+    let tip = $('git-node-author-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'git-node-author-tooltip';
+      tip.className = 'git-node-author-tooltip';
+      tip.hidden = true;
+      const label = document.createElement('span');
+      label.className = 'git-node-author-tooltip-label';
+      tip.appendChild(label);
+      document.body.appendChild(tip);
+    } else if (tip.parentElement !== document.body) {
+      document.body.appendChild(tip);
+    }
+    return tip;
+  }
 
-    const padX = 10;
-    const boxH = 22;
-    const arrowH = 6;
-    const gap = 3;
-    const label = String(authorName || 'unknown');
-    const estW = Math.max(44, Math.ceil(label.length * 6.8) + padX * 2);
-    const nodeTop = nodeY - 10;
-    const arrowTipY = nodeTop - gap;
-    const arrowBaseY = arrowTipY - arrowH;
-    const rectTop = arrowBaseY - boxH;
-    const rectLeft = nodeX - estW / 2;
+  function showNodeAuthorTooltip(nodeEl, authorName) {
+    const tip = ensureAuthorTooltip();
+    const label = tip.querySelector('.git-node-author-tooltip-label');
+    if (label) label.textContent = String(authorName || 'unknown');
+    tip.hidden = false;
+    tip.style.visibility = 'hidden';
 
-    const rect = document.createElementNS(ns, 'rect');
-    rect.setAttribute('x', String(rectLeft));
-    rect.setAttribute('y', String(rectTop));
-    rect.setAttribute('width', String(estW));
-    rect.setAttribute('height', String(boxH));
-    rect.setAttribute('rx', '4');
-    rect.setAttribute('ry', '4');
-    rect.setAttribute('fill', NODE_TOOLTIP_FILL);
+    const rect = nodeEl.getBoundingClientRect();
+    const anchorX = rect.left + rect.width / 2;
+    const anchorY = rect.top;
 
-    const arrow = document.createElementNS(ns, 'polygon');
-    arrow.setAttribute(
-      'points',
-      `${nodeX - 5},${arrowBaseY} ${nodeX + 5},${arrowBaseY} ${nodeX},${arrowTipY}`
-    );
-    arrow.setAttribute('fill', NODE_TOOLTIP_FILL);
+    requestAnimationFrame(() => {
+      const tipW = tip.offsetWidth;
+      const tipH = tip.offsetHeight;
+      const gap = 6;
+      let left = anchorX - tipW / 2;
+      let top = anchorY - tipH - gap;
+      const pad = NODE_MENU_VIEWPORT_PAD;
+      left = Math.min(Math.max(pad, left), Math.max(pad, window.innerWidth - tipW - pad));
+      top = Math.min(Math.max(pad, top), Math.max(pad, window.innerHeight - tipH - pad));
+      tip.style.left = `${Math.round(left)}px`;
+      tip.style.top = `${Math.round(top)}px`;
+      tip.style.visibility = '';
+    });
+  }
 
-    const labelText = document.createElementNS(ns, 'text');
-    labelText.setAttribute('x', String(nodeX));
-    labelText.setAttribute('y', String(rectTop + boxH / 2));
-    labelText.setAttribute('text-anchor', 'middle');
-    labelText.setAttribute('dominant-baseline', 'central');
-    labelText.setAttribute('fill', '#ffffff');
-    labelText.setAttribute('font-size', '12');
-    labelText.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, sans-serif');
-    labelText.textContent = label;
-
-    tipG.appendChild(rect);
-    tipG.appendChild(arrow);
-    tipG.appendChild(labelText);
-    return tipG;
+  function hideNodeAuthorTooltip() {
+    const tip = $('git-node-author-tooltip');
+    if (tip) {
+      tip.hidden = true;
+      tip.style.visibility = '';
+    }
   }
 
   function buildRemoteCommitLink(remoteUrl, hash) {
@@ -373,6 +370,7 @@
       menu.hidden = true;
       menu.style.visibility = '';
     }
+    hideNodeAuthorTooltip();
     nodeMenuContext = null;
   }
 
