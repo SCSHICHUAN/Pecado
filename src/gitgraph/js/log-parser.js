@@ -17,10 +17,20 @@ function parseRefs(decorate) {
     .map((part) => {
       const head = part.match(/^HEAD\s*->\s*(.+)$/);
       if (head) return head[1].trim();
-      const tag = part.match(/^tag:\s*(.+)$/);
-      if (tag) return `tag: ${tag[1].trim()}`;
+      if (/^tag:/i.test(part)) return null;
       return part;
-    });
+    })
+    .filter(Boolean);
+}
+
+/**
+ * @param {string} name git author 名
+ * @returns {string} 首字母大写，用于 commit 圆点内展示
+ */
+function authorInitial(name) {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) return '?';
+  return trimmed.charAt(0).toUpperCase();
 }
 
 /**
@@ -34,19 +44,33 @@ function buildGit2Json(logOutput) {
     .filter(Boolean);
   return lines.map((line) => {
     const parts = line.split('\t');
-    const [hash, parents, subject, authorName, authorEmail, decorate] = parts;
+    const hash = parts[0] || '';
+    const parents = parts[1] || '';
+    const subject = parts[2] || '';
+    const authorName = parts[3] || '';
+    const authorEmail = parts[4] || '';
+    let date = '';
+    let decorate = '';
+    if (parts.length >= 7) {
+      date = parts[5] || '';
+      decorate = parts[6] || '';
+    } else {
+      decorate = parts[5] || '';
+    }
     const name = authorName || 'unknown';
     const email = authorEmail || '';
     return {
-      hash: hash || '',
+      hash,
       author: { name, email },
       committer: { name, email },
-      subject: subject || '',
+      subject,
+      date,
       body: '',
+      dotText: authorInitial(name),
       parents: parents ? parents.split(' ').filter(Boolean) : [],
       refs: parseRefs(decorate),
     };
   });
 }
 
-module.exports = { parseRefs, buildGit2Json };
+module.exports = { parseRefs, buildGit2Json, authorInitial };

@@ -4,7 +4,7 @@
  * 【功能】mcp-filesystem 模块门面：统一导出 MCP 连接、读、写、路径沙箱 API。
  *   三层结构：
  *     - mcp-transport.js：stdio 子进程、listTools/callTool
- *     - read.js：read_text_file、directory_tree、resolveUnderProject
+ *     - read.js：read_text_file、directory_tree、tree-filter
  *     - write.js：MCP write + 本地 fs 流式会话（beginWriteSession/scheduleWriteDelta/close）
  *   Electron 菜单与 IPC 不在此文件，见 ipc.js
  *

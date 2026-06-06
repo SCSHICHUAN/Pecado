@@ -17,6 +17,9 @@ const path = require('path');
 const { app } = require('electron');
 
 const DEFAULT_MODEL = 'bot-20260424113808-wwggn';
+const DEFAULT_GIT_GRAPH_COMMIT_LIMIT = 500;
+const MIN_GIT_GRAPH_COMMIT_LIMIT = 10;
+const MAX_GIT_GRAPH_COMMIT_LIMIT = 5000;
 
 function getUserVolcConfigPath() {
   return path.join(app.getPath('userData'), 'volc-user-config.json');
@@ -26,28 +29,55 @@ function getUserConfigDir() {
   return app.getPath('userData');
 }
 
+function readRawUserConfigFile() {
+  try {
+    if (!app.isReady()) return {};
+    const p = getUserVolcConfigPath();
+    if (!fs.existsSync(p)) return {};
+    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    return j && typeof j === 'object' ? j : {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeGitGraphCommitLimit(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n)) return DEFAULT_GIT_GRAPH_COMMIT_LIMIT;
+  return Math.min(MAX_GIT_GRAPH_COMMIT_LIMIT, Math.max(MIN_GIT_GRAPH_COMMIT_LIMIT, n));
+}
+
 function readUserVolcConfig() {
   try {
-    if (!app.isReady()) return { apiKey: '', model: '' };
-    const p = getUserVolcConfigPath();
-    if (!fs.existsSync(p)) return { apiKey: '', model: '' };
-    const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!app.isReady()) {
+      return { apiKey: '', model: '', gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT };
+    }
+    const j = readRawUserConfigFile();
     return {
       apiKey: j.volcArkApiKey != null ? String(j.volcArkApiKey).trim() : '',
       model: j.volcArkModel != null ? String(j.volcArkModel).trim() : '',
+      gitGraphCommitLimit: normalizeGitGraphCommitLimit(j.gitGraphCommitLimit),
     };
   } catch {
-    return { apiKey: '', model: '' };
+    return { apiKey: '', model: '', gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT };
   }
 }
 
 function writeUserVolcConfig(payload) {
   const p = getUserVolcConfigPath();
   const incoming = payload && typeof payload === 'object' ? payload : {};
+  const existing = readRawUserConfigFile();
 
   const base = {
-    volcArkApiKey: String(incoming.volcArkApiKey ?? '').trim(),
-    volcArkModel: String(incoming.volcArkModel ?? '').trim() || DEFAULT_MODEL,
+    volcArkApiKey: String(
+      incoming.volcArkApiKey != null ? incoming.volcArkApiKey : existing.volcArkApiKey ?? ''
+    ).trim(),
+    volcArkModel: String(
+      incoming.volcArkModel != null ? incoming.volcArkModel : existing.volcArkModel ?? ''
+    ).trim() || DEFAULT_MODEL,
+    gitGraphCommitLimit: normalizeGitGraphCommitLimit(
+      incoming.gitGraphCommitLimit != null ? incoming.gitGraphCommitLimit : existing.gitGraphCommitLimit
+    ),
   };
 
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -58,6 +88,7 @@ function writeUserVolcConfig(payload) {
     configDir: path.dirname(p),
     volcArkApiKey: base.volcArkApiKey,
     volcArkModel: base.volcArkModel,
+    gitGraphCommitLimit: base.gitGraphCommitLimit,
   };
 }
 
@@ -69,6 +100,11 @@ function resolveVolcCredentials() {
   };
 }
 
+function resolveGitGraphCommitLimit() {
+  const { gitGraphCommitLimit } = readUserVolcConfig();
+  return normalizeGitGraphCommitLimit(gitGraphCommitLimit);
+}
+
 const MISSING_KEY_ERROR =
   '未配置 API 密钥。请打开菜单 Preferences → 火山设置，填写 Volc Ark API Key 并保存。';
 
@@ -78,5 +114,10 @@ module.exports = {
   getUserVolcConfigPath,
   getUserConfigDir,
   resolveVolcCredentials,
+  resolveGitGraphCommitLimit,
+  normalizeGitGraphCommitLimit,
+  DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
+  MIN_GIT_GRAPH_COMMIT_LIMIT,
+  MAX_GIT_GRAPH_COMMIT_LIMIT,
   MISSING_KEY_ERROR,
 };

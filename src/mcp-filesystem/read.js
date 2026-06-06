@@ -10,13 +10,12 @@
  * 【调用方】mcp-filesystem/index.js；mcp-filesystem/project-context.js；xcode/live-stream.js
  *   resolveUnderProject(projectRoot, filePath) → absPath
  *   readText(relPath, { head?, tail? }) → string
- *   readDirectoryTree({ path?, excludePatterns? }) → tree JSON
+ *   readDirectoryTree({ path?, excludePatterns?, directoriesOnly? }) → tree JSON
  *   listAllowedDirectories() / DEFAULT_TREE_EXCLUDES
  */
 const path = require('path');
 const transport = require('./mcp-transport');
-
-const DEFAULT_TREE_EXCLUDES = ['node_modules', '.git', 'dist', 'release', 'build', '.cursor', 'coverage'];
+const { DEFAULT_TREE_EXCLUDES, filterDirectoryTree } = require('./tree-filter');
 
 /**
  * @param {string} projectRoot
@@ -58,11 +57,15 @@ async function readDirectoryTree(opts = {}) {
     : DEFAULT_TREE_EXCLUDES;
   const treePath = opts.path ? path.resolve(String(opts.path)) : status.projectRoot;
   const text = await transport.callToolText('directory_tree', { path: treePath, excludePatterns });
+  let tree;
   try {
-    return JSON.parse(text);
+    tree = JSON.parse(text);
   } catch {
-    return text;
+    tree = text;
   }
+  if (!Array.isArray(tree)) return tree;
+  const directoriesOnly = opts.directoriesOnly !== false;
+  return filterDirectoryTree(tree, { directoriesOnly });
 }
 
 async function listAllowedDirectories() {

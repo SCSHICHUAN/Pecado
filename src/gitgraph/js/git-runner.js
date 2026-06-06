@@ -6,6 +6,7 @@
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { buildGit2Json } = require('./log-parser');
+const { resolveGitGraphCommitLimit } = require('../../settings/js/volc-user-config');
 
 const execFileAsync = promisify(execFile);
 
@@ -49,14 +50,15 @@ async function getStatus(cwd) {
   return { branchLine, fileLines, raw: stdout.trim() };
 }
 
-async function getGraphData(cwd, limit = 80) {
+async function getGraphData(cwd, limit) {
+  const commitLimit = limit ?? resolveGitGraphCommitLimit();
   const { stdout } = await runGit(cwd, [
     'log',
     '--all',
     '--reverse',
-    '--pretty=format:%H%x09%P%x09%s%x09%an%x09%ae%x09%D',
+    '--pretty=format:%H%x09%P%x09%s%x09%an%x09%ae%x09%ci%x09%D',
     '-n',
-    String(limit),
+    String(commitLimit),
   ]);
   return buildGit2Json(stdout);
 }

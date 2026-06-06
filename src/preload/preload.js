@@ -18,13 +18,14 @@
  *   gitPull(payload?)                    → invoke GIT.PULL
  *   gitPush(payload?)                    → invoke GIT.PUSH
  *   gitCommit({ message })               → invoke GIT.COMMIT
+ *   onSettingsConfigChanged(callback)    → listen SETTINGS.CONFIG_CHANGED
  *   renderMarkdown(src)                  → HTML string（本地 markdown-it，不经 IPC）
  */
 const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');
 hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
-const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS } = require('../shared/ipc-channels');
 
 /** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -77,6 +78,18 @@ try {
     gitPull: (payload) => ipcRenderer.invoke(GIT.PULL, payload || {}),
     gitPush: (payload) => ipcRenderer.invoke(GIT.PUSH, payload || {}),
     gitCommit: (payload) => ipcRenderer.invoke(GIT.COMMIT, payload || {}),
+    onSettingsConfigChanged: (callback) => {
+      const ch = SETTINGS.CONFIG_CHANGED;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onSettingsConfigChanged', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
     renderMarkdown: (src) => md.render(String(src ?? '')),
   });
 } catch (error) {

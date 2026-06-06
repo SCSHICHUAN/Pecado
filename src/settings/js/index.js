@@ -6,11 +6,13 @@
  */
 const PANEL_META = {
   volc: { title: '火山设置', desc: '配置火山方舟 API 密钥与 Bot 模型（保存至本地用户目录）。' },
-  general: { title: '通用', desc: '语言、启动行为等基础选项。' },
+  general: { title: '通用', desc: 'Git 提交图与其它基础选项。' },
   appearance: { title: '外观', desc: '主题与界面显示偏好。' },
   shortcuts: { title: '快捷键', desc: '查看常用键盘快捷键。' },
   about: { title: '关于', desc: '应用版本与说明。' },
 };
+
+const EDITABLE_PANELS = new Set(['volc', 'general']);
 
 const navItems = document.querySelectorAll('.nav-item');
 const panels = document.querySelectorAll('.panel');
@@ -20,6 +22,7 @@ const saveBtn = document.getElementById('save-btn');
 const statusEl = document.getElementById('status');
 const apiKeyEl = document.getElementById('api-key');
 const modelEl = document.getElementById('model');
+const gitGraphLimitEl = document.getElementById('git-graph-limit');
 const configDirBtn = document.getElementById('config-dir-btn');
 
 let activePanel = 'volc';
@@ -79,6 +82,7 @@ function readFormValues() {
   return {
     volcArkApiKey: apiKeyEl.value.trim(),
     volcArkModel: modelEl.value.trim(),
+    gitGraphCommitLimit: gitGraphLimitEl ? gitGraphLimitEl.value : '',
   };
 }
 
@@ -89,6 +93,9 @@ function applyConfig(cfg) {
   }
   apiKeyEl.value = cfg.volcArkApiKey || '';
   modelEl.value = cfg.volcArkModel || '';
+  if (gitGraphLimitEl && cfg.gitGraphCommitLimit != null) {
+    gitGraphLimitEl.value = String(cfg.gitGraphCommitLimit);
+  }
   showConfigDir(cfg.configDir || '');
 }
 
@@ -103,8 +110,8 @@ function setActivePanel(name) {
   const meta = PANEL_META[name] || PANEL_META.volc;
   detailTitle.textContent = meta.title;
   detailDesc.textContent = meta.desc;
-  saveBtn.hidden = name !== 'volc';
-  if (name !== 'volc') setStatus('', false);
+  saveBtn.hidden = !EDITABLE_PANELS.has(name);
+  if (!EDITABLE_PANELS.has(name)) setStatus('', false);
 }
 
 navItems.forEach((item) => {
@@ -118,14 +125,22 @@ async function loadConfig() {
 }
 
 saveBtn.addEventListener('click', async () => {
-  if (activePanel !== 'volc') return;
+  if (!EDITABLE_PANELS.has(activePanel)) return;
   const api = requireSettingsAPI();
   if (!api) return;
 
   const payload = readFormValues();
-  if (!payload.volcArkApiKey) {
+
+  if (activePanel === 'volc' && !payload.volcArkApiKey) {
     setStatus('请填写 Volc Ark API Key', true);
     apiKeyEl.focus();
+    return;
+  }
+
+  const limit = parseInt(String(payload.gitGraphCommitLimit), 10);
+  if (!Number.isFinite(limit) || limit < 10 || limit > 5000) {
+    setStatus('Git 提交图条数需在 10–5000 之间', true);
+    gitGraphLimitEl?.focus();
     return;
   }
 

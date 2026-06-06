@@ -21,6 +21,8 @@ module.exports = {
     GET: 'settings-get',
     SAVE: 'settings-save',
     OPEN_CONFIG_DIR: 'settings-open-config-dir',
+    /** main → renderer：Preferences 保存后推送 */
+    CONFIG_CHANGED: 'settings-config-changed',
   },
   QQ_MUSIC: {
     /** invoke：{ rawContent } → { displayText } */

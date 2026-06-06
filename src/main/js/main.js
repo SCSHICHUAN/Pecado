@@ -122,7 +122,7 @@ app.whenReady().then(() => {
 
   pecado.register(ipcMain);
   commands.register(ipcMain);
-  settings.register(ipcMain);
+  settings.register(ipcMain, () => mainWindowRef);
   mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
   gitgraph.register(ipcMain);
   settings.setupApplicationMenu(() => mainWindowRef);

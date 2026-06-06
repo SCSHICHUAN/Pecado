@@ -71,14 +71,16 @@ function openSettings() {
 }
 
 /** @param {import('electron').IpcMain} ipcMain */
-function register(ipcMain) {
+/** @param {() => import('electron').BrowserWindow | null} [getMainWindowFn] */
+function register(ipcMain, getMainWindowFn) {
   ipcMain.handle(SETTINGS.GET, async () => {
     try {
-      const { apiKey, model } = readUserVolcConfig();
+      const { apiKey, model, gitGraphCommitLimit } = readUserVolcConfig();
       return {
         ok: true,
         volcArkApiKey: apiKey,
         volcArkModel: model,
+        gitGraphCommitLimit,
         configPath: getUserVolcConfigPath(),
         configDir: getUserConfigDir(),
       };
@@ -92,6 +94,12 @@ function register(ipcMain) {
     try {
       const saved = writeUserVolcConfig(payload || {});
       console.log('[settings] saved:', saved.configPath);
+      const mainWin = typeof getMainWindowFn === 'function' ? getMainWindowFn() : null;
+      if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send(SETTINGS.CONFIG_CHANGED, {
+          gitGraphCommitLimit: saved.gitGraphCommitLimit,
+        });
+      }
       return { ok: true, ...saved };
     } catch (e) {
       console.error('[settings] SAVE failed:', e);
