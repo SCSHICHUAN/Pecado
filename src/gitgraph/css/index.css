@@ -20,6 +20,11 @@
         'hscroll'
         'status';
     background: #1e1e1e;
+    --scrollbar-track: #242424;
+    --scrollbar-thumb: #484848;
+    --scrollbar-thumb-hover: #606060;
+    --scrollbar-w: 10px;
+    --scrollbar-h: 8px;
 }
 
 .git-toolbar {
@@ -124,6 +129,26 @@
     overflow-y: auto;
     padding: 0;
     background: #161616;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.git-graph-wrap::-webkit-scrollbar {
+    width: var(--scrollbar-w);
+}
+
+.git-graph-wrap::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 999px;
+}
+
+.git-graph-wrap::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+}
+
+.git-graph-wrap::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
 }
 
 .git-graph-hscroll-wrap {
@@ -178,6 +203,11 @@
 .git-pane-hscroll::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb, #484848);
     border-radius: 999px;
+}
+
+.git-graph-hscroll::-webkit-scrollbar-thumb:hover,
+.git-pane-hscroll::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover, #606060);
 }
 
 .git-graph-hscroll-inner,
@@ -258,6 +288,10 @@
 .git-commit-node-svg.is-selected circle {
     stroke: #fff;
     stroke-width: 2;
+}
+
+.git-node-tooltip {
+    pointer-events: none;
 }
 
 .git-timeline-commit-layer {
@@ -428,4 +462,24 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     white-space: pre-wrap;
     word-break: break-all;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.git-status::-webkit-scrollbar {
+    width: var(--scrollbar-w);
+}
+
+.git-status::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 999px;
+}
+
+.git-status::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+}
+
+.git-status::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
 }

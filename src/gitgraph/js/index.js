@@ -245,6 +245,10 @@
       g.dataset.hash = hash;
       if (hash && hash === selectedCommitHash) g.classList.add('is-selected');
 
+      const authorName =
+        node.commit.author?.name || node.commit.committer?.name || 'unknown';
+      const tooltip = createNodeAuthorTooltip(ns, node.x, node.y, authorName);
+
       const circle = document.createElementNS(ns, 'circle');
       circle.setAttribute('cx', String(node.x));
       circle.setAttribute('cy', String(node.y));
@@ -262,14 +266,71 @@
       text.setAttribute('pointer-events', 'none');
       text.textContent = node.label;
 
+      circle.addEventListener('mouseenter', () => {
+        tooltip.setAttribute('visibility', 'visible');
+      });
+      circle.addEventListener('mouseleave', () => {
+        tooltip.setAttribute('visibility', 'hidden');
+      });
       circle.addEventListener('click', (e) => {
         e.stopPropagation();
         selectCommit(svg.closest('.git-timeline'), hash, node.commit);
       });
       g.appendChild(circle);
       g.appendChild(text);
+      g.appendChild(tooltip);
       svg.appendChild(g);
     }
+  }
+
+  /** 节点上方作者名气泡（悬浮显示） */
+  function createNodeAuthorTooltip(ns, nodeX, nodeY, authorName) {
+    const tipG = document.createElementNS(ns, 'g');
+    tipG.setAttribute('class', 'git-node-tooltip');
+    tipG.setAttribute('visibility', 'hidden');
+
+    const padX = 10;
+    const boxH = 22;
+    const arrowH = 6;
+    const gap = 3;
+    const label = String(authorName || 'unknown');
+    const estW = Math.max(44, Math.ceil(label.length * 6.8) + padX * 2);
+    const nodeTop = nodeY - 10;
+    const arrowTipY = nodeTop - gap;
+    const arrowBaseY = arrowTipY - arrowH;
+    const rectTop = arrowBaseY - boxH;
+    const rectLeft = nodeX - estW / 2;
+
+    const rect = document.createElementNS(ns, 'rect');
+    rect.setAttribute('x', String(rectLeft));
+    rect.setAttribute('y', String(rectTop));
+    rect.setAttribute('width', String(estW));
+    rect.setAttribute('height', String(boxH));
+    rect.setAttribute('rx', '4');
+    rect.setAttribute('ry', '4');
+    rect.setAttribute('fill', '#0a0a0a');
+
+    const arrow = document.createElementNS(ns, 'polygon');
+    arrow.setAttribute(
+      'points',
+      `${nodeX - 5},${arrowBaseY} ${nodeX + 5},${arrowBaseY} ${nodeX},${arrowTipY}`
+    );
+    arrow.setAttribute('fill', '#0a0a0a');
+
+    const labelText = document.createElementNS(ns, 'text');
+    labelText.setAttribute('x', String(nodeX));
+    labelText.setAttribute('y', String(rectTop + boxH / 2));
+    labelText.setAttribute('text-anchor', 'middle');
+    labelText.setAttribute('dominant-baseline', 'central');
+    labelText.setAttribute('fill', '#ffffff');
+    labelText.setAttribute('font-size', '12');
+    labelText.setAttribute('font-family', '-apple-system, BlinkMacSystemFont, sans-serif');
+    labelText.textContent = label;
+
+    tipG.appendChild(rect);
+    tipG.appendChild(arrow);
+    tipG.appendChild(labelText);
+    return tipG;
   }
 
   function hideGraphHscroll() {
