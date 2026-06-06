@@ -1,0 +1,205 @@
+/**
+ * @file index.css
+ *
+ * 【功能】Preferences 窗口样式。
+ * 【调用方】settings/html/index.html → ../css/index.css
+ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
+  background: #1e1e1e;
+  color: #fff;
+  overflow: hidden;
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  height: 100%;
+}
+
+.sidebar {
+  background: #181818;
+  border-right: 1px solid #2a2a2a;
+  padding: 16px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  padding: 0 10px 10px;
+  letter-spacing: 0.02em;
+}
+
+.nav-item {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #ccc;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.nav-item:hover {
+  background: #252525;
+  color: #fff;
+}
+
+.nav-item.active {
+  background: #2f3f5f;
+  color: #fff;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.detail-header {
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  flex-shrink: 0;
+}
+
+.detail-header h1 {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.detail-header p {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #888;
+  line-height: 1.5;
+}
+
+.detail-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 24px;
+}
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+label {
+  display: block;
+  font-size: 13px;
+  color: #bbb;
+  margin-bottom: 6px;
+}
+
+input, select {
+  width: 100%;
+  max-width: 420px;
+  padding: 8px 10px;
+  margin-bottom: 14px;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 13px;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: #5a8dee;
+}
+
+.field-group { margin-bottom: 8px; }
+
+.hint {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.5;
+  max-width: 420px;
+}
+
+.config-path {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #888;
+  max-width: 420px;
+}
+
+.config-dir-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6a9fd8;
+  font: inherit;
+  text-align: left;
+  word-break: break-all;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.config-dir-link:hover {
+  color: #8fbef0;
+}
+
+.config-dir-link:disabled {
+  color: #666;
+  cursor: default;
+  text-decoration: none;
+}
+
+.placeholder-card {
+  max-width: 420px;
+  padding: 16px;
+  border: 1px dashed #3a3a3a;
+  border-radius: 8px;
+  color: #999;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.detail-footer {
+  padding: 12px 24px 20px;
+  border-top: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.actions { display: flex; gap: 8px; }
+
+button.action {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.save { background: #5a8dee; color: #fff; }
+
+.status {
+  flex: 1;
+  min-width: 0;
+  min-height: 18px;
+  font-size: 12px;
+  color: #7dcea0;
+  word-break: break-all;
+}
+
+.status.error { color: #e08d8d; }

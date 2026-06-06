@@ -6,7 +6,7 @@
  *   - MarkdownIt：html:false、linkify:false、breaks:true；highlight.js 仅注册 cpp，未知语言 fallback cpp
  *   - onVolcArkStreamEvent / onMcpFsProjectChanged 返回 unsubscribe 函数
  *
- * 【调用方】main/main.js → BrowserWindow webPreferences.preload
+ * 【调用方】main/js/main.js → BrowserWindow webPreferences.preload
  *
  * 【对外能力】window.electronAPI：
  *   volcArkBotsChatStream(payload)     → invoke BOTS_CHAT_COMPLETION { streamId, userText, history }

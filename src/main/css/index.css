@@ -1,0 +1,186 @@
+/**
+ * @file index.css
+ *
+ * 【功能】主窗口公共框架样式：CSS 变量、侧栏、内容区切换。
+ * 【调用方】main/html/index.html → ../css/index.css
+ */
+:root {
+    --sidebar-w: 240px;
+    --line: #2a2a2a;
+    --line-strong: #3a3a3a;
+    --scrollbar-track: #242424;
+    --scrollbar-thumb: #484848;
+    --scrollbar-thumb-hover: #606060;
+    --scrollbar-w: 10px;
+    --scrollbar-h: 8px;
+}
+
+html {
+    height: 100%;
+}
+
+body {
+    background: #1e1e1e;
+    color: #fff;
+    height: 100%;
+    margin: 0;
+    display: grid;
+    grid-template-rows: 1fr;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
+
+.app {
+    height: 100%;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    overflow: hidden;
+}
+
+.sidebar {
+    min-height: 0;
+    min-width: 0;
+    background: #1e1e1e;
+    border-right: 1px solid var(--line-strong);
+    display: grid;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+        'fn'
+        'hist';
+}
+
+.function-list {
+    grid-area: fn;
+    padding: 16px;
+    border-bottom: 1px solid var(--line-strong);
+    background: #1e1e1e;
+}
+
+.function-item {
+    padding: 10px 16px;
+    background: transparent;
+    border-radius: 6px;
+    color: #a0a0a0;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.function-item:hover {
+    background: #3a3a3a;
+    color: #fff;
+    border-left-color: #4a90d9;
+}
+
+.function-item.active {
+    background: #3a3a3a;
+    color: #fff;
+    border-left-color: #4a90d9;
+}
+
+.function-icon {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.history-list {
+    grid-area: hist;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    padding: 16px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.history-list::-webkit-scrollbar {
+    width: var(--scrollbar-w);
+}
+
+.history-list::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+    border-radius: 999px;
+    margin: 6px 0;
+}
+
+.history-list::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+.history-list::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+    background-clip: padding-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .history-list {
+        scroll-behavior: auto;
+    }
+}
+
+.history-item {
+    padding: 10px 16px;
+    background: transparent;
+    border-radius: 6px;
+    color: #a0a0a0;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+}
+
+.history-item:hover {
+    background: #3a3a3a;
+    color: #fff;
+    border-left-color: #4a90d9;
+}
+
+.history-item.active {
+    background: #3a3a3a;
+    color: #fff;
+    border-left-color: #4a90d9;
+}
+
+.history-icon {
+    width: 24px;
+    height: 24px;
+    background: #4a4a4a;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+}
+
+.content-area {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr;
+}
+
+.content-area .main-panel.hidden,
+.content-area .git-panel-mount.hidden {
+    display: none;
+}

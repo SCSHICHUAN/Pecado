@@ -1,0 +1,71 @@
+/**
+ * @file project-context.js
+ * @module mcp-filesystem
+ *
+ * 【功能】为对话拼 AI 工程上下文（directory_tree + 关键文件 + 用户 @ 引用）。
+ * 【调用方】pecado/js/agent/router.js → buildProjectContextForAi
+ */
+const projectIo = require('./index');
+const { formatMcpTreeAscii } = require('../shared/format-tree');
+const { extractRequestedPaths } = require('../xcode/path-parse');
+
+const MCP_CONTEXT_MAX_TOTAL = 55000;
+const MCP_CONTEXT_MAX_PER_FILE = 10000;
+const MCP_KEY_FILES = [
+  'package.json',
+  'README.md',
+  'CLAUDE.md',
+  'src/main/js/main.js',
+  'src/pecado/js/index.js',
+];
+
+/** @type {{ root: string, treeAscii: string }} */
+let cache = { root: '', treeAscii: '' };
+
+async function ensureProjectCached() {
+  const status = projectIo.getStatus();
+  if (!status.connected || !status.projectRoot) return;
+  if (cache.root === status.projectRoot && cache.treeAscii) return;
+  const tree = await projectIo.readDirectoryTree({});
+  cache.root = status.projectRoot;
+  cache.treeAscii = formatMcpTreeAscii(tree, 400);
+}
+
+function clearProjectCache() {
+  cache = { root: '', treeAscii: '' };
+}
+
+/** @param {string} userText */
+async function buildProjectContextForAi(userText) {
+  await ensureProjectCached();
+  if (!cache.root) return '';
+
+  const lines = [
+    '【本地工程上下文】来自本机 MCP filesystem（directory_tree + read_text_file），请结合以下内容理解并回答代码问题。',
+    `工程根目录: ${cache.root}`,
+    '',
+    '【目录结构】',
+    cache.treeAscii || '(无)',
+  ];
+
+  const toRead = new Set(MCP_KEY_FILES);
+  extractRequestedPaths(userText).forEach((p) => toRead.add(p));
+
+  let budget = MCP_CONTEXT_MAX_TOTAL - lines.join('\n').length;
+  for (const rel of toRead) {
+    if (budget <= 500) break;
+    try {
+      const bodyRaw = await projectIo.readText(rel);
+      let body = bodyRaw;
+      const cap = Math.min(MCP_CONTEXT_MAX_PER_FILE, budget);
+      if (body.length > cap) body = `${body.slice(0, cap)}\n…(文件已截断)`;
+      lines.push('', `【文件: ${rel}】`, '```', body, '```');
+      budget -= body.length + rel.length + 40;
+    } catch (_) {
+      /* 文件不存在或读失败则跳过 */
+    }
+  }
+  return lines.join('\n');
+}
+
+module.exports = { buildProjectContextForAi, clearProjectCache };

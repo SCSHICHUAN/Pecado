@@ -6,7 +6,7 @@
   "config": {
     "electron_mirror": "https://npmmirror.com/mirrors/electron/"
   },
-  "main": "src/main/main.js",
+  "main": "src/main/js/main.js",
   "scripts": {
     "postinstall": "node ./node_modules/electron/install.js",
     "start": "node src/electron/shell/dev.js",

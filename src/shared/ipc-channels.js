@@ -5,13 +5,16 @@
  *   - VOLC_ARK：流式对话 invoke + 主→渲染 stream event
  *   - QQ_MUSIC：助手 JSON 指令后置处理（历史命名）
  *   - MCP_FS：目录树 invoke + Open Folder 后 project changed 推送
- *   - GIT：Git 视图状态 / pull / push / commit（gitgraph/index.js）
- *   - SETTINGS：Preferences 窗口 get/save（settings/settings-preload.js）
+ *   - GIT：Git 视图（gitgraph/js/register.js）
+ *   - SETTINGS：Preferences（settings/js/register.js）
+ *
+ * 【主进程注册】见 main/js/main.js → app.whenReady 顺序注册各模块 register()
  *
  * 【调用方】
- *   preload/preload.js、settings/settings-preload.js
- *   main/agent/router.js、stream-ui.js、agent-commands.js
- *   main/mcp-filesystem/ipc.js、settings/index.js
+ *   preload/preload.js、settings/js/preload.js
+ *   pecado/js/agent/router.js、stream-ui.js
+ *   commands/js/local-commands.js
+ *   mcp-filesystem/ipc.js、settings/js/register.js
  */
 module.exports = {
   SETTINGS: {

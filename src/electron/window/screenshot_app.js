@@ -23,7 +23,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadFile(path.join(SRC_ROOT, 'renderer', 'html', 'app.html'));
+  mainWindow.loadFile(path.join(SRC_ROOT, 'main', 'html', 'index.html'));
   mainWindow.webContents.openDevTools();
 
   mainWindow.webContents.on('did-finish-load', () => {

@@ -7,9 +7,9 @@
  *   - 浏览器端挂载 window.formatMcpTree；Node 端 module.exports
  *
  * 【调用方】
- *   main/mcp-filesystem/project-context.js（拼 AI context，maxLines=400）
- *   renderer/js/index.js（Open Folder 气泡展示，经 window.formatMcpTree）
- *   renderer/html/app.html 以 script src 加载（路径 ../../shared/format-tree.js）
+ *   mcp-filesystem/project-context.js（拼 AI context，maxLines=400）
+ *   pecado/js/index.js（Open Folder 气泡展示，经 window.formatMcpTree）
+ *   main/html/index.html 以 script src 加载
  *
  * 【对外能力】formatMcpTreeAscii(tree, maxLines?) / formatMcpTreeBox（内部）
  */

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Preferences</title>
+  <link rel="stylesheet" href="../css/index.css">
+</head>
+<body>
+  <div class="settings">
+    <aside class="sidebar">
+      <div class="sidebar-title">设置</div>
+      <button type="button" class="nav-item active" data-panel="volc">火山设置</button>
+      <button type="button" class="nav-item" data-panel="general">通用</button>
+      <button type="button" class="nav-item" data-panel="appearance">外观</button>
+      <button type="button" class="nav-item" data-panel="shortcuts">快捷键</button>
+      <button type="button" class="nav-item" data-panel="about">关于</button>
+    </aside>
+
+    <section class="detail">
+      <header class="detail-header">
+        <h1 id="detail-title">火山设置</h1>
+        <p id="detail-desc">配置火山方舟 API 密钥与 Bot 模型。</p>
+      </header>
+
+      <div class="detail-body">
+        <div class="panel active" id="panel-volc">
+          <div class="field-group">
+            <label for="api-key">Volc Ark API Key</label>
+            <input id="api-key" type="text" autocomplete="off" spellcheck="false">
+          </div>
+          <div class="field-group">
+            <label for="model">Bot Model ID</label>
+            <input id="model" type="text" autocomplete="off" spellcheck="false">
+          </div>
+          <p class="config-path">
+            配置目录：
+            <button type="button" class="config-dir-link" id="config-dir-btn" disabled></button>
+          </p>
+        </div>
+
+        <div class="panel" id="panel-general">
+          <div class="field-group">
+            <label for="language">界面语言</label>
+            <select id="language" disabled>
+              <option>简体中文</option>
+              <option>English</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="startup">启动时</label>
+            <select id="startup" disabled>
+              <option>打开上次工程</option>
+              <option>显示空白工作区</option>
+            </select>
+          </div>
+          <p class="hint">通用选项尚未接入，后续版本开放。</p>
+        </div>
+
+        <div class="panel" id="panel-appearance">
+          <div class="field-group">
+            <label for="theme">主题</label>
+            <select id="theme" disabled>
+              <option selected>深色</option>
+              <option>浅色</option>
+              <option>跟随系统</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="font-size">字号</label>
+            <select id="font-size" disabled>
+              <option>标准</option>
+              <option>较大</option>
+            </select>
+          </div>
+          <p class="hint">外观设置尚未接入，当前固定为深色主题。</p>
+        </div>
+
+        <div class="panel" id="panel-shortcuts">
+          <div class="placeholder-card">
+            <strong>常用快捷键</strong><br><br>
+            打开文件夹：⌘O / Ctrl+O<br>
+            偏好设置：⌘, / Ctrl+,<br>
+            开发者工具：⌥⌘I / Ctrl+Shift+I
+          </div>
+        </div>
+
+        <div class="panel" id="panel-about">
+          <div class="placeholder-card">
+            <strong>Pecado</strong><br><br>
+            桌面 AI 编程助手<br>
+            支持火山方舟、MCP 文件系统与 Xcode 集成。<br><br>
+            版本 1.0.0
+          </div>
+        </div>
+      </div>
+
+      <footer class="detail-footer">
+        <div class="status" id="status"></div>
+        <div class="actions">
+          <button type="button" class="action save" id="save-btn">保存</button>
+        </div>
+      </footer>
+    </section>
+  </div>
+  <script src="../js/index.js"></script>
+</body>
+</html>

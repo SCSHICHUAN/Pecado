@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<!--
+  @file index.html
+
+  【功能】Pecado 主窗口：侧栏 + 对话区 + Git 面板挂载点。
+  【主进程】main/js/main.js 加载本页 + preload/preload.js
+  【渲染脚本】
+    · shared/format-tree.js
+    · pecado/js/index.js      — 对话 UI
+    · gitgraph/js/index.js    — Git 侧栏
+  【样式】main/css、pecado/css、gitgraph/css
+-->
+<html lang="zh-CN">
+<head>
+  <link rel="stylesheet" href="../../../node_modules/highlight.js/styles/github-dark.min.css">
+  <link rel="stylesheet" href="../css/index.css">
+  <link rel="stylesheet" href="../../pecado/css/index.css">
+  <link rel="stylesheet" href="../../gitgraph/css/index.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="function-list">
+        <div class="function-item active" id="nav-pecado" data-view="chat">
+          <div class="function-icon">🤖</div>
+          <div>Pecado</div>
+        </div>
+        <div class="function-item" id="nav-git" data-view="git">
+          <div class="function-icon">🌿</div>
+          <div>Git</div>
+        </div>
+        <div class="function-item">
+          <div class="function-icon">🌐</div>
+          <div>AI 浏览器</div>
+        </div>
+        <div class="function-item">
+          <div class="function-icon">📚</div>
+          <div>更多</div>
+        </div>
+      </div>
+      <div class="history-list">
+        <div class="history-item active">
+          <div class="history-icon">📱</div>
+          <div>手机版对话</div>
+        </div>
+        <div class="history-item">
+          <div class="history-icon">🔧</div>
+          <div>示例会话</div>
+        </div>
+      </div>
+    </aside>
+    <div class="content-area">
+    <div class="main-panel" id="panel-chat">
+      <header class="chat-header">
+        <div class="chat-title">手机版对话</div>
+        <div class="chat-actions">
+          <button type="button" class="chat-action-button">📞</button>
+          <button type="button" class="chat-action-button">📤</button>
+          <button type="button" class="chat-action-button">⋮</button>
+        </div>
+      </header>
+      <div class="chat-body" id="workspace-scroll">
+        <div class="chat-content" id="chat-content">
+          <div class="message assistant">
+            <div class="message-avatar">🤖</div>
+            <div class="message-bubble markdown-body">你好！我是 Pecado。有什么可以帮助你的吗？</div>
+          </div>
+          <div id="chat-scroll-anchor" class="chat-scroll-anchor" aria-hidden="true"></div>
+        </div>
+      </div>
+      <div class="chat-input">
+        <div class="input-container">
+          <div class="control-buttons">
+            <button type="button" class="control-button">📎</button>
+            <button type="button" class="control-button">🎤</button>
+          </div>
+          <textarea id="chat-input" placeholder="发消息或输入'/'选择技能" rows="1"></textarea>
+          <button type="button" class="send-button">▶</button>
+        </div>
+        <div class="skills-container skills-buttons">
+          <button type="button" class="skill-button">📊</button>
+          <button type="button" class="skill-button">⚡快速</button>
+          <button type="button" class="skill-button">⚙️编程</button>
+          <button type="button" class="skill-button">🎨图像生成</button>
+          <button type="button" class="skill-button">📝帮我写作</button>
+          <button type="button" class="skill-button">📚翻译</button>
+          <button type="button" class="skill-button">🎬视频生成</button>
+          <button type="button" class="skill-button">⚙️更多</button>
+        </div>
+      </div>
+    </div>
+    <div id="panel-git" class="git-panel-mount hidden"></div>
+    </div>
+  </div>
+  <script src="../../shared/format-tree.js"></script>
+  <script src="../../pecado/js/index.js"></script>
+  <script src="../../gitgraph/js/index.js"></script>
+</body>
+</html>
