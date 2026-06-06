@@ -18,8 +18,13 @@
 
     <section class="detail">
       <header class="detail-header">
-        <h1 id="detail-title">火山设置</h1>
-        <p id="detail-desc">配置火山方舟 API 密钥与 Bot 模型。</p>
+        <div class="detail-header-row">
+          <div class="detail-header-text">
+            <h1 id="detail-title">火山设置</h1>
+            <p id="detail-desc">配置火山方舟 API 密钥与 Bot 模型。</p>
+          </div>
+          <button type="button" class="action save" id="save-btn">保存</button>
+        </div>
       </header>
 
       <div class="detail-body">
@@ -41,8 +46,15 @@
         <div class="panel" id="panel-general">
           <div class="field-group">
             <label for="git-graph-limit">Git 提交图条数</label>
-            <input id="git-graph-limit" type="number" min="10" max="5000" step="1" value="500">
-            <p class="hint">打开 Git 面板时加载的 commit 数量（10–5000，默认 500）。</p>
+            <select id="git-graph-limit">
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500" selected>500</option>
+              <option value="1000">1000</option>
+              <option value="1500">1500</option>
+              <option value="5000">5000</option>
+            </select>
+            <p class="hint">打开 Git 面板时加载的 commit 数量。</p>
           </div>
           <div class="field-group">
             <label for="language">界面语言</label>
@@ -101,9 +113,6 @@
 
       <footer class="detail-footer">
         <div class="status" id="status"></div>
-        <div class="actions">
-          <button type="button" class="action save" id="save-btn">保存</button>
-        </div>
       </footer>
     </section>
   </div>

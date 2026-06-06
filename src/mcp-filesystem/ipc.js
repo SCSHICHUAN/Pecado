@@ -20,7 +20,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { app, dialog } = require('electron');
+const { app, dialog, shell } = require('electron');
 const { MCP_FS } = require('../shared/ipc-channels');
 const projectIo = require('./index');
 const xcodeProject = require('../xcode/project');
@@ -115,6 +115,18 @@ function registerIpcHandlers(ipcMain) {
       return { ok: true, tree };
     } catch (e) {
       return { error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(MCP_FS.OPEN_PROJECT_ROOT, async (_event, payload) => {
+    try {
+      const root = String(payload?.projectRoot || readSavedProjectRoot() || '').trim();
+      if (!root) return { ok: false, error: '未打开工程目录' };
+      const err = await shell.openPath(root);
+      if (err) return { ok: false, error: err };
+      return { ok: true, projectRoot: root };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
     }
   });
 

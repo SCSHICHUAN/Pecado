@@ -31,7 +31,6 @@
     "electron-builder": "^26.8.1"
   },
   "dependencies": {
-    "@gitgraph/js": "^1.4.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "highlight.js": "^11.11.1",

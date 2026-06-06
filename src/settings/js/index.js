@@ -13,6 +13,7 @@ const PANEL_META = {
 };
 
 const EDITABLE_PANELS = new Set(['volc', 'general']);
+const GIT_GRAPH_LIMIT_OPTIONS = [100, 200, 500, 1000, 1500, 5000];
 
 const navItems = document.querySelectorAll('.nav-item');
 const panels = document.querySelectorAll('.panel');
@@ -94,7 +95,12 @@ function applyConfig(cfg) {
   apiKeyEl.value = cfg.volcArkApiKey || '';
   modelEl.value = cfg.volcArkModel || '';
   if (gitGraphLimitEl && cfg.gitGraphCommitLimit != null) {
-    gitGraphLimitEl.value = String(cfg.gitGraphCommitLimit);
+    const limit = String(cfg.gitGraphCommitLimit);
+    if ([...gitGraphLimitEl.options].some((o) => o.value === limit)) {
+      gitGraphLimitEl.value = limit;
+    } else {
+      gitGraphLimitEl.value = '500';
+    }
   }
   showConfigDir(cfg.configDir || '');
 }
@@ -138,8 +144,8 @@ saveBtn.addEventListener('click', async () => {
   }
 
   const limit = parseInt(String(payload.gitGraphCommitLimit), 10);
-  if (!Number.isFinite(limit) || limit < 10 || limit > 5000) {
-    setStatus('Git 提交图条数需在 10–5000 之间', true);
+  if (!GIT_GRAPH_LIMIT_OPTIONS.includes(limit)) {
+    setStatus('请选择有效的 Git 提交图条数', true);
     gitGraphLimitEl?.focus();
     return;
   }

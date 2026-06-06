@@ -1,3 +1,10 @@
+<!--
+  @file index.html
+
+  【功能】Git 侧栏 DOM 片段（非完整页面）；由主进程 GIT.GET_PANEL_HTML 读入并注入 #panel-git。
+  【结构】toolbar → meta（工程路径 + 消息）→ graph → 双 hscroll → status
+  【说明】src/gitgraph/README.md
+-->
 <header class="git-toolbar">
   <div class="git-toolbar-title">Git</div>
   <div class="git-toolbar-actions">
@@ -7,11 +14,25 @@
   </div>
 </header>
 <div class="git-meta">
-  <div class="git-info" id="git-info"></div>
+  <button type="button" class="git-info" id="git-info" disabled>未打开工程</button>
   <div class="git-message" id="git-message"></div>
 </div>
 <div class="git-graph-wrap">
   <div class="git-graph" id="git-graph"></div>
+</div>
+<div class="git-graph-hscroll-wrap" id="git-graph-hscroll-wrap">
+  <div class="git-hscroll-row">
+    <div class="git-graph-hscroll-cell">
+      <div class="git-graph-hscroll" id="git-graph-hscroll" tabindex="-1" aria-label="节点图横向滚动">
+        <div class="git-graph-hscroll-inner" id="git-graph-hscroll-inner"></div>
+      </div>
+    </div>
+    <div class="git-pane-hscroll-cell">
+      <div class="git-pane-hscroll" id="git-graph-pane-hscroll" tabindex="-1" aria-label="Commit 起始位置">
+        <div class="git-pane-hscroll-inner" id="git-graph-pane-hscroll-inner"></div>
+      </div>
+    </div>
+  </div>
 </div>
 <div class="git-status-wrap">
   <div class="git-status-label" id="git-status-label">Status</div>

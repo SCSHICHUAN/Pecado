@@ -61,6 +61,8 @@ try {
       return () => ipcRenderer.removeListener(ch, fn);
     },
     mcpFsDirectoryTree: (opts) => ipcRenderer.invoke(MCP_FS.DIRECTORY_TREE, opts || {}),
+    mcpFsOpenProjectRoot: (payload) =>
+      ipcRenderer.invoke(MCP_FS.OPEN_PROJECT_ROOT, payload || {}),
     onMcpFsProjectChanged: (callback) => {
       const ch = MCP_FS.PROJECT_CHANGED;
       const fn = (_evt, payload) => {

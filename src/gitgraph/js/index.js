@@ -1,15 +1,64 @@
 /**
  * @file index.js
  *
- * 【功能】Git 渲染进程 UI：提交时间线列表（节点 ↔ commit 一一对应）、pull/push/commit。
+ * 【功能】Git 面板渲染进程：自定义提交时间线、Pull/Push/Commit、工程目录栏。
  * 【调用方】main/html/index.html → ../../gitgraph/js/index.js
+ * 【依赖】timeline-layout.js（lane 布局）；IPC 见 preload gitGetState / gitPull / gitPush / gitCommit
+ *
+ * ── 布局（整窗宽叠层，非左右分栏）──
+ *
+ * 1. 节点图层 `.git-timeline-graph-scroll`（z-index 1）
+ *    - 可滚 inner 宽 = 3 × 窗宽（左/右各 1 窗留白 + 中间 SVG）
+ *    - 默认 scroll：最新节点圆心对齐屏幕 x = 窗宽 × 1/4
+ *    - 横向滚轮统一滚图区（commit 文字层 pointer-events: none 穿透）
+ *
+ * 2. 轨道层 `.git-timeline-track-layer`（固定视口，不随 commit 文字滚）
+ *    - 每行半透明 tint 条：left = 节点连线屏幕 x，right = 窗口右缘
+ *    - 仅随 **图区 scrollLeft** 更新 `--git-bar-left`
+ *
+ * 3. Commit 色块层 `.git-timeline-commit-fill-layer`（固定视口）
+ *    - 实色（solidTintColor = lane 色 24% 叠 #161616 的等效不透明色）
+ *    - left = commit 文字列起点（随 commit 起始滑块 / scrollLeft），right = 窗口右缘
+ *
+ * 4. Commit 文字层 `.git-timeline-commit-scroll`（inner 可滚，层本身不接收点击）
+ *    - inner = 左 1 窗 pad +（最长 subject 宽 + 1 窗）
+ *    - 默认文字左缘在屏幕 x = 窗宽 × 1/2
+ *    - 底部右半滑块：量程 = 最长文字宽 + 1 窗宽，滑轨中心 ↔ 窗宽中心
+ *
+ * 5. 底部双滚动条（50/50 固定分栏）
+ *    - 左：图区横向滚动；右：commit 起始位置（与图区 decouple）
+ *
+ * ── 交互 ──
+ * - 选中：仅点击 SVG **圆点**（`circle`），高亮白描边；轨道/色块/文字不高亮
+ * - 工程路径栏：点击在 Finder 中打开（mcpFsOpenProjectRoot）
+ *
+ * 设计说明全文：仓库根目录 README.md →「Git 提交图谱」
  */
 (function () {
   let currentProjectRoot = '';
   let panelReady = false;
   let selectedCommitHash = '';
-  /** 本会话内是否已对 Git 侧栏做过首次图区定位 */
   let gitTabInitialScrollDone = false;
+  let paneHscrollSyncing = false;
+  let graphHscrollSyncing = false;
+  let cachedPanelLayoutWidth = 0;
+  /** @type {{ min: number, max: number, range: number, center: number } | null} */
+  let cachedCommitBounds = null;
+
+  const COMMIT_START_RATIO = 0.5;
+  const COMMIT_TEXT_PAD_PX = 24;
+  /** 文字左缘相对 inner 起点的 inset（与 .git-commit-subject padding-left 一致） */
+  const COMMIT_SUBJECT_PAD_LEFT = 28;
+  /** 色块左缘比文字再靠左 0px（文字 inset 即留白） */
+  const COMMIT_FILL_PAD_LEFT = 0;
+  /** 图区可滚总宽 = 3 × 窗宽（左留白 1 窗 + 中间图 + 右留白 1 窗） */
+  const GRAPH_SCROLL_VIEWPORT_RATIO = 3;
+  /** commit 文字区左侧留白 = 1 × 窗宽 */
+  const COMMIT_SCROLL_PAD_LEFT_RATIO = 1;
+  /** commit 文字区宽度 = 文字 + 1 × 窗宽 */
+  const COMMIT_TEXT_VIEWPORT_RATIO = 1;
+  /** 节点圆心目标屏幕 x = 窗宽 × 此比例（1/4） */
+  const GRAPH_INITIAL_NODE_X_RATIO = 0.25;
 
   function getApi() {
     return window.electronAPI;
@@ -35,15 +84,22 @@
 
   async function loadPanelHtml() {
     const mount = $('panel-git');
-    if (!mount || mount.dataset.loaded === '1') return mount;
+    if (!mount) return null;
     const api = getApi();
     if (!api || typeof api.gitGetPanelHtml !== 'function') {
       throw new Error('Git panel API 不可用');
     }
-    const res = await api.gitGetPanelHtml();
-    if (!res.ok) throw new Error(res.error || '加载 Git 面板失败');
-    mount.innerHTML = res.html;
-    mount.dataset.loaded = '1';
+    const needsHtml =
+      mount.dataset.loaded !== '1' ||
+      !mount.querySelector('#git-graph-pane-hscroll') ||
+      !$('git-graph-hscroll-wrap') ||
+      !mount.querySelector('button.git-info');
+    if (needsHtml) {
+      const res = await api.gitGetPanelHtml();
+      if (!res.ok) throw new Error(res.error || '加载 Git 面板失败');
+      mount.innerHTML = res.html;
+      mount.dataset.loaded = '1';
+    }
     panelReady = true;
     setupToolbar();
     return mount;
@@ -64,12 +120,13 @@
     setActiveNav(view);
     if (view === 'git') {
       try {
-        if (!panelReady) {
-          await loadPanelHtml();
-        }
+        await loadPanelHtml();
         if (!gitTabInitialScrollDone) {
           await refreshGitView({ initialScroll: true });
           gitTabInitialScrollDone = true;
+        } else {
+          const timeline = document.querySelector('#git-graph .git-timeline');
+          if (timeline) ensurePaneHscrollSynced(timeline);
         }
       } catch (e) {
         console.error('[git-ui] showView git', e);
@@ -82,15 +139,6 @@
     if (labelEl) labelEl.textContent = text;
   }
 
-  function authorInitial(name) {
-    const trimmed = String(name || '').trim();
-    if (!trimmed) return '?';
-    return trimmed.charAt(0).toUpperCase();
-  }
-
-  /**
-   * @param {object} commit git2json 条目
-   */
   function formatCommitDetail(commit) {
     const hash = commit.hash || '';
     const short = hash ? hash.slice(0, 7) : '';
@@ -123,41 +171,36 @@
   function renderWorkspaceStatus(state) {
     const statusEl = $('git-status');
     if (!statusEl) return;
-
     setStatusPanelLabel('Status');
-
     if (!state?.projectRoot) {
       statusEl.textContent = state?.hint || '请通过 File → Open Folder 打开工程目录';
       return;
     }
-
     if (!state.isRepo) {
       statusEl.textContent = '当前目录不是 Git 仓库';
       return;
     }
-
     const lines = state.status?.fileLines || [];
-    if (lines.length === 0) {
-      statusEl.textContent = '工作区干净，无未提交变更';
-    } else {
-      statusEl.textContent = lines.join('\n');
-    }
+    statusEl.textContent =
+      lines.length === 0 ? '工作区干净，无未提交变更' : lines.join('\n');
   }
 
   function renderStatus(state) {
     const info = $('git-info');
     if (!info) return;
-
     if (!state.projectRoot) {
       info.textContent = '未打开工程';
+      info.disabled = true;
+      delete info.dataset.projectRoot;
       renderWorkspaceStatus(state);
       return;
     }
-
     info.textContent = state.isRepo
       ? `${state.branch || '(detached)'} · ${state.projectRoot}`
       : `非 Git 仓库 · ${state.projectRoot}`;
-
+    info.disabled = false;
+    info.dataset.projectRoot = state.projectRoot;
+    info.title = `在 Finder 中打开：${state.projectRoot}`;
     renderWorkspaceStatus(state);
   }
 
@@ -170,15 +213,10 @@
 
   function selectCommit(timelineEl, hash, commit) {
     selectedCommitHash = hash || '';
-    timelineEl.querySelectorAll('.git-commit-row.is-selected').forEach((el) => {
-      el.classList.remove('is-selected');
-    });
     timelineEl.querySelectorAll('.git-commit-node-svg.is-selected').forEach((el) => {
       el.classList.remove('is-selected');
     });
-    const row = timelineEl.querySelector(`.git-commit-row[data-hash="${hash}"]`);
     const node = timelineEl.querySelector(`.git-commit-node-svg[data-hash="${hash}"]`);
-    row?.classList.add('is-selected');
     node?.classList.add('is-selected');
     showCommitInStatus(commit);
   }
@@ -205,10 +243,7 @@
       const g = document.createElementNS(ns, 'g');
       g.setAttribute('class', 'git-commit-node-svg');
       g.dataset.hash = hash;
-      if (hash && hash === selectedCommitHash) {
-        g.classList.add('is-selected');
-      }
-      g.style.cursor = 'pointer';
+      if (hash && hash === selectedCommitHash) g.classList.add('is-selected');
 
       const circle = document.createElementNS(ns, 'circle');
       circle.setAttribute('cx', String(node.x));
@@ -224,84 +259,488 @@
       text.setAttribute('fill', '#ffffff');
       text.setAttribute('font-size', '11');
       text.setAttribute('font-weight', '600');
+      text.setAttribute('pointer-events', 'none');
       text.textContent = node.label;
 
-      g.appendChild(circle);
-      g.appendChild(text);
-      g.addEventListener('click', (e) => {
+      circle.addEventListener('click', (e) => {
         e.stopPropagation();
         selectCommit(svg.closest('.git-timeline'), hash, node.commit);
       });
+      g.appendChild(circle);
+      g.appendChild(text);
       svg.appendChild(g);
     }
   }
 
-  const GRAPH_INITIAL_NODE_X_RATIO = 0.2;
+  function hideGraphHscroll() {
+    document.querySelector('.git-graph-hscroll-cell')?.classList.remove('is-visible');
+  }
 
+  /** 横向滚轮 / 触控板左右滑；Shift+纵滚也视为横向 */
+  function getHorizontalWheelDelta(event) {
+    if (Math.abs(event.deltaX) > 0.5) return event.deltaX;
+    if (event.shiftKey && Math.abs(event.deltaY) > 0.5) return event.deltaY;
+    return 0;
+  }
+
+  function scrollGraphByWheelDelta(timeline, delta) {
+    if (!timeline || !delta) return false;
+    const graphScroll = timeline.querySelector('.git-timeline-graph-scroll');
+    if (!graphScroll) return false;
+    graphScroll.scrollLeft += delta;
+    return true;
+  }
+
+  function onGraphHorizontalWheel(event) {
+    const delta = getHorizontalWheelDelta(event);
+    if (!delta) return;
+    const timeline = document.querySelector('#git-graph .git-timeline');
+    if (!scrollGraphByWheelDelta(timeline, delta)) return;
+    event.preventDefault();
+  }
+
+  function setPaneHscrollLeft(paneHscroll, scrollLeft) {
+    paneHscrollSyncing = true;
+    paneHscroll.scrollLeft = scrollLeft;
+    requestAnimationFrame(() => {
+      paneHscrollSyncing = false;
+    });
+  }
+
+  function setGraphHscrollLeft(hscroll, scrollLeft) {
+    graphHscrollSyncing = true;
+    hscroll.scrollLeft = scrollLeft;
+    requestAnimationFrame(() => {
+      graphHscrollSyncing = false;
+    });
+  }
+
+  function getLayoutWidth(timeline) {
+    const wrap = document.querySelector('.git-graph-wrap');
+    const candidates = [
+      wrap?.clientWidth,
+      $('git-graph')?.clientWidth,
+      timeline?.clientWidth,
+      timeline?.getBoundingClientRect().width,
+      $('panel-git')?.clientWidth,
+    ];
+    for (const w of candidates) {
+      if (typeof w === 'number' && w > 0) return w;
+    }
+    return 0;
+  }
+
+  /** 写入图区 / commit 各自的屏幕 offset（相对窗宽） */
+  function applyTimelineScreenOffsets(timeline, layoutWidth) {
+    if (!timeline || layoutWidth <= 0) return;
+    timeline.style.setProperty('--git-layout-width', `${layoutWidth}px`);
+    timeline.style.setProperty(
+      '--git-graph-screen-offset',
+      `${layoutWidth * GRAPH_INITIAL_NODE_X_RATIO}px`
+    );
+    timeline.style.setProperty(
+      '--git-commit-screen-offset',
+      `${layoutWidth * COMMIT_START_RATIO}px`
+    );
+  }
+
+  function getGraphScreenOffset(timeline) {
+    const fromCss = parseFloat(
+      getComputedStyle(timeline).getPropertyValue('--git-graph-screen-offset')
+    );
+    if (Number.isFinite(fromCss) && fromCss > 0) return fromCss;
+    return getLayoutWidth(timeline) * GRAPH_INITIAL_NODE_X_RATIO;
+  }
+
+  function getCommitScreenOffset(timeline) {
+    const fromCss = parseFloat(
+      getComputedStyle(timeline).getPropertyValue('--git-commit-screen-offset')
+    );
+    if (Number.isFinite(fromCss) && fromCss > 0) return fromCss;
+    const fromStart = parseFloat(
+      getComputedStyle(timeline).getPropertyValue('--git-commit-start')
+    );
+    if (Number.isFinite(fromStart) && fromStart > 0) return fromStart;
+    return getLayoutWidth(timeline) * COMMIT_START_RATIO;
+  }
+
+  function measureMaxCommitTextWidth(timeline) {
+    let max = 0;
+    timeline?.querySelectorAll('.git-commit-subject').forEach((el) => {
+      max = Math.max(max, el.scrollWidth || el.offsetWidth || 0);
+    });
+    return max;
+  }
+
+  function invalidateCommitBoundsCache() {
+    cachedPanelLayoutWidth = 0;
+    cachedCommitBounds = null;
+  }
+
+  /** commit 起始位置滑块量程 = 最长 commit 文字宽 + 1 × 窗宽 */
+  function getCommitScrollRange(timeline) {
+    const layoutWidth = getLayoutWidth(timeline);
+    if (layoutWidth <= 0) return 0;
+    return measureMaxCommitTextWidth(timeline) + layoutWidth;
+  }
+
+  /** @returns {{ min: number, max: number, range: number, center: number } | null} */
+  function getCommitStartBounds(timeline, options = {}) {
+    const layoutWidth = getLayoutWidth(timeline);
+    if (layoutWidth <= 0) return null;
+    if (
+      !options.force &&
+      cachedCommitBounds &&
+      cachedPanelLayoutWidth > 0 &&
+      Math.abs(layoutWidth - cachedPanelLayoutWidth) < 1
+    ) {
+      return cachedCommitBounds;
+    }
+    const range = Math.max(1, getCommitScrollRange(timeline));
+    const center = getCommitTextScreenTarget(timeline);
+    const min = center - range / 2;
+    const max = center + range / 2;
+    cachedPanelLayoutWidth = layoutWidth;
+    cachedCommitBounds = { min, max, range, center };
+    return cachedCommitBounds;
+  }
+
+  /** commit 文字左缘默认在窗口 1/2 处开始显示 */
+  function getCommitTextScreenTarget(timeline) {
+    const layoutWidth = getLayoutWidth(timeline);
+    if (layoutWidth <= 0) return 0;
+    return Math.round(layoutWidth * COMMIT_START_RATIO);
+  }
+
+  function getDefaultCommitStart(timeline) {
+    return getCommitTextScreenTarget(timeline);
+  }
+
+  function clampCommitStart(timeline, value) {
+    const bounds = getCommitStartBounds(timeline);
+    if (!bounds) return Math.max(0, value);
+    return Math.min(bounds.max, Math.max(bounds.min, value));
+  }
+
+  /** 滑轨 scrollLeft ↔ 屏幕 anchor：中心对中心，量程 = 文字宽 + 1 窗宽 */
+  function commitStartToPaneScroll(timeline, screenOffsetPx) {
+    const bounds = getCommitStartBounds(timeline);
+    if (!bounds) return 0;
+    return bounds.range / 2 + (bounds.center - screenOffsetPx);
+  }
+
+  function paneScrollToCommitStart(timeline, scrollLeft) {
+    const bounds = getCommitStartBounds(timeline);
+    if (!bounds) return getDefaultCommitStart(timeline);
+    return bounds.center + (bounds.range / 2 - scrollLeft);
+  }
+
+  function getCommitPadLeft(timeline) {
+    const layoutWidth = getLayoutWidth(timeline);
+    if (layoutWidth <= 0) return 0;
+    const fromCss = parseFloat(
+      getComputedStyle(timeline).getPropertyValue('--git-commit-pad-left')
+    );
+    if (Number.isFinite(fromCss) && fromCss > 0) return fromCss;
+    return layoutWidth * COMMIT_SCROLL_PAD_LEFT_RATIO;
+  }
+
+  function refreshCommitScrollWidth(timeline) {
+    const layoutWidth = getLayoutWidth(timeline);
+    if (layoutWidth <= 0 || !timeline) return;
+    const maxTextW = measureMaxCommitTextWidth(timeline);
+    const leftPad = layoutWidth * COMMIT_SCROLL_PAD_LEFT_RATIO;
+    const textAreaW =
+      maxTextW + COMMIT_TEXT_PAD_PX + layoutWidth * COMMIT_TEXT_VIEWPORT_RATIO;
+    const totalW = leftPad + textAreaW;
+    timeline.style.setProperty('--git-commit-pad-left', `${leftPad}px`);
+    timeline.style.setProperty('--git-commit-subject-pad-left', `${COMMIT_SUBJECT_PAD_LEFT}px`);
+    timeline.style.setProperty('--git-commit-text-width', `${textAreaW}px`);
+    timeline.style.setProperty('--git-commit-scroll-width', `${totalW}px`);
+  }
+
+  /** commit 文字左缘 offset：scrollLeft = 文字 inner 起点 − screen offset */
+  function syncCommitScrollPosition(timeline, screenOffsetPx) {
+    const commitScroll = timeline.querySelector('.git-timeline-commit-scroll');
+    if (!commitScroll) return;
+    const w = getLayoutWidth(timeline);
+    if (w <= 0) return;
+    const leftPad = w * COMMIT_SCROLL_PAD_LEFT_RATIO;
+    const offset =
+      typeof screenOffsetPx === 'number' && Number.isFinite(screenOffsetPx)
+        ? screenOffsetPx
+        : getCommitScreenOffset(timeline);
+    const textOriginInner = leftPad + COMMIT_SUBJECT_PAD_LEFT;
+    const targetScroll = textOriginInner - offset;
+    const max = Math.max(0, commitScroll.scrollWidth - commitScroll.clientWidth);
+    commitScroll.scrollLeft = Math.min(max, Math.max(0, targetScroll));
+    syncCommitFillPositions(timeline);
+  }
+
+  function updateCommitContentMetrics(timeline) {
+    refreshCommitScrollWidth(timeline);
+    invalidateCommitBoundsCache();
+    getCommitStartBounds(timeline, { force: true });
+  }
+
+  function applyGraphScrollLayout(timeline, layoutWidth) {
+    if (!timeline || layoutWidth <= 0) return;
+    applyTimelineScreenOffsets(timeline, layoutWidth);
+    const lineW =
+      typeof GitTimelineLayout !== 'undefined' ? GitTimelineLayout.LINE_WIDTH : 2;
+    const padLeft = layoutWidth;
+    const scrollWidth = layoutWidth * GRAPH_SCROLL_VIEWPORT_RATIO;
+    timeline.style.setProperty('--git-scroll-pad-left', `${padLeft}px`);
+    timeline.style.setProperty('--git-scroll-width', `${scrollWidth}px`);
+    timeline.dataset.layoutWidth = String(layoutWidth);
+    timeline.querySelectorAll('.git-commit-track-row[data-node-x]').forEach((track) => {
+      const nodeX = parseFloat(track.dataset.nodeX);
+      if (!Number.isFinite(nodeX)) return;
+      track.dataset.lineRight = String(padLeft + nodeX + lineW / 2);
+    });
+    syncTrackBarPositions(timeline);
+  }
+
+  function syncGraphHscroll(timeline) {
+    const graphCell = document.querySelector('.git-graph-hscroll-cell');
+    const hscroll = $('git-graph-hscroll');
+    const inner = $('git-graph-hscroll-inner');
+    const graphScroll = timeline?.querySelector('.git-timeline-graph-scroll');
+    if (!graphCell || !hscroll || !inner || !graphScroll) {
+      hideGraphHscroll();
+      return;
+    }
+    const paneWidth = graphScroll.clientWidth;
+    const scrollWidth = graphScroll.scrollWidth;
+    const needsScroll = scrollWidth > paneWidth + 1;
+    graphCell.classList.toggle('is-visible', needsScroll);
+    if (!needsScroll) return;
+
+    const trackRatio = hscroll.clientWidth / Math.max(1, paneWidth);
+    inner.style.width = `${Math.max(scrollWidth * trackRatio, hscroll.clientWidth + 1)}px`;
+
+    const graphMax = Math.max(0, scrollWidth - paneWidth);
+    const hMax = Math.max(0, inner.offsetWidth - hscroll.clientWidth);
+    let targetLeft = graphScroll.scrollLeft;
+    if (graphMax > 0 && hMax > 0) {
+      targetLeft = (graphScroll.scrollLeft / graphMax) * hMax;
+    }
+    if (Math.abs(hscroll.scrollLeft - targetLeft) > 1) {
+      setGraphHscrollLeft(hscroll, targetLeft);
+    }
+  }
+
+  function getGraphScrollPadLeft(timeline) {
+    const layoutWidth = getLayoutWidth(timeline);
+    if (layoutWidth <= 0) return 0;
+    const fromCss = parseFloat(
+      getComputedStyle(timeline).getPropertyValue('--git-scroll-pad-left')
+    );
+    if (Number.isFinite(fromCss) && fromCss > 0) return fromCss;
+    return layoutWidth;
+  }
+
+  /** 节点圆心在图区 inner 坐标系下的 x */
+  function getNodeInnerX(timeline, trackRow) {
+    if (!trackRow) return null;
+    const nodeX = parseFloat(trackRow.dataset.nodeX);
+    if (Number.isFinite(nodeX)) return getGraphScrollPadLeft(timeline) + nodeX;
+    const lineRight = parseFloat(trackRow.dataset.lineRight);
+    const lineW =
+      typeof GitTimelineLayout !== 'undefined' ? GitTimelineLayout.LINE_WIDTH : 2;
+    if (Number.isFinite(lineRight)) return lineRight - lineW / 2;
+    return null;
+  }
+
+  /** 节点圆心 offset：scrollLeft = nodeInnerX − graph screen offset */
   function scrollGraphToInitialPosition(timeline) {
     const graphScroll = timeline.querySelector('.git-timeline-graph-scroll');
-    const newestRow = timeline.querySelector('.git-timeline-rows .git-commit-row:first-child');
-    if (!graphScroll || !newestRow) return;
-    const lineRight = parseFloat(newestRow.dataset.lineRight);
-    if (!Number.isFinite(lineRight)) return;
-    const paneWidth = graphScroll.clientWidth;
-    if (paneWidth <= 0) return;
-    const maxScroll = Math.max(0, graphScroll.scrollWidth - paneWidth);
-    const targetScroll = lineRight - paneWidth * GRAPH_INITIAL_NODE_X_RATIO;
-    graphScroll.scrollLeft = Math.min(maxScroll, Math.max(0, targetScroll));
+    const newestTrack = timeline.querySelector('.git-commit-track-row:first-child');
+    if (!graphScroll || !newestTrack) return;
+    const nodeInnerX = getNodeInnerX(timeline, newestTrack);
+    if (nodeInnerX == null) return;
+    const offset = getGraphScreenOffset(timeline);
+    const maxScroll = Math.max(0, graphScroll.scrollWidth - graphScroll.clientWidth);
+    graphScroll.scrollLeft = Math.min(maxScroll, Math.max(0, nodeInnerX - offset));
+    syncTrackBarPositions(timeline);
+    syncGraphHscroll(timeline);
   }
 
-  function syncTimelineBarPositions(timeline) {
-    const graphScroll = timeline.querySelector('.git-timeline-graph-scroll');
-    if (!graphScroll) return;
-    const scrollLeft = graphScroll.scrollLeft;
-    const paneWidth = graphScroll.clientWidth;
-    timeline.querySelectorAll('.git-commit-row[data-line-right]').forEach((row) => {
-      const lineRight = parseFloat(row.dataset.lineRight);
-      if (!Number.isFinite(lineRight)) return;
-      const barPull = paneWidth - lineRight + scrollLeft;
-      row.style.setProperty('--git-bar-pull', `${Math.max(0, barPull)}px`);
+  function resetPaneHscroll() {
+    const paneHscroll = $('git-graph-pane-hscroll');
+    const inner = $('git-graph-pane-hscroll-inner');
+    if (inner) inner.style.width = '1px';
+    if (paneHscroll) paneHscroll.scrollLeft = 0;
+  }
+
+  function updatePaneHscrollInner(timeline) {
+    const paneHscroll = $('git-graph-pane-hscroll');
+    const inner = $('git-graph-pane-hscroll-inner');
+    if (!paneHscroll || !inner || !timeline) return false;
+    const bounds = getCommitStartBounds(timeline);
+    if (!bounds) return false;
+    const range = bounds.range;
+    const viewport = paneHscroll.clientWidth;
+    if (viewport <= 0) return false;
+    inner.style.width = `${range + viewport}px`;
+    return true;
+  }
+
+  function syncPaneHscroll(timeline, options = {}) {
+    const paneHscroll = $('git-graph-pane-hscroll');
+    if (!paneHscroll) return;
+    if (!timeline) {
+      resetPaneHscroll();
+      return;
+    }
+    if (!updatePaneHscrollInner(timeline)) return;
+    const bounds = getCommitStartBounds(timeline);
+    if (!bounds) return;
+    let value = options.value;
+    if (value == null) value = getCommitScreenOffset(timeline);
+    const next = clampCommitStart(timeline, value);
+    const targetScroll = commitStartToPaneScroll(timeline, next);
+    const maxScroll = Math.max(0, paneHscroll.scrollWidth - paneHscroll.clientWidth);
+    const clampedScroll = Math.min(maxScroll, Math.max(0, targetScroll));
+    if (Math.abs(paneHscroll.scrollLeft - clampedScroll) > 1) {
+      setPaneHscrollLeft(paneHscroll, clampedScroll);
+    }
+  }
+
+  /** 等底部 commit 滑块有宽度后再同步 thumb（默认 = 窗宽 1/2） */
+  function ensurePaneHscrollSynced(timeline, value, attempt = 0) {
+    if (!timeline?.isConnected) return;
+    const paneHscroll = $('git-graph-pane-hscroll');
+    if (!paneHscroll) return;
+    if (paneHscroll.clientWidth <= 0) {
+      if (attempt < 12) {
+        requestAnimationFrame(() => ensurePaneHscrollSynced(timeline, value, attempt + 1));
+      }
+      return;
+    }
+    const target =
+      typeof value === 'number' && Number.isFinite(value)
+        ? value
+        : getDefaultCommitStart(timeline);
+    syncPaneHscroll(timeline, { value: target });
+  }
+
+  function setupPaneHscrollLayoutObserver() {
+    const paneHscroll = $('git-graph-pane-hscroll');
+    if (!paneHscroll || paneHscroll.dataset.layoutRoBound === '1') return;
+    paneHscroll.dataset.layoutRoBound = '1';
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const timeline = document.querySelector('#git-graph .git-timeline');
+      if (!timeline) return;
+      updatePaneHscrollInner(timeline);
+      syncPaneHscroll(timeline);
+    });
+    ro.observe(paneHscroll);
+  }
+
+  function applyCommitStart(timeline, startPx, options = {}) {
+    if (!timeline?.isConnected) return 0;
+    const next = Math.round(clampCommitStart(timeline, startPx));
+    timeline.style.setProperty('--git-commit-screen-offset', `${next}px`);
+    timeline.style.setProperty('--git-commit-start', `${next}px`);
+    syncCommitScrollPosition(timeline, next);
+    if (options.fromPaneHscroll) return next;
+    ensurePaneHscrollSynced(timeline, next);
+    return next;
+  }
+
+  /** 色块层：左缘随 commit 文字，右缘贴窗口；不随文字 inner 滚动 */
+  function syncCommitFillPositions(timeline) {
+    const commitScroll = timeline.querySelector('.git-timeline-commit-scroll');
+    if (!commitScroll) return;
+    const leftPad = getCommitPadLeft(timeline);
+    const fillOriginInner = leftPad + COMMIT_FILL_PAD_LEFT;
+    const fillLeft = Math.max(0, fillOriginInner - commitScroll.scrollLeft);
+    timeline.querySelectorAll('.git-commit-fill-row').forEach((row) => {
+      row.style.setProperty('--git-fill-left', `${fillLeft}px`);
     });
   }
 
-  function bindTimelineBarSync(timeline, options = {}) {
+  /** 轨道层：从节点连线到窗口最右侧，不随 commit 文字滚动 */
+  function syncTrackBarPositions(timeline) {
     const graphScroll = timeline.querySelector('.git-timeline-graph-scroll');
     if (!graphScroll) return;
-    const onSync = () => syncTimelineBarPositions(timeline);
-    graphScroll.addEventListener('scroll', onSync, { passive: true });
-    let ro = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(onSync);
-      ro.observe(graphScroll);
-    }
-    const afterLayout = () => {
-      if (options.initialScroll) {
-        scrollGraphToInitialPosition(timeline);
-      }
-      onSync();
+    const graphScrollLeft = graphScroll.scrollLeft;
+    timeline.querySelectorAll('.git-commit-track-row[data-line-right]').forEach((track) => {
+      const lineRight = parseFloat(track.dataset.lineRight);
+      if (!Number.isFinite(lineRight)) return;
+      const nodeLineScreenX = lineRight - graphScrollLeft;
+      track.style.setProperty('--git-bar-left', `${Math.max(0, nodeLineScreenX)}px`);
+    });
+  }
+
+  function bindTimelineBarSync(timeline) {
+    const graphScroll = timeline.querySelector('.git-timeline-graph-scroll');
+    const commitScroll = timeline.querySelector('.git-timeline-commit-scroll');
+    const hscroll = $('git-graph-hscroll');
+    if (!graphScroll) return;
+    const onGraphWheel = (event) => {
+      const delta = getHorizontalWheelDelta(event);
+      if (!delta) return;
+      event.preventDefault();
+      graphScroll.scrollLeft += delta;
     };
+    graphScroll.addEventListener('wheel', onGraphWheel, { passive: false });
+    const onCommitScrollSync = () => syncCommitFillPositions(timeline);
+    commitScroll?.addEventListener('scroll', onCommitScrollSync, { passive: true });
+    const onGraphScrollSync = () => {
+      syncTrackBarPositions(timeline);
+      syncGraphHscroll(timeline);
+    };
+    graphScroll.addEventListener('scroll', onGraphScrollSync, { passive: true });
+    let hscrollSyncing = false;
+    const onHscroll = () => {
+      if (hscrollSyncing || graphHscrollSyncing) return;
+      hscrollSyncing = true;
+      const inner = $('git-graph-hscroll-inner');
+      const paneWidth = graphScroll.clientWidth;
+      const scrollWidth = graphScroll.scrollWidth;
+      const graphMax = Math.max(0, scrollWidth - paneWidth);
+      const hMax = Math.max(0, (inner?.offsetWidth || 0) - (hscroll?.clientWidth || 0));
+      if (graphMax > 0 && hMax > 0) {
+        graphScroll.scrollLeft = (hscroll.scrollLeft / hMax) * graphMax;
+      } else if (hscroll) {
+        graphScroll.scrollLeft = hscroll.scrollLeft;
+      }
+      syncTrackBarPositions(timeline);
+      hscrollSyncing = false;
+    };
+    hscroll?.addEventListener('scroll', onHscroll, { passive: true });
     requestAnimationFrame(() => {
-      requestAnimationFrame(afterLayout);
+      requestAnimationFrame(() => {
+        onGraphScrollSync();
+        syncCommitFillPositions(timeline);
+      });
     });
     timeline._barSyncCleanup = () => {
-      graphScroll.removeEventListener('scroll', onSync);
-      ro?.disconnect();
+      graphScroll.removeEventListener('scroll', onGraphScrollSync);
+      graphScroll.removeEventListener('wheel', onGraphWheel);
+      hscroll?.removeEventListener('scroll', onHscroll);
+      commitScroll?.removeEventListener('scroll', onCommitScrollSync);
+      hideGraphHscroll();
     };
   }
 
-  /**
-   * @param {object[]} graphData git2json（时间正序：旧 → 新）
-   */
   function renderGraph(graphData, options = {}) {
     const container = $('git-graph');
     if (!container) return;
 
     const prevTimeline = container.querySelector('.git-timeline');
     prevTimeline?._barSyncCleanup?.();
+    prevTimeline?._layoutRo?.disconnect();
 
     container.innerHTML = '';
+    invalidateCommitBoundsCache();
     if (!graphData || graphData.length === 0) {
       container.innerHTML = '<div class="git-graph-empty">暂无提交记录</div>';
+      resetPaneHscroll();
+      hideGraphHscroll();
       return;
     }
 
@@ -310,16 +749,18 @@
       return;
     }
 
-    const model = GitTimelineLayout.buildTimelineModel(graphData);
+    const layoutWidth = getLayoutWidth(container) || getLayoutWidth($('panel-git'));
+    const model = GitTimelineLayout.buildTimelineModel(graphData, layoutWidth);
     const rowH = GitTimelineLayout.ROW_HEIGHT;
     const lineW = GitTimelineLayout.LINE_WIDTH;
     const scrollW = model.scrollWidth;
+    const scrollPadLeft = model.scrollPadLeft ?? Math.max(0, scrollW - model.graphWidth);
 
     const timeline = document.createElement('div');
     timeline.className = 'git-timeline';
     timeline.style.setProperty('--git-graph-width', `${model.graphWidth}px`);
     timeline.style.setProperty('--git-scroll-width', `${scrollW}px`);
-    timeline.style.setProperty('--git-graph-pane-width', `${model.graphWidth}px`);
+    timeline.style.setProperty('--git-scroll-pad-left', `${scrollPadLeft}px`);
     timeline.style.setProperty('--git-row-height', `${rowH}px`);
     timeline.style.height = `${model.graphHeight}px`;
 
@@ -336,48 +777,114 @@
     graphScroll.appendChild(graphInner);
     timeline.appendChild(graphScroll);
 
+    const commitLayer = document.createElement('div');
+    commitLayer.className = 'git-timeline-commit-layer';
+
+    const trackLayer = document.createElement('div');
+    trackLayer.className = 'git-timeline-track-layer';
+
+    const fillLayer = document.createElement('div');
+    fillLayer.className = 'git-timeline-commit-fill-layer';
+
+    const commitScroll = document.createElement('div');
+    commitScroll.className = 'git-timeline-commit-scroll';
+
+    const commitInner = document.createElement('div');
+    commitInner.className = 'git-timeline-commit-scroll-inner';
+
     const rows = document.createElement('div');
     rows.className = 'git-timeline-rows';
 
     const nodeByHash = new Map(model.nodes.map((n) => [n.commit.hash, n]));
 
-    model.display.forEach((commit) => {
+    model.display.forEach((commit, rowIndex) => {
       const hash = commit.hash || '';
       const nodeMeta = nodeByHash.get(hash);
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.className = 'git-commit-row';
-      row.style.height = `${rowH}px`;
-      if (nodeMeta) {
-        row.style.setProperty('--git-node-color', nodeMeta.color);
-        row.style.setProperty('--git-row-tint', nodeMeta.tint);
-        row.dataset.lineRight = String(nodeMeta.x + lineW / 2);
-      }
-      if (hash && hash === selectedCommitHash) {
-        row.classList.add('is-selected');
-      }
-      row.dataset.hash = hash;
 
+      const trackRow = document.createElement('div');
+      trackRow.className = 'git-commit-track-row';
+      trackRow.style.setProperty('--row-index', String(rowIndex));
+      if (nodeMeta) {
+        trackRow.style.setProperty('--git-row-tint', nodeMeta.tint);
+        trackRow.style.setProperty('--git-node-color', nodeMeta.color);
+        trackRow.dataset.nodeX = String(nodeMeta.x);
+        trackRow.dataset.lineRight = String(scrollPadLeft + nodeMeta.x + lineW / 2);
+      }
+      trackRow.dataset.hash = hash;
       const bar = document.createElement('span');
       bar.className = 'git-commit-bar';
       bar.setAttribute('aria-hidden', 'true');
+      trackRow.appendChild(bar);
+      trackLayer.appendChild(trackRow);
+
+      const fillRow = document.createElement('div');
+      fillRow.className = 'git-commit-fill-row';
+      fillRow.style.setProperty('--row-index', String(rowIndex));
+      if (nodeMeta) {
+        fillRow.style.setProperty('--git-node-color', nodeMeta.fill || nodeMeta.color);
+      }
+      fillRow.dataset.hash = hash;
+      const fillBar = document.createElement('span');
+      fillBar.className = 'git-commit-fill-bar';
+      fillBar.setAttribute('aria-hidden', 'true');
+      fillRow.appendChild(fillBar);
+      fillLayer.appendChild(fillRow);
+
+      const row = document.createElement('div');
+      row.className = 'git-commit-row';
+      row.style.height = `${rowH}px`;
+      row.dataset.hash = hash;
 
       const subject = document.createElement('span');
       subject.className = 'git-commit-subject';
       subject.textContent = commit.subject || '(no message)';
-      row.appendChild(bar);
       row.appendChild(subject);
-
-      row.addEventListener('click', () => {
-        selectCommit(timeline, hash, commit);
-      });
 
       rows.appendChild(row);
     });
 
-    timeline.appendChild(rows);
+    commitInner.appendChild(rows);
+    commitScroll.appendChild(commitInner);
+    commitLayer.appendChild(trackLayer);
+    commitLayer.appendChild(fillLayer);
+    commitLayer.appendChild(commitScroll);
+    timeline.appendChild(commitLayer);
     container.appendChild(timeline);
-    bindTimelineBarSync(timeline, { initialScroll: Boolean(options.initialScroll) });
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const w = getLayoutWidth(timeline);
+        if (w > 0) applyGraphScrollLayout(timeline, w);
+        updateCommitContentMetrics(timeline);
+        applyCommitStart(timeline, getDefaultCommitStart(timeline));
+        ensurePaneHscrollSynced(timeline, getDefaultCommitStart(timeline));
+        if (options.initialScroll) {
+          scrollGraphToInitialPosition(timeline);
+        } else {
+          syncTrackBarPositions(timeline);
+          syncGraphHscroll(timeline);
+        }
+      });
+    });
+
+    bindTimelineBarSync(timeline);
+    if (typeof ResizeObserver !== 'undefined') {
+      const panel = $('panel-git');
+      let lastPanelWidth = 0;
+      const layoutRo = new ResizeObserver((entries) => {
+        const w = Math.round(entries[0]?.contentRect?.width ?? 0);
+        if (w <= 0 || w === lastPanelWidth) return;
+        lastPanelWidth = w;
+        applyGraphScrollLayout(timeline, w);
+        invalidateCommitBoundsCache();
+        updateCommitContentMetrics(timeline);
+        applyCommitStart(timeline, Math.round(w * COMMIT_START_RATIO));
+        scrollGraphToInitialPosition(timeline);
+        ensurePaneHscrollSynced(timeline, Math.round(w * COMMIT_START_RATIO));
+      });
+      if (panel) layoutRo.observe(panel);
+      timeline._layoutRo = layoutRo;
+    }
   }
 
   async function refreshGitView(options = {}) {
@@ -445,18 +952,68 @@
   }
 
   function setupSidebar() {
-    $('nav-pecado')?.addEventListener('click', () => {
-      showView('chat');
-    });
-    $('nav-git')?.addEventListener('click', () => {
-      showView('git');
+    $('nav-pecado')?.addEventListener('click', () => showView('chat'));
+    $('nav-git')?.addEventListener('click', () => showView('git'));
+  }
+
+  function setupHscrollWrapWheel() {
+    const wrap = $('git-graph-hscroll-wrap');
+    if (!wrap || wrap.dataset.wheelBound === '1') return;
+    wrap.dataset.wheelBound = '1';
+    wrap.addEventListener('wheel', onGraphHorizontalWheel, { passive: false, capture: true });
+  }
+
+  function setupPaneHscroll() {
+    const paneHscroll = $('git-graph-pane-hscroll');
+    if (!paneHscroll || paneHscroll.dataset.bound === '1') return;
+    paneHscroll.dataset.bound = '1';
+    paneHscroll.addEventListener(
+      'scroll',
+      () => {
+        if (paneHscrollSyncing) return;
+        const timeline = document.querySelector('#git-graph .git-timeline');
+        if (!timeline) return;
+        const bounds = getCommitStartBounds(timeline);
+        if (!bounds) return;
+        applyCommitStart(timeline, paneScrollToCommitStart(timeline, paneHscroll.scrollLeft), {
+          fromPaneHscroll: true,
+        });
+      },
+      { passive: true }
+    );
+    setupHscrollWrapWheel();
+    setupPaneHscrollLayoutObserver();
+  }
+
+  function setupProjectInfoClick() {
+    const info = $('git-info');
+    if (!info || info.dataset.clickBound === '1') return;
+    info.dataset.clickBound = '1';
+    info.addEventListener('click', async () => {
+      const root = info.dataset.projectRoot || currentProjectRoot;
+      if (!root || info.disabled) return;
+      const api = getApi();
+      if (!api || typeof api.mcpFsOpenProjectRoot !== 'function') return;
+      const res = await api.mcpFsOpenProjectRoot({ projectRoot: root });
+      if (!res?.ok && res?.error) {
+        setGitMessage(res.error, true);
+      }
     });
   }
 
   function setupToolbar() {
+    const mount = $('panel-git');
+    if (!mount || mount.dataset.toolbarBound === '1') {
+      setupPaneHscroll();
+      setupProjectInfoClick();
+      return;
+    }
+    mount.dataset.toolbarBound = '1';
     $('git-btn-pull')?.addEventListener('click', () => runGitAction('pull'));
     $('git-btn-push')?.addEventListener('click', () => runGitAction('push'));
     $('git-btn-commit')?.addEventListener('click', () => runGitAction('commit'));
+    setupPaneHscroll();
+    setupProjectInfoClick();
   }
 
   function setupProjectListener() {
@@ -478,14 +1035,15 @@
     const api = getApi();
     if (!api || typeof api.onSettingsConfigChanged !== 'function') return;
     api.onSettingsConfigChanged(() => {
-      if (panelReady && currentProjectRoot) {
-        refreshGitView();
-      }
+      if (panelReady && currentProjectRoot) refreshGitView();
     });
   }
 
   function init() {
     setupSidebar();
+    setupPaneHscroll();
+    setupHscrollWrapWheel();
+    setupProjectInfoClick();
     setupProjectListener();
     setupSettingsListener();
     showView('chat');

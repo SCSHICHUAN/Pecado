@@ -1,7 +1,20 @@
 /**
  * @file timeline-layout.js
  *
- * 【功能】Git 提交时间线：分支 lane + merge/fork 连线（与每行 commit 对齐）。
+ * 【功能】Git 提交时间线布局模型（浏览器全局 `GitTimelineLayout`）。
+ * 【调用方】gitgraph/js/index.js → buildTimelineModel(graphData, viewportWidth)
+ *
+ * 【输出】
+ * - nodes[]：每行 { commit, row, lane, x, y, color, tint, fill, label }
+ * - paths[]：lane 竖线 + merge（竖→横）/ fork（横→竖）连线
+ * - scrollPadLeft/scrollWidth：viewport 传入时为 3×窗宽滚动区
+ *
+ * 【颜色】
+ * - color：lane 主色（节点圆 fill、连线 stroke）
+ * - tint：rgba(color, 0.24) — 供轨道半透明条
+ * - fill：solidTintColor(color) — lane 色叠 #161616 的等效实色，供 commit 色块层
+ *
+ * 【Lane 算法】assignBranchLanes：首 parent 续 lane；新分支占空 lane 或扩 lane；merge 释放 side lane。
  */
 (function (global) {
   const ROW_HEIGHT = 36;
@@ -10,8 +23,8 @@
   const NODE_RADIUS = 10;
   const LINE_WIDTH = 2;
   const CORNER_RADIUS = 6;
-  /** 左侧可滚动区域 = graphWidth × GRAPH_SCROLL_WIDTH_RATIO */
-  const GRAPH_SCROLL_WIDTH_RATIO = 2;
+  /** 无 viewport 时的 fallback：可滚动总宽 = graphWidth × 3 */
+  const GRAPH_SCROLL_WIDTH_RATIO = 3;
 
   const LANE_COLORS = ['#2eb8c5', '#9b6dd4', '#d946a8', '#e05a4f', '#6bcf7f', '#e8b84a'];
 
@@ -24,13 +37,35 @@
   }
 
   /** @param {string} hex #rrggbb */
-  function tintColor(hex, alpha = 0.24) {
+  function parseHex(hex) {
     const h = String(hex || '').replace('#', '');
-    if (h.length !== 6) return `rgba(120, 120, 120, ${alpha})`;
-    const r = parseInt(h.slice(0, 2), 16);
-    const g = parseInt(h.slice(2, 4), 16);
-    const b = parseInt(h.slice(4, 6), 16);
+    if (h.length !== 6) return { r: 120, g: 120, b: 120 };
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+    };
+  }
+
+  function toHex({ r, g, b }) {
+    return `#${[r, g, b].map((c) => Math.max(0, Math.min(255, c)).toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  /** @param {string} hex #rrggbb */
+  function tintColor(hex, alpha = 0.24) {
+    const { r, g, b } = parseHex(hex);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  /** 轨道 tint 叠在背景上的等效实色（无透明度） */
+  function solidTintColor(hex, bgHex = '#161616', alpha = 0.24) {
+    const fg = parseHex(hex);
+    const bg = parseHex(bgHex);
+    return toHex({
+      r: Math.round(bg.r * (1 - alpha) + fg.r * alpha),
+      g: Math.round(bg.g * (1 - alpha) + fg.g * alpha),
+      b: Math.round(bg.b * (1 - alpha) + fg.b * alpha),
+    });
   }
 
   /**
@@ -146,8 +181,9 @@
 
   /**
    * @param {object[]} commitsOldestFirst
+   * @param {number} [viewportWidth] 面板可视宽度；传入时左右各留一倍窗宽，总宽 = 3×窗宽
    */
-  function buildTimelineModel(commitsOldestFirst) {
+  function buildTimelineModel(commitsOldestFirst, viewportWidth = 0) {
     const display = [...commitsOldestFirst].reverse();
     const rowOf = new Map(display.map((c, i) => [c.hash, i]));
     const { commitMeta, laneCount } = assignBranchLanes(commitsOldestFirst);
@@ -226,6 +262,7 @@
         lane: meta.lane,
         color,
         tint: tintColor(color),
+        fill: solidTintColor(color),
         x: cx(meta.lane),
         y: cy(row),
         label: commit.dotText || '?',
@@ -233,10 +270,32 @@
     });
 
     const graphWidth = PAD_LEFT * 2 + laneCount * LANE_WIDTH;
-    const scrollWidth = graphWidth * GRAPH_SCROLL_WIDTH_RATIO;
+    let scrollPadLeft;
+    let scrollPadRight;
+    let scrollWidth;
+    if (viewportWidth > 0) {
+      scrollPadLeft = viewportWidth;
+      scrollPadRight = viewportWidth;
+      scrollWidth = viewportWidth * 3;
+    } else {
+      const scrollPad = (graphWidth * GRAPH_SCROLL_WIDTH_RATIO - graphWidth) / 2;
+      scrollPadLeft = scrollPad;
+      scrollPadRight = scrollPad;
+      scrollWidth = scrollPadLeft + graphWidth + scrollPadRight;
+    }
     const graphHeight = display.length * ROW_HEIGHT;
 
-    return { display, nodes, paths, graphWidth, scrollWidth, graphHeight, ROW_HEIGHT };
+    return {
+      display,
+      nodes,
+      paths,
+      graphWidth,
+      scrollWidth,
+      scrollPadLeft,
+      scrollPadRight,
+      graphHeight,
+      ROW_HEIGHT,
+    };
   }
 
   global.GitTimelineLayout = {
@@ -246,6 +305,7 @@
     GRAPH_SCROLL_WIDTH_RATIO,
     buildTimelineModel,
     tintColor,
+    solidTintColor,
     LANE_COLORS,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

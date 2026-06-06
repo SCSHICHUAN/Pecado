@@ -69,9 +69,21 @@ html, body {
 }
 
 .detail-header {
-  padding: 20px 24px 12px;
+  padding: 16px 24px;
   border-bottom: 1px solid #2a2a2a;
   flex-shrink: 0;
+}
+
+.detail-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.detail-header-text {
+  min-width: 0;
+  flex: 1;
 }
 
 .detail-header h1 {
@@ -84,6 +96,11 @@ html, body {
   font-size: 12px;
   color: #888;
   line-height: 1.5;
+}
+
+.detail-header .action.save {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .detail-body {
@@ -172,16 +189,10 @@ input:focus, select:focus {
 }
 
 .detail-footer {
-  padding: 12px 24px 20px;
+  padding: 12px 24px 16px;
   border-top: 1px solid #2a2a2a;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   flex-shrink: 0;
 }
-
-.actions { display: flex; gap: 8px; }
 
 button.action {
   border: none;

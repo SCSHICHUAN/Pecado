@@ -28,7 +28,6 @@
 | [`markdown-it`](https://www.npmjs.com/package/markdown-it) | Preload 内 Markdown 渲染 |
 | [`highlight.js`](https://www.npmjs.com/package/highlight.js) | 代码块语法高亮 |
 | [`xcode`](https://www.npmjs.com/package/xcode) | 解析/修改 `project.pbxproj` |
-| [`@gitgraph/js`](https://www.npmjs.com/package/@gitgraph/js) | Git 提交图 UI |
 
 HTTP/SSE 使用 Node/Electron 内置 **`fetch`**。
 
@@ -61,7 +60,7 @@ Pecado/
 │   ├── mcp-filesystem/        # MCP 子进程、读写沙箱、tool-executor（EXEC）
 │   ├── xcode/                 # macOS 流式写盘、pbxproj、确认对话框
 │   ├── commands/js/           # 本地 JSON 后置指令
-│   ├── gitgraph/              # Git 面板（html/css/js + register）
+│   ├── gitgraph/              # Git 面板（自研 SVG 时间线，见 gitgraph/README.md）
 │   ├── settings/              # Preferences（html/css/js + register）
 │   ├── preload/preload.js
 │   ├── shared/                # ipc-channels.js、format-tree.js
@@ -101,7 +100,7 @@ npm run build      # 产物在 release/
 | **mcp-filesystem** | `mcp-filesystem/` | MCP 连接、读写沙箱、`EXECUTE_execute_tool` | 不选对话模式、不注册 VOLC IPC |
 | **xcode** | `xcode/` | 流式写盘、pbxproj、创建确认 | 不注册 IPC |
 | **commands** | `commands/` | 回合结束后 JSON 本地指令 | 不进 Agent Loop |
-| **gitgraph** | `gitgraph/` | Git 状态 / pull / push / commit | 不进 Agent Loop |
+| **gitgraph** | `gitgraph/` | Git 时间线、pull/push/commit、工程路径栏 | 不进 Agent Loop |
 | **settings** | `settings/` | Volc 配置、菜单、Preferences 窗口 | — |
 
 ### 主进程模块注册
@@ -495,6 +494,40 @@ flowchart TD
 
 ---
 
+## Git 提交图谱（开发完成）
+
+侧栏 **Git** 使用**自研 SVG 时间线**（`src/gitgraph/`，不依赖 `@gitgraph/js`）。详细设计见 **[src/gitgraph/README.md](src/gitgraph/README.md)**。
+
+### 设计要点
+
+| 层 | 显示方式 | 滚动 |
+|----|----------|------|
+| **节点** | 每行圆点（lane 色 + 作者首字母）；仅圆点可点选 | 随图区横向滚；默认最新节点在屏幕 **1/4** 宽 |
+| **轨道** | 半透明 tint 条：节点竖线 → 窗口右缘 | 固定视口；`--git-bar-left` 随图区 scroll 更新 |
+| **Commit 色块** | 实色（与 tint 视觉一致）：文字列起点 → 右缘 | 固定视口；左缘随 commit 起始滑块 |
+| **Commit 文字** | 白/灰 subject，左内边距 28px | inner 可滚；默认左缘在屏幕 **1/2** 宽 |
+
+- **底部双滚动条**（50/50）：左 = 图区；右 = commit 起始位置（与图区 decouple）。
+- **滚轮**：横向滑动只滚图区；commit 文字层点击穿透至节点。
+- **条数**：Preferences → 通用 → 100 / 200 / 500 / 1000 / 1500 / 5000。
+- **工程路径栏**：点击在 Finder 中打开（`MCP_FS.OPEN_PROJECT_ROOT`）。
+
+### Push 到远端
+
+**用户工程（应用内）**：Open Folder → Git 面板 → **Push**（`git push`）。
+
+**本仓库（终端）**：
+
+```bash
+git add -A
+git commit -m "描述本次改动"
+git push origin main
+```
+
+新分支首次：`git push -u origin <branch>`。
+
+---
+
 ## 主要文件索引
 
 | 能力 | 文件 |
@@ -511,6 +544,9 @@ flowchart TD
 | plain/context 单轮 | `src/pecado/js/agent/plain-stream.js` |
 | UI 流推送 | `src/pecado/js/agent/stream-ui.js` |
 | 本地 JSON 指令 | `src/commands/js/local-commands.js` |
+| Git 时间线 UI | `src/gitgraph/js/index.js` |
+| Git 布局 / lane | `src/gitgraph/js/timeline-layout.js` |
+| Git 主进程 IPC | `src/gitgraph/js/register.js` |
 | 工程上下文 | `src/mcp-filesystem/project-context.js` |
 | IPC 通道常量 | `src/shared/ipc-channels.js` |
 | Preload | `src/preload/preload.js` |

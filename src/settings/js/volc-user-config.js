@@ -18,7 +18,8 @@ const { app } = require('electron');
 
 const DEFAULT_MODEL = 'bot-20260424113808-wwggn';
 const DEFAULT_GIT_GRAPH_COMMIT_LIMIT = 500;
-const MIN_GIT_GRAPH_COMMIT_LIMIT = 10;
+const GIT_GRAPH_COMMIT_LIMIT_OPTIONS = [100, 200, 500, 1000, 1500, 5000];
+const MIN_GIT_GRAPH_COMMIT_LIMIT = 100;
 const MAX_GIT_GRAPH_COMMIT_LIMIT = 5000;
 
 function getUserVolcConfigPath() {
@@ -43,8 +44,18 @@ function readRawUserConfigFile() {
 
 function normalizeGitGraphCommitLimit(value) {
   const n = parseInt(String(value ?? ''), 10);
+  if (GIT_GRAPH_COMMIT_LIMIT_OPTIONS.includes(n)) return n;
   if (!Number.isFinite(n)) return DEFAULT_GIT_GRAPH_COMMIT_LIMIT;
-  return Math.min(MAX_GIT_GRAPH_COMMIT_LIMIT, Math.max(MIN_GIT_GRAPH_COMMIT_LIMIT, n));
+  let best = DEFAULT_GIT_GRAPH_COMMIT_LIMIT;
+  let bestDist = Infinity;
+  for (const opt of GIT_GRAPH_COMMIT_LIMIT_OPTIONS) {
+    const dist = Math.abs(opt - n);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = opt;
+    }
+  }
+  return best;
 }
 
 function readUserVolcConfig() {
@@ -117,6 +128,7 @@ module.exports = {
   resolveGitGraphCommitLimit,
   normalizeGitGraphCommitLimit,
   DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
+  GIT_GRAPH_COMMIT_LIMIT_OPTIONS,
   MIN_GIT_GRAPH_COMMIT_LIMIT,
   MAX_GIT_GRAPH_COMMIT_LIMIT,
   MISSING_KEY_ERROR,

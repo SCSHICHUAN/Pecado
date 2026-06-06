@@ -1,10 +1,12 @@
 /**
  * @file register.js
- * @module gitgraph
  *
- * 【职责】Git 面板主进程：状态 / pull / push / commit + 提供 gitgraph/html/index.html。
+ * 【功能】Git 面板主进程 IPC 注册与 HTML 片段下发。
  * 【注册】main/js/main.js → gitgraph.register(ipcMain)
- * 【渲染】gitgraph/js/index.js（由 main/html/index.html 加载）
+ * 【渲染】gitgraph/js/index.js（main/html/index.html 加载）
+ *
+ * 【IPC】GIT.GET_PANEL_HTML | GET_STATE | PULL | PUSH | COMMIT
+ * 工程根目录：payload.projectRoot 或 mcp-project.json（与 Open Folder 一致）。
  */
 const fs = require('fs');
 const path = require('path');

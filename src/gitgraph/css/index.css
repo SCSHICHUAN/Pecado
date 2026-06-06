@@ -1,19 +1,23 @@
 /**
  * @file index.css
  *
- * 【功能】Git 面板样式（提交时间线列表）。
+ * 【功能】Git 面板样式：工具栏、工程路径栏、时间线叠层、双横向滚动条、Status 区。
  * 【调用方】main/html/index.html → ../../gitgraph/css/index.css
+ *
+ * 【叠层 z-index】graph-scroll 1 → track 1 → fill 2 → commit-scroll 3（scroll 层 pointer-events:none）
+ * 【设计说明】src/gitgraph/README.md
  */
 
 .git-panel-mount {
     min-height: 0;
     min-width: 0;
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto 1fr auto auto;
     grid-template-areas:
         'toolbar'
         'meta'
         'graph'
+        'hscroll'
         'status';
     background: #1e1e1e;
 }
@@ -68,19 +72,41 @@
 
 .git-meta {
     grid-area: meta;
-    padding: 10px 20px;
+    padding: 4px 20px;
+    min-height: 28px;
     border-bottom: 1px solid var(--line, #2a2a2a);
     background: #1a1a1a;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
 }
 
 .git-info {
-    font-size: 12px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 11px;
+    line-height: 1.35;
     color: #a0a0a0;
     word-break: break-all;
+    text-align: left;
+    width: 100%;
+    cursor: default;
+}
+
+.git-info:not(:disabled) {
+    cursor: pointer;
+}
+
+.git-info:not(:disabled):hover {
+    color: #d0d0d0;
 }
 
 .git-message {
-    margin-top: 6px;
     font-size: 12px;
     color: #8fd18f;
     white-space: pre-wrap;
@@ -94,9 +120,69 @@
     grid-area: graph;
     min-height: 0;
     min-width: 0;
-    overflow: auto;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0;
     background: #161616;
+}
+
+.git-graph-hscroll-wrap {
+    grid-area: hscroll;
+    min-width: 0;
+    padding: 0 0 2px;
+    background: #161616;
+    border-top: 1px solid var(--line, #2a2a2a);
+}
+
+.git-hscroll-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: stretch;
+    min-width: 0;
+    gap: 0;
+}
+
+.git-graph-hscroll-cell,
+.git-pane-hscroll-cell {
+    min-width: 0;
+}
+
+.git-graph-hscroll-cell:not(.is-visible) .git-graph-hscroll {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.git-graph-hscroll,
+.git-pane-hscroll {
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
+    height: var(--scrollbar-h, 8px);
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb, #484848) var(--scrollbar-track, #242424);
+    overscroll-behavior-x: contain;
+    touch-action: pan-x;
+}
+
+.git-graph-hscroll::-webkit-scrollbar,
+.git-pane-hscroll::-webkit-scrollbar {
+    height: var(--scrollbar-h, 8px);
+}
+
+.git-graph-hscroll::-webkit-scrollbar-track,
+.git-pane-hscroll::-webkit-scrollbar-track {
+    background: var(--scrollbar-track, #242424);
+}
+
+.git-graph-hscroll::-webkit-scrollbar-thumb,
+.git-pane-hscroll::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb, #484848);
+    border-radius: 999px;
+}
+
+.git-graph-hscroll-inner,
+.git-pane-hscroll-inner {
+    height: 1px;
 }
 
 .git-graph {
@@ -104,30 +190,39 @@
     min-width: 0;
 }
 
-/* —— 提交时间线：左图区 scrollWidth=2×graphWidth，右侧 message —— */
+/* —— 时间线：图区 + 轨道 + commit 文字 —— */
 
 .git-timeline {
-    display: flex;
-    flex-direction: row;
-    align-items: flex-start;
+    position: relative;
     width: 100%;
     min-width: 0;
-    gap: 0;
     --git-graph-width: 46px;
-    --git-scroll-width: 92px;
+    --git-scroll-width: 300%;
+    --git-scroll-pad-left: 33.333%;
     --git-row-height: 36px;
     --git-bar-inset-y: 5px;
-    --git-msg-min-width: 160px;
-    --git-graph-pane-width: var(--git-graph-width);
+    --git-layout-width: 100%;
+    --git-graph-screen-offset: 25%;
+    --git-commit-screen-offset: 50%;
+    --git-commit-start: 50%;
+    --git-commit-pad-left: 0px;
+    --git-commit-text-width: 100%;
+    --git-commit-scroll-width: 100%;
 }
 
 .git-timeline-graph-scroll {
-    flex: 0 0 var(--git-graph-pane-width);
-    width: var(--git-graph-pane-width);
-    min-width: var(--git-graph-width);
+    position: absolute;
+    inset: 0;
+    width: 100%;
     height: 100%;
     overflow-x: auto;
     overflow-y: hidden;
+    scrollbar-width: none;
+    z-index: 1;
+}
+
+.git-timeline-graph-scroll::-webkit-scrollbar {
+    display: none;
 }
 
 .git-timeline-graph-scroll-inner {
@@ -141,17 +236,23 @@
     display: block;
     width: var(--git-graph-width);
     min-width: var(--git-graph-width);
+    margin-left: var(--git-scroll-pad-left, 0px);
     overflow: visible;
-    z-index: 1;
 }
 
 .git-commit-node-svg {
-    pointer-events: bounding-box;
+    pointer-events: none;
 }
 
 .git-commit-node-svg circle {
+    pointer-events: all;
+    cursor: pointer;
     stroke: rgba(0, 0, 0, 0.25);
     stroke-width: 1;
+}
+
+.git-commit-node-svg text {
+    pointer-events: none;
 }
 
 .git-commit-node-svg.is-selected circle {
@@ -159,14 +260,102 @@
     stroke-width: 2;
 }
 
+.git-timeline-commit-layer {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    min-height: 100%;
+    pointer-events: none;
+}
+
+/* 轨道层：固定整窗宽，从连线到最右侧，不随文字滚动 */
+.git-timeline-track-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* commit 色块层：左缘随文字位置，右缘贴窗口；实色，不随文字 inner 滚动 */
+.git-timeline-commit-fill-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.git-commit-fill-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--row-index, 0) * var(--git-row-height));
+    height: var(--git-row-height);
+    pointer-events: none;
+}
+
+.git-commit-fill-bar {
+    position: absolute;
+    left: var(--git-fill-left, 0);
+    right: 0;
+    top: var(--git-bar-inset-y, 5px);
+    height: calc(var(--git-row-height) - 2 * var(--git-bar-inset-y, 5px));
+    background: var(--git-node-color, #555);
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.git-commit-track-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--row-index, 0) * var(--git-row-height));
+    height: var(--git-row-height);
+    pointer-events: none;
+}
+
+.git-commit-bar {
+    position: absolute;
+    left: var(--git-bar-left, 0);
+    right: 0;
+    top: var(--git-bar-inset-y, 5px);
+    height: calc(var(--git-row-height) - 2 * var(--git-bar-inset-y, 5px));
+    background: var(--git-row-tint, transparent);
+    box-sizing: border-box;
+    pointer-events: none;
+    transition: filter 0.12s ease;
+}
+
+/* commit 文字：独立横向滚动，宽度 = 文字 + 1 窗宽 */
+.git-timeline-commit-scroll {
+    position: relative;
+    z-index: 3;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    pointer-events: none;
+    overscroll-behavior-x: none;
+}
+
+.git-timeline-commit-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+.git-timeline-commit-scroll-inner {
+    width: var(--git-commit-scroll-width, 100%);
+    min-width: 100%;
+    padding-left: var(--git-commit-pad-left, 0px);
+    box-sizing: border-box;
+}
+
 .git-timeline-rows {
-    flex: 1 1 0;
-    min-width: var(--git-msg-min-width);
     display: flex;
     flex-direction: column;
     gap: 0;
-    z-index: 0;
-    background: #161616;
+    width: var(--git-commit-text-width, 100%);
+    min-width: min-content;
 }
 
 .git-commit-row {
@@ -174,6 +363,7 @@
     display: flex;
     align-items: center;
     width: 100%;
+    min-width: 0;
     height: var(--git-row-height);
     min-height: var(--git-row-height);
     max-height: var(--git-row-height);
@@ -185,50 +375,20 @@
     font: inherit;
     line-height: 1;
     text-align: left;
-    cursor: pointer;
     box-sizing: border-box;
     flex-shrink: 0;
-    appearance: none;
-    -webkit-appearance: none;
-}
-
-.git-commit-bar {
-    position: absolute;
-    left: calc(-1 * var(--git-bar-pull, 0px));
-    top: var(--git-bar-inset-y, 5px);
-    width: calc(100% + var(--git-bar-pull, 0px));
-    height: calc(var(--git-row-height) - 2 * var(--git-bar-inset-y, 5px));
-    background: var(--git-row-tint, transparent);
-    box-sizing: border-box;
     pointer-events: none;
-    z-index: 0;
-    transition: filter 0.12s ease;
-}
-
-.git-commit-row:hover .git-commit-bar {
-    filter: brightness(1.12);
-}
-
-.git-commit-row.is-selected {
-    background: rgba(32, 68, 102, 0.35);
-}
-
-.git-commit-row.is-selected .git-commit-bar {
-    filter: brightness(1.22);
-    box-shadow: inset 0 0 0 1px var(--git-node-color, #555);
 }
 
 .git-commit-subject {
     position: relative;
     z-index: 1;
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 0 14px 0 12px;
+    flex: 0 0 auto;
+    padding: 0 14px 0 var(--git-commit-subject-pad-left, 28px);
     font-size: 13px;
     line-height: var(--git-row-height);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    color: #d8d8d8;
 }
 
 .git-graph-empty {

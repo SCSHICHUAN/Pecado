@@ -1,7 +1,13 @@
 /**
  * @file git-runner.js
  *
- * 【功能】在工程目录内执行 git 命令（status / log / pull / push / commit）。
+ * 【功能】在 MCP 已打开的工程目录内执行 git 子进程命令。
+ * 【调用方】gitgraph/js/register.js
+ *
+ * 【能力】
+ * - getRepoState：isRepo、branch、porcelain status、graphData（log-parser）
+ * - pull：--ff-only；push；commitAll：add -A + commit -m
+ * - graphData 条数：settings/volc-user-config → resolveGitGraphCommitLimit()
  */
 const { execFile } = require('child_process');
 const { promisify } = require('util');

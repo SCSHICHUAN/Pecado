@@ -36,6 +36,8 @@ module.exports = {
   },
   MCP_FS: {
     DIRECTORY_TREE: 'mcp-fs-directory-tree',
+    /** invoke：{ projectRoot? } → shell.openPath 在 Finder/资源管理器中打开 */
+    OPEN_PROJECT_ROOT: 'mcp-fs-open-project-root',
     /** main → renderer：用户通过菜单 Open Folder 后推送 */
     PROJECT_CHANGED: 'mcp-fs-project-changed',
   },

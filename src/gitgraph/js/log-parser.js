@@ -1,7 +1,10 @@
 /**
  * @file log-parser.js
  *
- * 【功能】将 git log --pretty 输出转为 @gitgraph/js import() 所需的 git2json 结构。
+ * 【功能】将 `git log --pretty=format:…` 的 TSV 行转为时间线 commit 对象数组。
+ * 【调用方】gitgraph/js/git-runner.js → buildGit2Json(stdout)
+ *
+ * 【字段】hash, parents[], subject, author, date, refs[], dotText（作者首字母，显示在节点圆内）
  */
 
 /**
