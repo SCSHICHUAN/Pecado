@@ -58,11 +58,11 @@ commit inner 总宽 = 左留白 1W + 文字区
 | 文件 | 职责 |
 |------|------|
 | `js/register.js` | 主进程 IPC：`GIT.*`、读取 `html/index.html` |
-| `js/git-runner.js` | `git log/status/pull/push/commit`，条数读 Preferences |
+| `js/git-runner.js` | `git log/status/pull/push/commit`、节点 `runNodeAction`、`remoteOriginUrl` |
 | `js/log-parser.js` | `git log --pretty` → 时间线 commit 对象 |
 | `js/project-root.js` | 读 `userData/mcp-project.json` 工程路径 |
 | `js/timeline-layout.js` | Lane 分配、merge/fork 连线、节点坐标与颜色 |
-| `js/index.js` | 渲染进程：DOM、滚动同步、选中、工具栏 |
+| `js/index.js` | 渲染进程：DOM、滚动同步、选中、工具栏、节点悬浮/右键菜单 |
 | `html/index.html` | 面板片段（由 IPC 注入 `#panel-git`） |
 | `css/index.css` | 网格布局与叠层样式 |
 
@@ -83,6 +83,42 @@ commit inner 总宽 = 左留白 1W + 文字区
 - **SVG**：每 commit 一行 — `circle`（r=10，lane 色填充）+ `text`（作者首字母，白字）。
 - **初始位置**：图区 scroll 使**最新 commit 圆心**在屏幕 **窗宽 × 1/4**。
 - **选中**：仅 `circle` 可点；选中时 `stroke: #fff, stroke-width: 2`；轨道/色块/文字不变。
+
+## 节点交互
+
+### 作者悬浮提示
+
+- 悬浮 **节点圆** 时在上方显示作者姓名。
+- 使用挂 `document.body` 的 `fixed` 浮层（`#git-node-author-tooltip`），背景固定 **`#000`**，避免被 commit 色块层（z-index 2）盖住。
+- 位置：气泡居中于节点上方；超出视口时 clamp。
+
+### 单击选中
+
+- 单击节点圆：选中 commit、底部 Status 展示 commit 详情。
+- 若右键菜单已打开，单击同时关闭菜单（圆点 `click` 使用 `stopPropagation`，需显式关菜单）。
+
+### 右键 / 双指菜单
+
+- 触发：`contextmenu` on 节点圆。
+- 菜单为独立 `fixed` 浮层（`#git-node-menu`，挂 `document.body`）。
+- **锚点**：菜单**左上角**对齐节点**圆心**（`getBoundingClientRect`）；若超出 Mac 窗口视口则平移（右/底溢出时左移或上移），保证菜单完整可见。
+- 关闭：点击菜单外、Esc、窗口 scroll/resize、单击节点圆。
+- 执行：渲染进程 `gitNodeAction` → 主进程 `GIT.NODE_ACTION` → `git-runner.runNodeAction` → 刷新图谱。
+
+| 菜单项 | action | git 命令 |
+|--------|--------|----------|
+| Checkout this commit | `checkout` | `git checkout <hash>` |
+| Create branch here | `branch` | `git branch <name> <hash>` |
+| Cherry pick commit | `cherry-pick` | `git cherry-pick <hash>` |
+| Reset … to this commit | `reset` + `resetMode` | `git reset --mixed\|soft\|hard <hash>` |
+| Revert commit | `revert` | `git revert --no-edit <hash>` |
+| Copy commit sha | （渲染进程剪贴板） | — |
+| Copy link on remote: origin | （渲染进程，需 `remoteOriginUrl`） | — |
+| Create patch from commit | `format-patch` | `git format-patch -1 --stdout` → 剪贴板 |
+| Create tag here | `tag` | `git tag <name> <hash>` |
+| Create annotated tag here | `tag-annotated` | `git tag -a <name> <hash> -m …` |
+
+破坏性操作（checkout、reset hard 等）带确认框；创建分支/标签通过 `prompt` 输入名称。
 
 ## 轨道如何显示
 
@@ -134,4 +170,13 @@ git push origin main
 
 ## IPC 通道
 
-见 `src/shared/ipc-channels.js` → `GIT.*`；渲染端 `window.electronAPI.gitGetState` 等（`preload/preload.js`）。
+见 `src/shared/ipc-channels.js` → `GIT.*`：
+
+| 通道 | 说明 |
+|------|------|
+| `GET_PANEL_HTML` | 面板 HTML 片段 |
+| `GET_STATE` | 分支、status、graphData、remoteOriginUrl |
+| `PULL` / `PUSH` / `COMMIT` | 工具栏 |
+| `NODE_ACTION` | 节点右键菜单 Git 操作 |
+
+渲染端 `window.electronAPI`：`gitGetPanelHtml`、`gitGetState`、`gitPull`、`gitPush`、`gitCommit`、`gitNodeAction`（`preload/preload.js`）。

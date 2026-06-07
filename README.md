@@ -14,6 +14,7 @@
 | **Agent 工具** | read / write / edit / create_directory 等，经主进程沙箱执行 |
 | **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`、自动 `open` Xcode |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
+| **Git 面板** | 自研 SVG 提交时间线：Pull / Push / Commit、节点选中、作者悬浮、右键 Git 操作（见下文） |
 
 ---
 
@@ -100,7 +101,7 @@ npm run build      # 产物在 release/
 | **mcp-filesystem** | `mcp-filesystem/` | MCP 连接、读写沙箱、`EXECUTE_execute_tool` | 不选对话模式、不注册 VOLC IPC |
 | **xcode** | `xcode/` | 流式写盘、pbxproj、创建确认 | 不注册 IPC |
 | **commands** | `commands/` | 回合结束后 JSON 本地指令 | 不进 Agent Loop |
-| **gitgraph** | `gitgraph/` | Git 时间线、pull/push/commit、工程路径栏 | 不进 Agent Loop |
+| **gitgraph** | `gitgraph/` | Git 时间线、Pull/Push/Commit、节点 Git 操作、工程路径栏 | 不进 Agent Loop |
 | **settings** | `settings/` | Volc 配置、菜单、Preferences 窗口 | — |
 
 ### 主进程模块注册
@@ -113,7 +114,7 @@ npm run build      # 产物在 release/
 | 2 | commands | `commands/js/register.js` | `QQ_MUSIC.HANDLE_BOT_COMMAND` |
 | 3 | settings | `settings/js/register.js` | `SETTINGS.*` |
 | 4 | mcp-filesystem | `mcp-filesystem/ipc.js` | `MCP_FS.*` + Open Folder |
-| 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*` |
+| 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*`（含 `NODE_ACTION`） |
 | 6 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
 
 渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/index.js`。
@@ -494,36 +495,85 @@ flowchart TD
 
 ---
 
-## Git 提交图谱（开发完成）
+## Git 面板（gitgraph 模块）
 
-侧栏 **Git** 使用**自研 SVG 时间线**（`src/gitgraph/`，不依赖 `@gitgraph/js`）。详细设计见 **[src/gitgraph/README.md](src/gitgraph/README.md)**。
+侧栏 **Git** 使用**自研 SVG 时间线**（`src/gitgraph/`，不依赖 `@gitgraph/js`）。与 **File → Open Folder** 共用工程根目录（`userData/mcp-project.json`）。详细布局与滚动策略见 **[src/gitgraph/README.md](src/gitgraph/README.md)**。
 
-### 显示策略
+### 前置条件
 
-为兼容极端情况（超长 commit 信息、多 lane、大量提交），横向可滚区域**故意加宽**，使每一行都能滚到窗口内任意水平位置：
+1. **File → Open Folder** 打开 Git 仓库根目录。
+2. 侧栏切换到 **Git**；顶栏显示当前分支与工程路径。
+3. **Preferences → 通用 → Git 提交图条数**：100 / 200 / 500 / 1000 / 1500 / 5000。
+
+### 面板结构
+
+| 区域 | 功能 |
+|------|------|
+| **工具栏** | Push、Pull、Commit（`git push` / `git pull` / `git add -A && commit`） |
+| **工程路径栏** | 显示仓库路径；点击在 Finder 中打开（`MCP_FS.OPEN_PROJECT_ROOT`） |
+| **时间线** | SVG 分支图 + 轨道 tint + commit 色块 + subject 文字（四层叠放） |
+| **底部双滚动条** | 左：图区横向滚动；右：commit 文字起始位置（与图区解耦） |
+| **Status** | 选中节点后在底部展示该 commit 详情；未选中时显示 `git status` |
+
+### 节点交互
+
+| 操作 | 行为 |
+|------|------|
+| **悬浮节点圆** | 节点上方显示作者姓名（独立 `fixed` 浮层，背景 `#000`） |
+| **单击节点圆** | 选中 commit（白描边）；底部 Status 切换为该 commit 信息；关闭已打开的右键菜单 |
+| **右键 / 双指点击节点圆** | 弹出 Git 操作菜单（独立 `fixed` 浮层，菜单左上角对齐节点圆心；超出窗口时自动平移以保证完整可见） |
+
+仅 SVG **圆点**可交互；轨道条、色块、文字层 `pointer-events: none`，不抢点击。
+
+### 节点右键菜单
+
+主进程经 `GIT.NODE_ACTION` → `git-runner.runNodeAction` 执行，完成后刷新图谱与 Status。
+
+| 菜单项 | `action` | 说明 |
+|--------|----------|------|
+| Checkout this commit | `checkout` | `git checkout <hash>`（确认框） |
+| Create branch here | `branch` | 输入分支名 → `git branch <name> <hash>` |
+| Cherry pick commit | `cherry-pick` | `git cherry-pick <hash>` |
+| Reset … to this commit | `reset` | 子菜单 Mixed / Soft / Hard → `git reset --<mode> <hash>` |
+| Revert commit | `revert` | `git revert --no-edit <hash>` |
+| Copy commit sha | — | 剪贴板写入完整 hash（渲染进程） |
+| Copy link … on remote: origin | — | 由 `remoteOriginUrl` 生成 HTTPS commit 链接（无 origin 时禁用） |
+| Create patch from commit | `format-patch` | `git format-patch -1` 输出复制到剪贴板 |
+| Create tag here | `tag` | 输入标签名 → `git tag <name> <hash>` |
+| Create annotated tag here | `tag-annotated` | 输入名与说明 → `git tag -a` |
+
+### 显示策略（摘要）
+
+为兼容极端情况（超长 commit 信息、多 lane、大量提交），横向可滚区域**故意加宽**：
 
 | 区域 | 可滚 inner 宽度 | 作用 |
 |------|-----------------|------|
 | **节点图** | **3 × 窗宽**（左留白 1W + SVG + 右留白 1W） | 任意节点/分支线可出现在屏幕从左到右任意 x |
 | **Commit 文字** | 左留白 1W +（最长 subject 宽 **+ 1W**） | 文字左缘可出现在屏幕任意 x（默认 W×1/2） |
 
-**节点如何找到对应 commit**：每一行共享同一 `row-index` — SVG 圆点、轨道 tint 条（节点竖线 → 右缘）、commit 色块/文字为同一 hash。看节点颜色与同行轨道即可对应 commit，图区 scroll 与 commit scroll **解耦**（轨道只随图区滚）。
+**节点 ↔ commit 对应**：每一行共享同一 `row-index` — SVG 圆点、轨道 tint（节点竖线 → 右缘）、commit 色块/文字为同一 hash。图区 scroll 与 commit scroll **解耦**（轨道只随图区滚）。
 
-默认锚点：最新节点圆心 **W×1/4**；commit 文字左缘 **W×1/2**。底部双滚动条：左滚图区，右调 commit 起始位置。
-
-### 设计要点
+默认锚点：最新节点圆心 **W×1/4**；commit 文字左缘 **W×1/2**。
 
 | 层 | 显示方式 | 滚动 |
 |----|----------|------|
-| **节点** | 每行圆点（lane 色 + 作者首字母）；仅圆点可点选 | 随图区横向滚；默认最新节点在屏幕 **1/4** 宽 |
-| **轨道** | 半透明 tint 条：节点竖线 → 窗口右缘 | 固定视口；`--git-bar-left` 随图区 scroll 更新 |
-| **Commit 色块** | 实色（与 tint 视觉一致）：文字列起点 → 右缘 | 固定视口；左缘随 commit 起始滑块 |
-| **Commit 文字** | 白/灰 subject，左内边距 28px | inner 可滚；默认左缘在屏幕 **1/2** 宽 |
+| **节点** | 每行圆点（lane 色 + 作者首字母）；仅圆点可点选 | 随图区横向滚 |
+| **轨道** | 半透明 tint：节点竖线 → 窗口右缘 | 固定视口；随图区 scroll 更新 |
+| **Commit 色块** | 实色（lane 24% 叠 `#161616`）：文字列起点 → 右缘 | 固定视口；左缘随 commit 滑块 |
+| **Commit 文字** | 白/灰 subject，左内边距 28px | inner 可滚 |
 
-- **底部双滚动条**（50/50）：左 = 图区；右 = commit 起始位置（与图区 decouple）。
-- **滚轮**：横向滑动只滚图区；commit 文字层点击穿透至节点。
-- **条数**：Preferences → 通用 → 100 / 200 / 500 / 1000 / 1500 / 5000。
-- **工程路径栏**：点击在 Finder 中打开（`MCP_FS.OPEN_PROJECT_ROOT`）。
+横向滚轮只滚图区；滚动/缩放窗口时关闭节点浮层菜单。
+
+### IPC（`GIT.*`）
+
+| 通道 | 用途 |
+|------|------|
+| `GET_PANEL_HTML` | 读取 `gitgraph/html/index.html` 注入 `#panel-git` |
+| `GET_STATE` | 分支、`git status`、图谱数据、`remoteOriginUrl` |
+| `PULL` / `PUSH` / `COMMIT` | 工具栏 Git 命令 |
+| `NODE_ACTION` | 节点右键菜单：`{ action, hash, branchName?, resetMode?, tagName?, tagMessage?, projectRoot? }` |
+
+渲染端：`preload/preload.js` → `gitGetState`、`gitPull`、`gitPush`、`gitCommit`、`gitNodeAction` 等。
 
 ### Push 到远端
 
@@ -559,6 +609,8 @@ git push origin main
 | 本地 JSON 指令 | `src/commands/js/local-commands.js` |
 | Git 时间线 UI | `src/gitgraph/js/index.js` |
 | Git 布局 / lane | `src/gitgraph/js/timeline-layout.js` |
+| Git CLI / 节点操作 | `src/gitgraph/js/git-runner.js` |
+| Git log 解析 | `src/gitgraph/js/log-parser.js` |
 | Git 主进程 IPC | `src/gitgraph/js/register.js` |
 | 工程上下文 | `src/mcp-filesystem/project-context.js` |
 | IPC 通道常量 | `src/shared/ipc-channels.js` |
@@ -573,7 +625,7 @@ git push origin main
 - **改 Agent 节点**：`agent-loop/` + `llm-server/` 对应 INFER/PARSE 文件
 - **改 tool 行为**：`mcp-filesystem/tool-executor.js`（含 `resolveExecHints`）
 - **扩展 DISPATCH**：`agent-loop/task-dispatcher.js` 加 `type` 分支 + 新模块 `EXECUTE_*`
-- **界面**：各模块 `html/`、`css/`、`js/index.js`
+- **改 Git 面板**：`gitgraph/js/index.js`（渲染）、`git-runner.js`（CLI）、`register.js`（IPC）；通道见 `GIT.*`
 
 ## License
 

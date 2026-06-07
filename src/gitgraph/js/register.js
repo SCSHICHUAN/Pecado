@@ -5,7 +5,7 @@
  * 【注册】main/js/main.js → gitgraph.register(ipcMain)
  * 【渲染】gitgraph/js/index.js（main/html/index.html 加载）
  *
- * 【IPC】GIT.GET_PANEL_HTML | GET_STATE | PULL | PUSH | COMMIT
+ * 【IPC】GIT.GET_PANEL_HTML | GET_STATE | PULL | PUSH | COMMIT | NODE_ACTION
  * 工程根目录：payload.projectRoot 或 mcp-project.json（与 Open Folder 一致）。
  */
 const fs = require('fs');
