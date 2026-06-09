@@ -177,10 +177,102 @@ body {
     min-width: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 1fr;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+}
+
+.main-column {
+    min-height: 0;
+    min-width: 0;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) auto;
+    overflow: hidden;
+}
+
+.content-area > .main-panel,
+.content-area > .git-panel-mount {
+    grid-row: 1;
+    grid-column: 1;
+    height: 100%;
+    min-height: 0;
 }
 
 .content-area .main-panel.hidden,
 .content-area .git-panel-mount.hidden {
     display: none;
+}
+
+.app-bottom-bar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 28px;
+    padding: 0 8px;
+    border-top: 1px solid var(--line-strong);
+    background: #252526;
+}
+
+.git-dock-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 22px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    opacity: 0.85;
+}
+
+.git-dock-toggle:hover:not(:disabled) {
+    background: #3a3a3a;
+    opacity: 1;
+}
+
+.git-dock-toggle:disabled,
+.git-dock-toggle.is-disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.git-dock-toggle[aria-pressed='true'] {
+    background: #3a3a3a;
+}
+
+.git-dock-toggle-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
+    border: 1.5px solid #9a9a9a;
+    border-radius: 3px;
+    position: relative;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+.git-dock-toggle-icon::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 58%;
+    background: #1e1e1e;
+}
+
+.git-dock-toggle-icon::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 42%;
+    background: #6e6e6e;
+}
+
+.git-dock-toggle[aria-pressed='true'] .git-dock-toggle-icon::after {
+    background: #4a90d9;
 }

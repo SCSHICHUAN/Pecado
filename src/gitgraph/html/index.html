@@ -1,9 +1,7 @@
 <!--
   @file index.html
 
-  【功能】Git 侧栏 DOM 片段（非完整页面）；由主进程 GIT.GET_PANEL_HTML 读入并注入 #panel-git。
-  【结构】toolbar → meta（工程路径 + 消息）→ graph → 双 hscroll → status
-  【说明】src/gitgraph/README.md
+  【功能】Git 全页面板：顶栏 + 操作消息 → 图谱 → 底部 Tab（status | log | pecado）
 -->
 <header class="git-toolbar">
   <div class="git-toolbar-title">Git</div>
@@ -13,28 +11,59 @@
     <button type="button" class="git-action-btn git-action-btn-primary" id="git-btn-commit">Commit</button>
   </div>
 </header>
-<div class="git-meta">
-  <button type="button" class="git-info" id="git-info" disabled>未打开工程</button>
-  <div class="git-message" id="git-message"></div>
+<div class="git-meta" id="git-meta">
+  <div class="git-message" id="git-message">未打开工程</div>
+  <div class="git-meta-branch" id="git-meta-branch" title="当前分支">—</div>
 </div>
-<div class="git-graph-wrap">
-  <div class="git-graph" id="git-graph"></div>
-</div>
-<div class="git-graph-hscroll-wrap" id="git-graph-hscroll-wrap">
-  <div class="git-hscroll-row">
-    <div class="git-graph-hscroll-cell">
-      <div class="git-graph-hscroll" id="git-graph-hscroll" tabindex="-1" aria-label="节点图横向滚动">
-        <div class="git-graph-hscroll-inner" id="git-graph-hscroll-inner"></div>
+<div class="git-main">
+  <div class="git-graph-wrap">
+    <div class="git-graph" id="git-graph"></div>
+  </div>
+  <div class="git-graph-hscroll-wrap" id="git-graph-hscroll-wrap">
+    <div class="git-hscroll-row">
+      <div class="git-graph-hscroll-cell">
+        <div class="git-graph-hscroll" id="git-graph-hscroll" tabindex="-1" aria-label="节点图横向滚动">
+          <div class="git-graph-hscroll-inner" id="git-graph-hscroll-inner"></div>
+        </div>
       </div>
-    </div>
-    <div class="git-pane-hscroll-cell">
-      <div class="git-pane-hscroll" id="git-graph-pane-hscroll" tabindex="-1" aria-label="Commit 起始位置">
-        <div class="git-pane-hscroll-inner" id="git-graph-pane-hscroll-inner"></div>
+      <div class="git-pane-hscroll-cell">
+        <div class="git-pane-hscroll" id="git-graph-pane-hscroll" tabindex="-1" aria-label="Commit 起始位置">
+          <div class="git-pane-hscroll-inner" id="git-graph-pane-hscroll-inner"></div>
+        </div>
       </div>
     </div>
   </div>
 </div>
-<div class="git-status-wrap">
-  <div class="git-status-label" id="git-status-label">Status</div>
-  <pre class="git-status" id="git-status"></pre>
+<div class="git-bottom-dock" id="git-bottom-dock">
+  <nav class="git-bottom-tabs" role="tablist" aria-label="Git 详情">
+    <button type="button" class="git-bottom-tab is-active" data-git-bottom-tab="status" role="tab" aria-selected="true">status</button>
+    <button type="button" class="git-bottom-tab" data-git-bottom-tab="log" role="tab" aria-selected="false">log</button>
+    <button type="button" class="git-bottom-tab" data-git-bottom-tab="chat" role="tab" aria-selected="false">pecado</button>
+  </nav>
+  <div class="git-bottom-panels">
+    <section class="git-bottom-panel is-active" data-git-bottom-panel="status" role="tabpanel">
+      <div class="git-status-wrap">
+        <div class="git-status-label" id="git-status-label">status</div>
+        <pre class="git-status" id="git-status"></pre>
+      </div>
+    </section>
+    <section class="git-bottom-panel" data-git-bottom-panel="log" role="tabpanel">
+      <div class="git-log-panel">
+        <div class="git-log-output" id="git-log-output" aria-live="polite"></div>
+      </div>
+    </section>
+    <section class="git-bottom-panel" data-git-bottom-panel="chat" role="tabpanel">
+      <div class="git-chat-panel">
+        <div class="git-chat-messages" id="git-chat-messages" aria-live="polite">
+          <div class="git-chat-msg git-chat-msg-assistant">
+            <div class="git-chat-msg-body">我会先帮你看仓库状态，再执行 push / pull 等操作；失败时会分析原因并给出解决方法。也可输入 commit 说明或自然语言描述需求。</div>
+          </div>
+        </div>
+        <div class="git-chat-input-wrap">
+          <textarea id="git-chat-input" class="git-chat-input" rows="1" placeholder="Git 操作…"></textarea>
+          <button type="button" class="git-chat-send" id="git-chat-send" aria-label="发送">↑</button>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>

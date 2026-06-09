@@ -14,7 +14,7 @@
 | **Agent 工具** | read / write / edit / create_directory 等，经主进程沙箱执行 |
 | **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`、自动 `open` Xcode |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
-| **Git 面板** | 自研 SVG 提交时间线：Pull / Push / Commit、节点选中、作者悬浮、右键 Git 操作（见下文） |
+| **Git 面板** | 自研 SVG 提交时间线 + 底部 status / log / Pecado 助手；Pull / Push / Commit、节点 Git 操作（见下文） |
 
 ---
 
@@ -56,7 +56,7 @@ Pecado/
 │   ├── pecado/                # 对话层（入口 + UI + 模式路由）
 │   │   ├── css/index.css
 │   │   └── js/                # register、router、plain-stream、stream-ui、prompts
-│   ├── agent-loop/            # Agent 多轮编排（DISPATCH + conv + stream-hooks）
+│   ├── agent-loop/            # Agent 多轮编排（见 agent-loop/README.md）
 │   ├── llm-server/            # Volc HTTP/SSE；INFER + PARSE（EXECUTE_* / FEED_*）
 │   ├── mcp-filesystem/        # MCP 子进程、读写沙箱、tool-executor（EXEC）
 │   ├── xcode/                 # macOS 流式写盘、pbxproj、确认对话框
@@ -117,7 +117,7 @@ npm run build      # 产物在 release/
 | 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*`（含 `NODE_ACTION`） |
 | 6 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
 
-渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/index.js`。
+渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`。
 
 ---
 
@@ -499,10 +499,16 @@ flowchart TD
 
 侧栏 **Git** 使用**自研 SVG 时间线**（`src/gitgraph/`，不依赖 `@gitgraph/js`）。与 **File → Open Folder** 共用工程根目录（`userData/mcp-project.json`）。详细布局与滚动策略见 **[src/gitgraph/README.md](src/gitgraph/README.md)**。
 
+### 打开方式
+
+1. 侧栏点击 **Git**（与 **Pecado** 同级，全页切换）
+2. 菜单 **View → Git 面板**（`Cmd/Ctrl+2`）；**View → Pecado**（`Cmd/Ctrl+1`）
+3. Git 页内窗口底栏图标：展开/收起底部 **status | log | pecado** 区域
+
 ### 前置条件
 
 1. **File → Open Folder** 打开 Git 仓库根目录。
-2. 侧栏切换到 **Git**；顶栏显示当前分支与工程路径。
+2. 顶栏 **meta 栏**（`#git-message`）显示分支、操作进度与仓库状态摘要。
 3. **Preferences → 通用 → Git 提交图条数**：100 / 200 / 500 / 1000 / 1500 / 5000。
 
 ### 面板结构
@@ -510,10 +516,12 @@ flowchart TD
 | 区域 | 功能 |
 |------|------|
 | **工具栏** | Push、Pull、Commit（`git push` / `git pull` / `git add -A && commit`） |
-| **工程路径栏** | 显示仓库路径；点击在 Finder 中打开（`MCP_FS.OPEN_PROJECT_ROOT`） |
+| **Meta 栏** | 实时操作进度与完成状态（如「拉取完成 · 已是最新 · 工作区干净」）；右侧当前分支 |
 | **时间线** | SVG 分支图 + 轨道 tint + commit 色块 + subject 文字（四层叠放） |
 | **底部双滚动条** | 左：图区横向滚动；右：commit 文字起始位置（与图区解耦） |
-| **Status** | 选中节点后在底部展示该 commit 详情；未选中时显示 `git status` |
+| **底部 Dock — status** | 选中节点后展示 commit 详情；未选中时显示 `git status` |
+| **底部 Dock — log** | 仅 Git 命令输出与错误（不含 Pecado 对话内容） |
+| **底部 Dock — pecado** | Git 专用助手：可点击 push/pull/status/commit/branch；shell 命令需「同意」；多条命令可「按顺序全部执行」 |
 
 ### 节点交互
 
@@ -571,6 +579,7 @@ flowchart TD
 | `GET_PANEL_HTML` | 读取 `gitgraph/html/index.html` 注入 `#panel-git` |
 | `GET_STATE` | 分支、`git status`、图谱数据、`remoteOriginUrl` |
 | `PULL` / `PUSH` / `COMMIT` | 工具栏 Git 命令 |
+| `RUN_SHELL` | Pecado 助手确认后执行 shell（`git` / `cd` / `mkdir` 等） |
 | `NODE_ACTION` | 节点右键菜单：`{ action, hash, branchName?, resetMode?, tagName?, tagMessage?, projectRoot? }` |
 
 渲染端：`preload/preload.js` → `gitGetState`、`gitPull`、`gitPush`、`gitCommit`、`gitNodeAction` 等。
@@ -598,7 +607,7 @@ git push origin main
 | 主进程入口 + 注册 | `src/main/js/main.js` |
 | 对话 IPC + 模式路由 | `src/pecado/js/agent/router.js` |
 | 对话 UI（renderer） | `src/pecado/js/index.js` |
-| Agent 编排 | `src/agent-loop/app-agent-loop.js` |
+| Agent 编排 | `src/agent-loop/app-agent-loop.js`（详见 [src/agent-loop/README.md](src/agent-loop/README.md)） |
 | INFER | `src/llm-server/llm-infer-service.js` |
 | PARSE | `src/llm-server/command-parser.js` |
 | DISPATCH | `src/agent-loop/task-dispatcher.js` |
@@ -608,6 +617,7 @@ git push origin main
 | UI 流推送 | `src/pecado/js/agent/stream-ui.js` |
 | 本地 JSON 指令 | `src/commands/js/local-commands.js` |
 | Git 时间线 UI | `src/gitgraph/js/index.js` |
+| Git Pecado 助手 | `src/gitgraph/js/git-chat.js` |
 | Git 布局 / lane | `src/gitgraph/js/timeline-layout.js` |
 | Git CLI / 节点操作 | `src/gitgraph/js/git-runner.js` |
 | Git log 解析 | `src/gitgraph/js/log-parser.js` |

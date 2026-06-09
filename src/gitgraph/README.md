@@ -62,8 +62,9 @@ commit inner 总宽 = 左留白 1W + 文字区
 | `js/log-parser.js` | `git log --pretty` → 时间线 commit 对象 |
 | `js/project-root.js` | 读 `userData/mcp-project.json` 工程路径 |
 | `js/timeline-layout.js` | Lane 分配、merge/fork 连线、节点坐标与颜色 |
-| `js/index.js` | 渲染进程：DOM、滚动同步、选中、工具栏、节点悬浮/右键菜单 |
-| `html/index.html` | 面板片段（由 IPC 注入 `#panel-git`） |
+| `js/index.js` | 渲染进程：DOM、滚动同步、选中、工具栏、底部 Dock、节点悬浮/右键菜单 |
+| `js/git-chat.js` | Git 面板 pecado tab：可点击 Git 操作、LLM 分析、shell 命令确认 |
+| `html/index.html` | 面板片段（由 IPC 注入 `#panel-git`）：图谱 + 底部 status / log / pecado |
 | `css/index.css` | 网格布局与叠层样式 |
 
 ## 视觉叠层（自下而上）
@@ -149,6 +150,18 @@ commit inner 总宽 = 左留白 1W + 文字区
 - **数据源**：`git log --all --reverse -n N`，经 `log-parser.js` 解析。
 - **工程路径**：与 MCP Open Folder 共用；顶栏点击 → Finder 打开。
 
+## 底部 Dock（status | log | pecado）
+
+Git 全页下方可展开/收起（窗口底栏图标或 Git 页内控制）：
+
+| Tab | 内容 |
+|-----|------|
+| **status** | 工作区 `git status` 或选中 commit 详情 |
+| **log** | Git 命令 stdout/stderr（工具栏 / 助手执行） |
+| **pecado** | Git 专用对话：push/pull 等可点击；shell 需「同意」；多条命令可批量按序执行 |
+
+工程路径与 **File → Open Folder** 共用；切换工程后图谱、log、status、pecado 对话一并刷新。
+
 ## Push 到远端
 
 **应用内（推荐）**
@@ -177,6 +190,7 @@ git push origin main
 | `GET_PANEL_HTML` | 面板 HTML 片段 |
 | `GET_STATE` | 分支、status、graphData、remoteOriginUrl |
 | `PULL` / `PUSH` / `COMMIT` | 工具栏 |
+| `RUN_SHELL` | Pecado tab 用户确认后的 shell 命令 |
 | `NODE_ACTION` | 节点右键菜单 Git 操作 |
 
-渲染端 `window.electronAPI`：`gitGetPanelHtml`、`gitGetState`、`gitPull`、`gitPush`、`gitCommit`、`gitNodeAction`（`preload/preload.js`）。
+渲染端 `window.electronAPI`：`gitGetPanelHtml`、`gitGetState`、`gitPull`、`gitPush`、`gitCommit`、`gitNodeAction`、`gitRunShell`（`preload/preload.js`）。

@@ -10,6 +10,8 @@
  *
  * 【依赖】llm-server（INFER/PARSE EXECUTE_*）、mcp-filesystem（EXEC EXECUTE_*）
  * 【不依赖】pecado（单向：pecado → agent-loop）
+ *
+ * 【说明】src/agent-loop/README.md
  */
 const { runAppAgentLoop, MAX_TOOL_ROUNDS } = require('./app-agent-loop');
 const { TaskDispatcher, route_task } = require('./task-dispatcher');

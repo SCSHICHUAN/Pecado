@@ -71,6 +71,13 @@
   let remoteOriginUrl = '';
   /** @type {{ commit: object } | null} */
   let nodeMenuContext = null;
+  let activeGitBottomTab = 'status';
+  let gitPanelOpen = false;
+  let gitBottomDockOpen = true;
+  /** @type {object | null} */
+  let cachedGitState = null;
+  let gitMetaBusy = false;
+  let lastGitMetaError = '';
 
   function getApi() {
     return window.electronAPI;
@@ -94,6 +101,21 @@
     });
   }
 
+  const PANEL_HTML_VERSION = '12';
+
+  function showPanelLoadError(message) {
+    const mount = $('panel-git');
+    if (!mount) return;
+    const text = String(message || 'Git 面板加载失败').replace(/[<>&]/g, (c) => {
+      if (c === '<') return '&lt;';
+      if (c === '>') return '&gt;';
+      return '&amp;';
+    });
+    mount.innerHTML = `<div class="git-panel-load-error">${text}</div>`;
+    mount.dataset.loaded = '';
+    mount.dataset.panelVersion = '';
+  }
+
   async function loadPanelHtml() {
     const mount = $('panel-git');
     if (!mount) return null;
@@ -102,19 +124,155 @@
       throw new Error('Git panel API 不可用');
     }
     const needsHtml =
+      mount.dataset.panelVersion !== PANEL_HTML_VERSION ||
       mount.dataset.loaded !== '1' ||
+      !mount.querySelector('.git-main') ||
+      !mount.querySelector('#git-bottom-dock') ||
       !mount.querySelector('#git-graph-pane-hscroll') ||
-      !$('git-graph-hscroll-wrap') ||
-      !mount.querySelector('button.git-info');
+      !mount.querySelector('#git-log-output') ||
+      !mount.querySelector('#git-meta-branch');
     if (needsHtml) {
       const res = await api.gitGetPanelHtml();
       if (!res.ok) throw new Error(res.error || '加载 Git 面板失败');
       mount.innerHTML = res.html;
       mount.dataset.loaded = '1';
+      mount.dataset.panelVersion = PANEL_HTML_VERSION;
+      mount.dataset.toolbarBound = '';
+      mount.dataset.tabsBound = '';
+      mount.dataset.chatBound = '';
     }
     panelReady = true;
     setupToolbar();
+    setupGitBottomTabs();
+    setupGitChatPanel();
+    if (currentProjectRoot && window.GitChatPanel?.resetForProject) {
+      window.GitChatPanel.resetForProject(currentProjectRoot);
+    }
     return mount;
+  }
+
+  function setGitPanelVisible(visible) {
+    const chatPanel = $('panel-chat');
+    const gitPanel = $('panel-git');
+    gitPanelOpen = Boolean(visible);
+    if (chatPanel) chatPanel.classList.toggle('hidden', gitPanelOpen);
+    if (gitPanel) gitPanel.classList.toggle('hidden', !gitPanelOpen);
+    syncBottomDockToggleUi();
+  }
+
+  function syncBottomDockToggleUi() {
+    const appToggle = $('git-dock-toggle');
+    const pressed = gitPanelOpen && gitBottomDockOpen ? 'true' : 'false';
+    if (appToggle) {
+      appToggle.setAttribute('aria-pressed', pressed);
+      appToggle.disabled = !gitPanelOpen;
+      appToggle.classList.toggle('is-disabled', !gitPanelOpen);
+    }
+  }
+
+  function setGitBottomDockOpen(open) {
+    const mount = $('panel-git');
+    gitBottomDockOpen = Boolean(open);
+    mount?.classList.toggle('is-bottom-collapsed', !gitBottomDockOpen);
+    syncBottomDockToggleUi();
+  }
+
+  function toggleGitBottomDock() {
+    if (!gitPanelOpen) return;
+    setGitBottomDockOpen(!gitBottomDockOpen);
+  }
+
+  /** 窗口最底栏：仅在 Git 页展开/收起底部 status | log | pecado */
+  function toggleAppGitBottomDock() {
+    if (!gitPanelOpen) return;
+    toggleGitBottomDock();
+  }
+
+  function switchGitBottomTab(tabId) {
+    const tab = tabId || 'status';
+    activeGitBottomTab = tab;
+    const mount = $('panel-git');
+    if (!mount) return;
+    mount.querySelectorAll('.git-bottom-tab').forEach((btn) => {
+      const active = btn.dataset.gitBottomTab === tab;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    mount.querySelectorAll('.git-bottom-panel').forEach((panel) => {
+      const active = panel.dataset.gitBottomPanel === tab;
+      panel.classList.toggle('is-active', active);
+      panel.setAttribute('aria-hidden', active ? 'false' : 'true');
+    });
+  }
+
+  function setupGitBottomTabs() {
+    const mount = $('panel-git');
+    if (!mount || mount.dataset.tabsBound === '1') return;
+    mount.dataset.tabsBound = '1';
+    mount.querySelectorAll('.git-bottom-tab').forEach((btn) => {
+      btn.addEventListener('click', () => switchGitBottomTab(btn.dataset.gitBottomTab));
+    });
+    switchGitBottomTab(activeGitBottomTab);
+  }
+
+  async function buildGitChatContext() {
+    const api = getApi();
+    if (!api || typeof api.gitGetState !== 'function') return '';
+    const res = await api.gitGetState({ projectRoot: currentProjectRoot || undefined });
+    if (!res?.ok) return '';
+    const lines = [
+      `branch: ${res.branch || ''}`,
+      `root: ${res.projectRoot || ''}`,
+      `remote: ${res.remoteOriginUrl || ''}`,
+    ];
+    const fileLines = res.status?.fileLines || [];
+    if (fileLines.length) lines.push(...fileLines.slice(0, 30));
+    return lines.join('\n');
+  }
+
+  function setupGitChatPanel() {
+    if (!window.GitChatPanel) return;
+    const mount = $('panel-git');
+    if (!mount || mount.dataset.chatBound === '1') return;
+    mount.dataset.chatBound = '1';
+    window.GitChatPanel.init({
+      getGitContext: buildGitChatContext,
+      switchTab: (tabId) => switchGitBottomTab(tabId),
+      gitCommandLabel: (action, extra) => gitCommandLabel(action, '', extra || {}),
+      setGitMetaProgress: (actionOrText) => setGitMetaProgress(actionOrText),
+      restoreGitMetaAfterErrorAnalysis: () => restoreGitMetaAfterErrorAnalysis(),
+      getProjectRoot: () => currentProjectRoot || '',
+      onShellCommandDone: async (res) => {
+        if (res?.command) {
+          appendGitLog(res.output || res.error || '完成', {
+            command: res.command,
+            isError: Boolean(res && res.ok === false),
+          });
+        }
+        await refreshGitView();
+        if (res?.ok) {
+          syncGitMetaAfterComplete({
+            action: inferShellGitAction(res.command),
+            output: res.output || '',
+          });
+        } else if (res && res.ok === false) {
+          finishGitMetaOperation(String(res.error || '执行失败').split('\n')[0], true);
+        }
+      },
+      syncGitMetaAfterComplete: (info) => syncGitMetaAfterComplete(info),
+      runGitAction: (action, extra) =>
+        runGitAction(action, { ...(extra || {}), fromChat: true, suppressChatResult: true }),
+    });
+  }
+
+  function setupDockToggle() {
+    const toggle = $('git-dock-toggle');
+    if (!toggle || toggle.dataset.bound === '1') return;
+    toggle.dataset.bound = '1';
+    toggle.addEventListener('click', () => {
+      toggleAppGitBottomDock();
+    });
+    syncBottomDockToggleUi();
   }
 
   function setActiveNav(view) {
@@ -125,25 +283,22 @@
   }
 
   async function showView(view) {
-    const chatPanel = $('panel-chat');
-    const gitPanel = $('panel-git');
-    if (chatPanel) chatPanel.classList.toggle('hidden', view !== 'chat');
-    if (gitPanel) gitPanel.classList.toggle('hidden', view !== 'git');
     setActiveNav(view);
     if (view === 'git') {
+      setGitPanelVisible(true);
       try {
         await loadPanelHtml();
-        if (!gitTabInitialScrollDone) {
-          await refreshGitView({ initialScroll: true });
-          gitTabInitialScrollDone = true;
-        } else {
-          const timeline = document.querySelector('#git-graph .git-timeline');
-          if (timeline) ensurePaneHscrollSynced(timeline);
-        }
+        setGitBottomDockOpen(gitBottomDockOpen);
+        const initialScroll = !gitTabInitialScrollDone;
+        await refreshGitView({ initialScroll });
+        gitTabInitialScrollDone = true;
       } catch (e) {
         console.error('[git-ui] showView git', e);
+        showPanelLoadError(e.message || 'Git 面板加载失败');
       }
+      return;
     }
+    setGitPanelVisible(false);
   }
 
   function setStatusPanelLabel(text) {
@@ -176,55 +331,405 @@
   function showCommitInStatus(commit) {
     const statusEl = $('git-status');
     if (!statusEl || !commit) return;
-    setStatusPanelLabel('Commit');
-    statusEl.textContent = formatCommitDetail(commit);
+    const detail = formatCommitDetail(commit);
+    const short = commit.hash ? commit.hash.slice(0, 7) : '';
+    setStatusPanelLabel('commit');
+    statusEl.textContent = detail;
+    appendGitLog(detail, { command: short ? `select ${short}` : 'select commit' });
+    setGitBottomDockOpen(true);
+    switchGitBottomTab('status');
+  }
+
+  function formatGitMetaStatus(state) {
+    if (!state?.projectRoot) {
+      return state?.hint || '未打开工程';
+    }
+    if (!state.isRepo) {
+      return '非 Git 仓库';
+    }
+    const lines = state.status?.fileLines || [];
+    if (lines.length === 0) {
+      return '工作区干净';
+    }
+    return lines.length === 1 ? '有修改待提交' : `${lines.length} 个文件有修改，待提交`;
+  }
+
+  const GIT_OP_META = {
+    pull: { progress: '正在从远程拉取…', done: '拉取' },
+    push: { progress: '正在推送到远程…', done: '推送' },
+    commit: { progress: '正在提交变更…', done: '提交' },
+    status: { progress: '正在刷新工作区状态…', done: '刷新' },
+    branch: { progress: '正在创建并切换分支…', done: '分支' },
+    init: { progress: '正在初始化仓库…', done: '初始化' },
+  };
+
+  function gitOperationProgressLabel(action) {
+    return GIT_OP_META[action]?.progress || `正在 ${action}…`;
+  }
+
+  function summarizeGitOutput(output, action) {
+    const t = String(output || '').trim();
+    if (!t) return '';
+    const lower = t.toLowerCase();
+    if (/already up to date|已经是最新/.test(lower)) return '已是最新';
+    if (/everything up-to-date|everything-up-to-date/.test(lower)) return '远程已是最新';
+    if (/initialized empty git repository|reinitialized existing git repository/.test(lower)) {
+      return '仓库已初始化';
+    }
+    if (/fast-forward|快进/.test(lower)) return '已快进更新';
+    if (/(\d+) file(s)? changed|(\d+) files? changed|create mode|insertion/.test(lower)) {
+      return '有文件变更';
+    }
+    if (action === 'commit' && /^(\[.+\]\s*)?\S/.test(t) && t.length < 120) {
+      return t.split('\n')[0];
+    }
+    if (action === 'branch') {
+      const m = t.match(/已切换到分支\s+(\S+)|(?:switched to branch|checkout.*branch)\s+['"]?(\S+?)['"]?\.?$/i);
+      const name = m?.[1] || m?.[2];
+      if (name) return `已切换到 ${name}`;
+    }
+    return '';
+  }
+
+  function formatGitMetaCompleteFromOutput(output, state) {
+    const ws = formatGitMetaStatus(state);
+    const t = String(output || '').trim();
+    if (!t) return ws;
+    const lower = t.toLowerCase();
+    if (/initialized empty git repository/.test(lower)) return `Git 仓库已初始化 · ${ws}`;
+    if (/reinitialized existing git repository/.test(lower)) return `Git 仓库已重新初始化 · ${ws}`;
+    const hint = summarizeGitOutput(t, '');
+    if (hint) return `${hint} · ${ws}`;
+    const firstLine = t.split('\n').map((l) => l.trim()).find(Boolean) || '';
+    if (firstLine && firstLine.length <= 72) return `${firstLine} · ${ws}`;
+    return ws;
+  }
+
+  function inferShellGitAction(command) {
+    const c = String(command || '').toLowerCase();
+    if (/\bgit\s+init\b/.test(c)) return 'init';
+    if (/\bgit\s+pull\b/.test(c)) return 'pull';
+    if (/\bgit\s+push\b/.test(c)) return 'push';
+    if (/\bgit\s+commit\b/.test(c)) return 'commit';
+    if (/\bgit\s+status\b/.test(c)) return 'status';
+    if (/\bgit\s+checkout\s+-b\b/.test(c)) return 'branch';
+    return '';
+  }
+
+  function syncGitMetaAfterComplete(info = {}) {
+    gitMetaBusy = false;
+    const action = info.action || '';
+    const output = info.output || '';
+    const state = cachedGitState;
+    if (action === 'init') {
+      finishGitMetaOperation(formatGitMetaComplete('init', output, state), false);
+      return;
+    }
+    if (action && GIT_OP_META[action]) {
+      finishGitMetaOperation(formatGitMetaComplete(action, output, state), false);
+      return;
+    }
+    if (output) {
+      finishGitMetaOperation(formatGitMetaCompleteFromOutput(output, state), false);
+      return;
+    }
+    finishGitMetaOperation(formatGitMetaStatus(state), false);
+  }
+
+  function formatGitMetaComplete(action, output, state) {
+    const ws = formatGitMetaStatus(state);
+    if (action === 'status') return ws;
+    const done = GIT_OP_META[action]?.done || action;
+    const hint = summarizeGitOutput(output, action);
+    if (action === 'branch' && hint) return `${hint} · ${ws}`;
+    const parts = [`${done}完成`];
+    if (hint && !hint.startsWith('已切换到')) parts.push(hint);
+    else if (hint) return `${hint} · ${ws}`;
+    if (ws && ws !== '未打开工程' && ws !== '非 Git 仓库') parts.push(ws);
+    return parts.join(' · ');
+  }
+
+  function finishGitMetaOperation(text, isError) {
+    gitMetaBusy = false;
+    const msg = String(text || '').trim() || formatGitMetaStatus(cachedGitState) || '未打开工程';
+    if (isError) lastGitMetaError = msg;
+    else lastGitMetaError = '';
+    setGitMessage(msg, isError, { busy: false });
+  }
+
+  function setGitMetaProgress(actionOrText) {
+    const action = String(actionOrText || '');
+    const text = GIT_OP_META[action] ? gitOperationProgressLabel(action) : action;
+    if (!text) return;
+    gitMetaBusy = true;
+    setGitMessage(text, false, { busy: true });
+  }
+
+  function restoreGitMetaAfterErrorAnalysis() {
+    if (lastGitMetaError) finishGitMetaOperation(lastGitMetaError, true);
+    else syncGitMetaStatus(cachedGitState);
+  }
+
+  function applyGitMetaAfterOperation(text, opts = {}) {
+    const msg = String(text || '').trim();
+    const action = opts.action || opts.statusLabel || '';
+    if (opts.isError) {
+      finishGitMetaOperation(msg.split('\n')[0], true);
+      return;
+    }
+    if (/^已取消/.test(msg)) {
+      finishGitMetaOperation(msg.split('\n')[0], false);
+      return;
+    }
+    if (action && GIT_OP_META[action]) {
+      finishGitMetaOperation(formatGitMetaComplete(action, msg, cachedGitState), false);
+      return;
+    }
+    finishGitMetaOperation(formatGitMetaCompleteFromOutput(msg, cachedGitState), false);
+  }
+
+  function clearGitLog() {
+    const logEl = $('git-log-output');
+    if (logEl) logEl.innerHTML = '';
+  }
+
+  function resetGitPanelsForProject() {
+    clearGitLog();
+    selectedCommitHash = '';
+    cachedGitState = null;
+    currentBranch = '';
+    remoteOriginUrl = '';
+    gitMetaBusy = false;
+    lastGitMetaError = '';
+
+    const graph = $('git-graph');
+    if (graph) graph.innerHTML = '';
+
+    const statusEl = $('git-status');
+    if (statusEl) statusEl.textContent = '';
+    setStatusPanelLabel('status');
+
+    syncMetaBranch();
+    setGitProgress('正在加载工程…');
+
+    if (window.GitChatPanel?.resetForProject) {
+      window.GitChatPanel.resetForProject(currentProjectRoot);
+    }
+  }
+
+  async function handleProjectRootChanged(projectRoot) {
+    if (!projectRoot) return;
+    currentProjectRoot = projectRoot;
+    gitTabInitialScrollDone = false;
+    resetGitPanelsForProject();
+
+    if (!panelReady) return;
+
+    try {
+      await refreshGitView({ initialScroll: true, keepMetaBusy: false });
+      gitTabInitialScrollDone = true;
+    } catch (e) {
+      console.error('[git-ui] handleProjectRootChanged', e);
+      gitMetaBusy = false;
+      syncGitMetaStatus(cachedGitState);
+    }
+  }
+
+  function syncGitMetaStatus(state) {
+    if (gitMetaBusy) return;
+    const s = state || cachedGitState;
+    setGitMessage(formatGitMetaStatus(s), false);
   }
 
   function renderWorkspaceStatus(state) {
     const statusEl = $('git-status');
-    if (!statusEl) return;
-    setStatusPanelLabel('Status');
+    setStatusPanelLabel('status');
+    let text = '';
     if (!state?.projectRoot) {
-      statusEl.textContent = state?.hint || '请通过 File → Open Folder 打开工程目录';
+      text = state?.hint || '请通过 File → Open Folder 打开工程目录';
+    } else if (!state.isRepo) {
+      text = '当前目录不是 Git 仓库';
+    } else {
+      const lines = state.status?.fileLines || [];
+      text = lines.length === 0 ? '工作区干净，无未提交变更' : lines.join('\n');
+    }
+    if (statusEl) statusEl.textContent = text;
+  }
+
+  function syncMetaBranch() {
+    const branchEl = $('git-meta-branch');
+    if (!branchEl) return;
+    if (!currentProjectRoot) {
+      branchEl.textContent = '—';
+      branchEl.title = '当前分支';
       return;
     }
-    if (!state.isRepo) {
-      statusEl.textContent = '当前目录不是 Git 仓库';
+    const label = currentBranch || '(detached)';
+    branchEl.textContent = label;
+    branchEl.title = remoteOriginUrl
+      ? `分支 ${label}\n远程 ${remoteOriginUrl}`
+      : `分支 ${label}`;
+  }
+
+  function renderRepoInfo(state) {
+    if (!state.projectRoot) {
+      currentBranch = '';
+      remoteOriginUrl = '';
+      syncMetaBranch();
       return;
     }
-    const lines = state.status?.fileLines || [];
-    statusEl.textContent =
-      lines.length === 0 ? '工作区干净，无未提交变更' : lines.join('\n');
+    currentBranch = state.branch || '';
+    remoteOriginUrl = state.remoteOriginUrl || '';
+    syncMetaBranch();
   }
 
   function renderStatus(state) {
-    const info = $('git-info');
-    if (!info) return;
-    if (!state.projectRoot) {
-      info.textContent = '未打开工程';
-      info.disabled = true;
-      delete info.dataset.projectRoot;
-      currentBranch = '';
-      remoteOriginUrl = '';
-      renderWorkspaceStatus(state);
-      return;
-    }
-    info.textContent = state.isRepo
-      ? `${state.branch || '(detached)'} · ${state.projectRoot}`
-      : `非 Git 仓库 · ${state.projectRoot}`;
-    info.disabled = false;
-    info.dataset.projectRoot = state.projectRoot;
-    info.title = `在 Finder 中打开：${state.projectRoot}`;
-    currentBranch = state.branch || '';
-    remoteOriginUrl = state.remoteOriginUrl || '';
+    cachedGitState = state;
+    renderRepoInfo(state);
     renderWorkspaceStatus(state);
+    syncGitMetaStatus(state);
   }
 
-  function setGitMessage(text, isError) {
+  function gitCommandLabel(action, hash, extra = {}) {
+    const root = currentProjectRoot || '<project>';
+    const short = hash ? hash.slice(0, 7) : '';
+    switch (action) {
+      case 'push':
+        return `git -C ${root} push`;
+      case 'pull':
+        return `git -C ${root} pull`;
+      case 'status':
+        return `git -C ${root} status`;
+      case 'commit':
+        return `git -C ${root} commit -m ${JSON.stringify(extra.message || '…')}`;
+      case 'checkout':
+        return `git -C ${root} checkout ${short || hash || ''}`.trim();
+      case 'branch':
+        return `git -C ${root} checkout -b ${extra.branchName || '…'}`;
+      case 'cherry-pick':
+        return `git -C ${root} cherry-pick ${short}`.trim();
+      case 'revert':
+        return `git -C ${root} revert ${short}`.trim();
+      case 'reset': {
+        const mode = extra.resetMode || 'mixed';
+        return `git -C ${root} reset --${mode} ${short}`.trim();
+      }
+      case 'tag':
+        return `git -C ${root} tag ${extra.tagName || '…'} ${short}`.trim();
+      case 'tag-annotated':
+        return `git -C ${root} tag -a ${extra.tagName || '…'} ${short}`.trim();
+      case 'format-patch':
+        return `git -C ${root} format-patch ${short}`.trim();
+      default:
+        return short ? `git -C ${root} ${action} ${short}` : `git -C ${root} ${action}`;
+    }
+  }
+
+  function appendGitLog(text, opts = {}) {
+    const logEl = $('git-log-output');
+    if (!logEl) return;
+    const msg = String(text || '').trim();
+    if (!msg) return;
+    const ts = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const command = opts.command ? String(opts.command).trim() : '';
+
+    const entry = document.createElement('div');
+    entry.className = 'git-log-entry' + (opts.isError ? ' is-error' : '');
+
+    const head = document.createElement('div');
+    head.className = 'git-log-entry-head';
+    head.textContent = command ? `[${ts}] ${command}` : `[${ts}]`;
+
+    const body = document.createElement('pre');
+    body.className = 'git-log-entry-body';
+    body.textContent = msg;
+
+    entry.appendChild(head);
+    entry.appendChild(body);
+    logEl.prepend(entry);
+    logEl.scrollTop = 0;
+  }
+
+  function showOperationInStatus(text, label) {
+    const statusEl = $('git-status');
+    if (!statusEl) return;
+    setStatusPanelLabel(label || 'operation');
+    statusEl.textContent = String(text || '').trim();
+    setGitBottomDockOpen(true);
+  }
+
+  function isGitChatTabActive() {
+    return activeGitBottomTab === 'chat';
+  }
+
+  function reportGitOperation(text, opts = {}) {
+    const msg = String(text || '').trim();
+    if (!msg) return;
+    const isError = Boolean(opts.isError);
+    const stayInChat = Boolean(opts.stayInChat || opts.fromChat || isGitChatTabActive());
+    appendGitLog(msg, { isError, command: opts.command || '' });
+    showOperationInStatus(msg, opts.statusLabel || (isError ? 'error' : 'operation'));
+    if (isError) {
+      applyGitMetaAfterOperation(msg, { isError: true, statusLabel: opts.statusLabel });
+    } else {
+      applyGitMetaAfterOperation(msg, { statusLabel: opts.statusLabel });
+    }
+
+    const shouldAnalyze =
+      !opts.suppressChatResult &&
+      !opts.skipLlmAnalysis &&
+      window.GitChatPanel?.analyzeGitOperation &&
+      (isError || stayInChat);
+
+    if (shouldAnalyze) {
+      setGitBottomDockOpen(true);
+      switchGitBottomTab('chat');
+      window.GitChatPanel.analyzeGitOperation(
+        {
+          action: opts.statusLabel || '',
+          ok: !isError,
+          output: isError ? '' : msg,
+          error: isError ? msg : '',
+          command: opts.command || '',
+        },
+        { skipSwitch: true }
+      ).catch((e) => console.error('[git-ui] analyze operation', e));
+    } else if (stayInChat && window.GitChatPanel?.showOperationResult && !opts.suppressChatResult) {
+      window.GitChatPanel.showOperationResult(msg, {
+        isError,
+        command: opts.command || '',
+      });
+    }
+
+    if (stayInChat) return;
+
+    if (opts.focusTab === 'log' || (isError && opts.focusTab !== 'status')) {
+      switchGitBottomTab('log');
+    } else if (opts.focusTab === 'status') {
+      switchGitBottomTab('status');
+    } else if (!isError) {
+      switchGitBottomTab('status');
+    } else {
+      switchGitBottomTab('log');
+    }
+  }
+
+  function setGitProgress(text) {
+    gitMetaBusy = true;
+    setGitMessage(text, false, { busy: true });
+  }
+
+  function setGitMessage(text, isError, opts = {}) {
     const el = $('git-message');
     if (!el) return;
-    el.textContent = text || '';
+    const msg = text || formatGitMetaStatus(cachedGitState) || '未打开工程';
+    el.textContent = msg;
     el.classList.toggle('git-message-error', Boolean(isError));
+    el.classList.toggle('is-busy', Boolean(opts.busy) && !isError);
+    el.classList.toggle(
+      'is-ok',
+      !isError && !opts.busy && (/完成|干净|已是最新|已切换到/.test(msg) || msg === formatGitMetaStatus(cachedGitState))
+    );
   }
 
   function selectCommit(timelineEl, hash, commit) {
@@ -434,10 +939,16 @@
     if (!text) return false;
     try {
       await navigator.clipboard.writeText(text);
-      setGitMessage(okMessage, false);
+      appendGitLog(okMessage, { command: 'clipboard' });
+      syncGitMetaStatus();
       return true;
     } catch (e) {
-      setGitMessage(e.message || '复制失败', true);
+      reportGitOperation(e.message || '复制失败', {
+        isError: true,
+        command: 'clipboard',
+        statusLabel: 'error',
+        focusTab: 'log',
+      });
       return false;
     }
   }
@@ -456,7 +967,12 @@
     if (action === 'copy-link') {
       const link = buildRemoteCommitLink(remoteOriginUrl, hash);
       if (!link) {
-        setGitMessage('未配置 remote origin', true);
+        reportGitOperation('未配置 remote origin', {
+          isError: true,
+          command: 'copy-link',
+          statusLabel: 'error',
+          focusTab: 'log',
+        });
         return;
       }
       await copyText(link, '已复制远程 commit 链接');
@@ -464,35 +980,44 @@
     }
 
     if (!api || typeof api.gitNodeAction !== 'function') {
-      setGitMessage('Git API 不可用', true);
+      reportGitOperation('Git API 不可用', {
+        isError: true,
+        command: action,
+        statusLabel: 'error',
+        focusTab: 'log',
+      });
       return;
     }
 
     if (action === 'branch') {
       const branchName = window.prompt('新分支名', '');
       if (branchName === null || !String(branchName).trim()) return;
-      setGitMessage('正在创建分支…', false);
+      setGitProgress('正在创建分支…');
       const res = await api.gitNodeAction({
         action: 'branch',
         hash,
         branchName: String(branchName).trim(),
         projectRoot: currentProjectRoot || undefined,
       });
-      await finishNodeGitAction(res, '分支已创建');
+      await finishNodeGitAction(res, '分支已创建', {
+        action: 'branch',
+        hash,
+        branchName: String(branchName).trim(),
+      });
       return;
     }
 
     if (action === 'tag') {
       const tagName = window.prompt('标签名', '');
       if (tagName === null || !String(tagName).trim()) return;
-      setGitMessage('正在创建标签…', false);
+      setGitProgress('正在创建标签…');
       const res = await api.gitNodeAction({
         action: 'tag',
         hash,
         tagName: String(tagName).trim(),
         projectRoot: currentProjectRoot || undefined,
       });
-      await finishNodeGitAction(res, '标签已创建');
+      await finishNodeGitAction(res, '标签已创建', { action: 'tag', hash, tagName: String(tagName).trim() });
       return;
     }
 
@@ -501,7 +1026,7 @@
       if (tagName === null || !String(tagName).trim()) return;
       const tagMessage = window.prompt('标签说明', tagName);
       if (tagMessage === null) return;
-      setGitMessage('正在创建附注标签…', false);
+      setGitProgress('正在创建附注标签…');
       const res = await api.gitNodeAction({
         action: 'tag-annotated',
         hash,
@@ -509,7 +1034,11 @@
         tagMessage: String(tagMessage).trim(),
         projectRoot: currentProjectRoot || undefined,
       });
-      await finishNodeGitAction(res, '附注标签已创建');
+      await finishNodeGitAction(res, '附注标签已创建', {
+        action: 'tag-annotated',
+        hash,
+        tagName: String(tagName).trim(),
+      });
       return;
     }
 
@@ -523,14 +1052,14 @@
       ) {
         return;
       }
-      setGitMessage(`正在 reset（${label}）…`, false);
+      setGitProgress(`正在 reset（${label}）…`);
       const res = await api.gitNodeAction({
         action: 'reset',
         hash,
         resetMode: mode,
         projectRoot: currentProjectRoot || undefined,
       });
-      await finishNodeGitAction(res, 'Reset 完成');
+      await finishNodeGitAction(res, 'Reset 完成', { action: 'reset', hash, resetMode: mode });
       return;
     }
 
@@ -547,7 +1076,7 @@
       revert: '正在 revert…',
       'format-patch': '正在生成 patch…',
     };
-    setGitMessage(labels[action] || '正在执行…', false);
+    setGitProgress(labels[action] || '正在执行…');
     const res = await api.gitNodeAction({
       action,
       hash,
@@ -556,21 +1085,32 @@
 
     if (action === 'format-patch' && res?.ok && res.output) {
       await copyText(res.output, 'Patch 已复制到剪贴板');
+      appendGitLog(res.output, { command: gitCommandLabel('format-patch', hash) });
       await refreshGitView();
       return;
     }
-    await finishNodeGitAction(res, '操作完成');
+    await finishNodeGitAction(res, '操作完成', { action, hash });
   }
 
-  async function finishNodeGitAction(res, okMessage) {
+  async function finishNodeGitAction(res, okMessage, meta = {}) {
+    const command = gitCommandLabel(meta.action || 'git', meta.hash, meta);
     if (!res?.ok) {
-      setGitMessage(res?.error || '操作失败', true);
+      reportGitOperation(res?.error || '操作失败', {
+        isError: true,
+        command,
+        statusLabel: meta.action || 'error',
+        focusTab: 'log',
+      });
       return;
     }
-    setGitMessage(res.output || okMessage, false);
     if (res.projectRoot) currentProjectRoot = res.projectRoot;
     renderStatus(res);
     renderGraph(res.graphData);
+    reportGitOperation(res.output || okMessage, {
+      command,
+      statusLabel: meta.action || 'operation',
+      focusTab: 'status',
+    });
   }
 
   function ensureNodeContextMenu() {
@@ -1293,65 +1833,177 @@
   async function refreshGitView(options = {}) {
     const api = getApi();
     if (!api || typeof api.gitGetState !== 'function') {
-      setGitMessage('Git API 不可用', true);
+      reportGitOperation('Git API 不可用', {
+        isError: true,
+        command: 'git status',
+        statusLabel: 'error',
+        focusTab: 'log',
+      });
       return;
     }
-    setGitMessage('加载中…', false);
+    setGitProgress('加载中…');
     try {
       await loadScript('../../gitgraph/js/timeline-layout.js');
     } catch (e) {
-      setGitMessage('加载 Git 时间线布局失败', true);
+      reportGitOperation('加载 Git 时间线布局失败', {
+        isError: true,
+        command: 'timeline-layout',
+        statusLabel: 'error',
+        focusTab: 'log',
+      });
       console.error('[git-ui] timeline-layout', e);
       return;
     }
     const state = await api.gitGetState({ projectRoot: currentProjectRoot || undefined });
     if (!state.ok) {
-      setGitMessage(state.error || '加载失败', true);
+      reportGitOperation(state.error || '加载失败', {
+        isError: true,
+        command: 'git status',
+        statusLabel: 'error',
+        focusTab: 'log',
+      });
       return;
     }
     if (state.projectRoot) currentProjectRoot = state.projectRoot;
     selectedCommitHash = '';
     renderStatus(state);
     renderGraph(state.graphData, { initialScroll: Boolean(options.initialScroll) });
-    setGitMessage('', false);
+    if (!options.keepMetaBusy) {
+      gitMetaBusy = false;
+      syncGitMetaStatus(state);
+    }
   }
 
-  async function runGitAction(action) {
+  async function runGitAction(action, opts = {}) {
     const api = getApi();
-    if (!api) return;
+    const reportOpts = (extra = {}) => ({
+      ...extra,
+      fromChat: Boolean(opts.fromChat),
+      suppressChatResult: Boolean(opts.suppressChatResult),
+      skipLlmAnalysis: Boolean(opts.suppressChatResult || opts.skipLlmAnalysis),
+    });
+    if (!api) {
+      const err = 'Git API 不可用';
+      reportGitOperation(err, reportOpts({
+        isError: true,
+        command: gitCommandLabel(action),
+        statusLabel: 'error',
+        focusTab: 'log',
+      }));
+      return { ok: false, error: err, command: gitCommandLabel(action) };
+    }
 
-    if (action === 'commit') {
-      const message = window.prompt('Commit 信息', 'Update from Pecado');
-      if (message === null) return;
-      if (!String(message).trim()) {
-        setGitMessage('Commit 信息不能为空', true);
-        return;
+    if (action === 'status') {
+      setGitMetaProgress('status');
+      await refreshGitView({ keepMetaBusy: true });
+      const text = $('git-status')?.textContent?.trim() || '工作区已刷新';
+      const command = gitCommandLabel('status');
+      reportGitOperation(text, reportOpts({ command, statusLabel: 'status', focusTab: 'status' }));
+      return { ok: true, output: text, command };
+    }
+
+    if (action === 'branch') {
+      const branchName =
+        opts.branchName != null ? String(opts.branchName).trim() : window.prompt('新分支名', '');
+      if (branchName === null || !String(branchName).trim()) {
+        const command = gitCommandLabel('branch', '', { branchName: '…' });
+        reportGitOperation('已取消创建分支', reportOpts({ command, statusLabel: 'branch', focusTab: 'status' }));
+        return { ok: false, cancelled: true, command };
       }
-      setGitMessage('正在 commit…', false);
-      const res = await api.gitCommit({ message, projectRoot: currentProjectRoot || undefined });
+      setGitMetaProgress('branch');
+      const name = String(branchName).trim();
+      const res = await api.gitNodeAction({
+        action: 'checkout-new-branch',
+        branchName: name,
+        projectRoot: currentProjectRoot || undefined,
+      });
+      const command = gitCommandLabel('branch', '', { branchName: name });
       if (!res.ok) {
-        setGitMessage(res.error || 'Commit 失败', true);
-        return;
+        reportGitOperation(
+          res.error || '创建分支失败',
+          reportOpts({ isError: true, command, statusLabel: 'branch', focusTab: 'log' })
+        );
+        return { ok: false, error: res.error || '创建分支失败', command };
       }
       selectedCommitHash = '';
       renderStatus(res);
       renderGraph(res.graphData);
-      setGitMessage(res.output || 'Commit 成功', false);
-      return;
+      reportGitOperation(
+        res.output || `已切换到分支 ${name}`,
+        reportOpts({ command, statusLabel: 'branch', focusTab: 'status' })
+      );
+      return { ok: true, output: res.output || `已切换到分支 ${name}`, command };
     }
 
-    const fn = action === 'pull' ? api.gitPull : api.gitPush;
-    if (typeof fn !== 'function') return;
-    setGitMessage(`正在 ${action}…`, false);
+    if (action === 'commit') {
+      const message =
+        opts.message != null ? String(opts.message) : window.prompt('Commit 信息', 'Update from Pecado');
+      if (message === null) {
+        const command = gitCommandLabel('commit', '', { message: '…' });
+        reportGitOperation('已取消提交', reportOpts({ command, statusLabel: 'commit', focusTab: 'status' }));
+        return { ok: false, cancelled: true, command };
+      }
+      if (!String(message).trim()) {
+        reportGitOperation(
+          'Commit 信息不能为空',
+          reportOpts({
+            isError: true,
+            command: gitCommandLabel('commit', '', { message: '' }),
+            statusLabel: 'commit',
+            focusTab: 'status',
+          })
+        );
+        return { ok: false, error: 'Commit 信息不能为空', command: gitCommandLabel('commit', '', { message: '' }) };
+      }
+      setGitMetaProgress('commit');
+      const res = await api.gitCommit({ message, projectRoot: currentProjectRoot || undefined });
+      const command = gitCommandLabel('commit', '', { message: String(message).trim() });
+      if (!res.ok) {
+        reportGitOperation(
+          res.error || 'Commit 失败',
+          reportOpts({ isError: true, command, statusLabel: 'commit', focusTab: 'log' })
+        );
+        return { ok: false, error: res.error || 'Commit 失败', command };
+      }
+      selectedCommitHash = '';
+      renderStatus(res);
+      renderGraph(res.graphData);
+      reportGitOperation(
+        res.output || 'Commit 成功',
+        reportOpts({ command, statusLabel: 'commit', focusTab: 'status' })
+      );
+      return { ok: true, output: res.output || 'Commit 成功', command };
+    }
+
+    const fn = action === 'pull' ? api.gitPull : action === 'push' ? api.gitPush : null;
+    if (typeof fn !== 'function') {
+      const err = `不支持的操作：${action}`;
+      reportGitOperation(err, reportOpts({
+        isError: true,
+        command: gitCommandLabel(action),
+        statusLabel: 'error',
+        focusTab: 'log',
+      }));
+      return { ok: false, error: err, command: gitCommandLabel(action) };
+    }
+    setGitMetaProgress(action);
     const res = await fn({ projectRoot: currentProjectRoot || undefined });
+    const command = gitCommandLabel(action);
     if (!res.ok) {
-      setGitMessage(res.error || `${action} 失败`, true);
-      return;
+      reportGitOperation(
+        res.error || `${action} 失败`,
+        reportOpts({ isError: true, command, statusLabel: action, focusTab: 'log' })
+      );
+      return { ok: false, error: res.error || `${action} 失败`, command };
     }
     selectedCommitHash = '';
     renderStatus(res);
     renderGraph(res.graphData);
-    setGitMessage(res.output || `${action} 完成`, false);
+    reportGitOperation(
+      res.output || `${action} 完成`,
+      reportOpts({ command, statusLabel: action, focusTab: 'status' })
+    );
+    return { ok: true, output: res.output || `${action} 完成`, command };
   }
 
   function setupSidebar() {
@@ -1388,28 +2040,22 @@
     setupPaneHscrollLayoutObserver();
   }
 
-  function setupProjectInfoClick() {
-    const info = $('git-info');
-    if (!info || info.dataset.clickBound === '1') return;
-    info.dataset.clickBound = '1';
-    info.addEventListener('click', async () => {
-      const root = info.dataset.projectRoot || currentProjectRoot;
-      if (!root || info.disabled) return;
-      const api = getApi();
-      if (!api || typeof api.mcpFsOpenProjectRoot !== 'function') return;
-      const res = await api.mcpFsOpenProjectRoot({ projectRoot: root });
-      if (!res?.ok && res?.error) {
-        setGitMessage(res.error, true);
-      }
+  function setupProjectListener() {
+    const api = getApi();
+    if (!api || typeof api.onMcpFsProjectChanged !== 'function') return;
+    api.onMcpFsProjectChanged(({ projectRoot }) => {
+      handleProjectRootChanged(projectRoot).catch((e) => {
+        console.error('[git-ui] project changed', e);
+      });
     });
   }
-
   function setupToolbar() {
     const mount = $('panel-git');
     if (!mount || mount.dataset.toolbarBound === '1') {
       setupPaneHscroll();
-      setupProjectInfoClick();
       setupNodeContextMenu();
+      setupGitBottomTabs();
+      setupGitChatPanel();
       return;
     }
     mount.dataset.toolbarBound = '1';
@@ -1417,23 +2063,9 @@
     $('git-btn-push')?.addEventListener('click', () => runGitAction('push'));
     $('git-btn-commit')?.addEventListener('click', () => runGitAction('commit'));
     setupPaneHscroll();
-    setupProjectInfoClick();
     setupNodeContextMenu();
-  }
-
-  function setupProjectListener() {
-    const api = getApi();
-    if (!api || typeof api.onMcpFsProjectChanged !== 'function') return;
-    api.onMcpFsProjectChanged(({ projectRoot }) => {
-      if (!projectRoot) return;
-      currentProjectRoot = projectRoot;
-      gitTabInitialScrollDone = false;
-      const gitPanel = $('panel-git');
-      if (gitPanel && !gitPanel.classList.contains('hidden') && panelReady) {
-        refreshGitView({ initialScroll: true });
-        gitTabInitialScrollDone = true;
-      }
-    });
+    setupGitBottomTabs();
+    setupGitChatPanel();
   }
 
   function setupSettingsListener() {
@@ -1444,15 +2076,25 @@
     });
   }
 
+  function setupNavigateListener() {
+    const api = getApi();
+    if (!api || typeof api.onNavigateView !== 'function') return;
+    api.onNavigateView((payload) => {
+      const view = String(payload?.view || '').trim();
+      if (view === 'git' || view === 'chat') {
+        showView(view).catch((e) => console.error('[git-ui] navigate', e));
+      }
+    });
+  }
+
   function init() {
     setupSidebar();
-    setupPaneHscroll();
-    setupHscrollWrapWheel();
-    setupProjectInfoClick();
-    setupNodeContextMenu();
+    setupDockToggle();
     setupProjectListener();
     setupSettingsListener();
+    setupNavigateListener();
     showView('chat');
+    loadPanelHtml().catch((e) => console.error('[git-ui] preload panel', e));
   }
 
   if (document.readyState === 'loading') {

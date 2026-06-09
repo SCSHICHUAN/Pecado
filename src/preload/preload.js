@@ -25,7 +25,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');
 hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
-const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP } = require('../shared/ipc-channels');
 
 /** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -81,6 +81,7 @@ try {
     gitPush: (payload) => ipcRenderer.invoke(GIT.PUSH, payload || {}),
     gitCommit: (payload) => ipcRenderer.invoke(GIT.COMMIT, payload || {}),
     gitNodeAction: (payload) => ipcRenderer.invoke(GIT.NODE_ACTION, payload || {}),
+    gitRunShell: (payload) => ipcRenderer.invoke(GIT.RUN_SHELL, payload || {}),
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {
@@ -88,6 +89,18 @@ try {
           callback(payload);
         } catch (e) {
           console.error('[preload] onSettingsConfigChanged', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
+    onNavigateView: (callback) => {
+      const ch = APP.NAVIGATE_VIEW;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onNavigateView', e);
         }
       };
       ipcRenderer.on(ch, fn);

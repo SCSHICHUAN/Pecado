@@ -9,12 +9,13 @@
  * - pull：--ff-only；push；commitAll：add -A + commit -m
  * - graphData 条数：settings/volc-user-config → resolveGitGraphCommitLimit()
  */
-const { execFile } = require('child_process');
+const { execFile, exec } = require('child_process');
 const { promisify } = require('util');
 const { buildGit2Json } = require('./log-parser');
 const { resolveGitGraphCommitLimit } = require('../../settings/js/volc-user-config');
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 /**
  * @param {string} cwd
@@ -84,6 +85,28 @@ async function commitAll(cwd, message) {
   return runGit(cwd, ['commit', '-m', msg]);
 }
 
+/**
+ * 用户确认后执行的 shell 命令（仅限 git / cd / mkdir 等）。
+ * @param {string} defaultCwd
+ * @param {string} command
+ */
+async function runShellCommand(defaultCwd, command) {
+  const cmd = String(command || '').trim();
+  if (!cmd) throw new Error('命令为空');
+  const allowed =
+    /^(cd|git|mkdir|export|rm|cp|mv)\b/i.test(cmd) ||
+    /\s&&\s*(git|cd|mkdir)\b/i.test(cmd);
+  if (!allowed) throw new Error('暂不支持该类型命令，仅允许 git / cd / mkdir 等');
+  const cwd = defaultCwd || process.cwd();
+  const { stdout, stderr } = await execAsync(cmd, {
+    cwd,
+    shell: true,
+    maxBuffer: 10 * 1024 * 1024,
+    encoding: 'utf8',
+  });
+  return { stdout: (stdout || '').trim(), stderr: (stderr || '').trim() };
+}
+
 async function getRemoteOriginUrl(cwd) {
   try {
     const { stdout } = await runGit(cwd, ['remote', 'get-url', 'origin']);
@@ -104,6 +127,12 @@ function buildRemoteCommitLink(remoteUrl, hash) {
   const base = remoteUrl.trim().replace(/\.git$/, '');
   if (/^https?:\/\//i.test(base)) return `${base}/commit/${hash}`;
   return '';
+}
+
+async function checkoutNewBranch(cwd, branchName) {
+  const name = String(branchName || '').trim();
+  if (!name) throw new Error('分支名不能为空');
+  return runGit(cwd, ['checkout', '-b', name]);
 }
 
 async function checkoutCommit(cwd, hash) {
@@ -148,6 +177,9 @@ async function createTagAt(cwd, hash, tagName, annotated, message) {
  * @param {{ action: string, hash: string, branchName?: string, resetMode?: string, tagName?: string, tagMessage?: string }} payload
  */
 async function runNodeAction(cwd, payload) {
+  if (payload?.action === 'checkout-new-branch') {
+    return checkoutNewBranch(cwd, payload.branchName);
+  }
   const hash = String(payload?.hash || '').trim();
   if (!hash) throw new Error('缺少 commit hash');
   switch (payload.action) {
@@ -214,4 +246,5 @@ module.exports = {
   pull,
   push,
   commitAll,
+  runShellCommand,
 };

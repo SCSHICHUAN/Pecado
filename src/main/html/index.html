@@ -49,6 +49,7 @@
         </div>
       </div>
     </aside>
+    <div class="main-column">
     <div class="content-area">
     <div class="main-panel" id="panel-chat">
       <header class="chat-header">
@@ -91,9 +92,16 @@
     </div>
     <div id="panel-git" class="git-panel-mount hidden"></div>
     </div>
+    <footer class="app-bottom-bar">
+      <button type="button" class="git-dock-toggle" id="git-dock-toggle" aria-label="展开或收起 Git 详情面板" aria-pressed="false" title="Git 详情面板（status / log / pecado）">
+        <span class="git-dock-toggle-icon" aria-hidden="true"></span>
+      </button>
+    </footer>
+    </div>
   </div>
   <script src="../../shared/format-tree.js"></script>
   <script src="../../pecado/js/index.js"></script>
-  <script src="../../gitgraph/js/index.js"></script>
+    <script src="../../gitgraph/js/git-chat.js"></script>
+    <script src="../../gitgraph/js/index.js"></script>
 </body>
 </html>

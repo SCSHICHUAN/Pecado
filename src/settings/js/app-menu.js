@@ -9,6 +9,7 @@
  */
 const { Menu, dialog } = require('electron');
 const { openProjectFolder } = require('../../mcp-filesystem/ipc');
+const { APP } = require('../../shared/ipc-channels');
 
 const APP_NAME = 'Pecado';
 
@@ -83,7 +84,27 @@ function setupApplicationMenu(getMainWindowFn) {
     },
     {
       label: 'View',
-      submenu: [{ role: 'toggleDevTools' }, { role: 'reload' }],
+      submenu: [
+        {
+          label: 'Pecado',
+          accelerator: 'CmdOrCtrl+1',
+          click: () => {
+            const win = getMainWindowFn();
+            win?.webContents.send(APP.NAVIGATE_VIEW, { view: 'chat' });
+          },
+        },
+        {
+          label: 'Git 面板',
+          accelerator: 'CmdOrCtrl+2',
+          click: () => {
+            const win = getMainWindowFn();
+            win?.webContents.send(APP.NAVIGATE_VIEW, { view: 'git' });
+          },
+        },
+        { type: 'separator' },
+        { role: 'toggleDevTools' },
+        { role: 'reload' },
+      ],
     },
     {
       label: 'Window',

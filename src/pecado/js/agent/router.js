@@ -30,16 +30,22 @@ const { runPlainSession } = require('./plain-stream');
 const { runAppAgentLoop } = require('../../../agent-loop');
 const { SYSTEM_PROMPT } = require('../prompts/default');
 const { AGENT_SYSTEM_PROMPT } = require('../prompts/agent');
+const { GIT_CHAT_SYSTEM_PROMPT } = require('../prompts/git-chat');
 
 const CHAT_MODES = Object.freeze({
   PLAIN: 'plain',
   CONTEXT: 'context',
   AGENT: 'agent',
+  GIT: 'git',
 });
 
 /** @param {string} mode */
 function isAgentMode(mode) {
   return mode === CHAT_MODES.AGENT;
+}
+
+function isGitChatMode(mode) {
+  return mode === CHAT_MODES.GIT;
 }
 
 /**
@@ -49,9 +55,17 @@ function isAgentMode(mode) {
  * @param {string} [contextBlock]
  */
 function buildChatMessages(mode, userText, history, contextBlock = '') {
-  let systemContent = isAgentMode(mode) ? AGENT_SYSTEM_PROMPT : SYSTEM_PROMPT;
-  if (!isAgentMode(mode) && contextBlock.trim()) {
+  let systemContent = AGENT_SYSTEM_PROMPT;
+  if (isGitChatMode(mode)) {
+    systemContent = GIT_CHAT_SYSTEM_PROMPT;
+  } else if (!isAgentMode(mode)) {
+    systemContent = SYSTEM_PROMPT;
+  }
+  if (!isAgentMode(mode) && !isGitChatMode(mode) && contextBlock.trim()) {
     systemContent += `\n\n${contextBlock.trim()}`;
+  }
+  if (isGitChatMode(mode) && contextBlock.trim()) {
+    systemContent += `\n\n【当前仓库】\n${contextBlock.trim()}`;
   }
   const hist = Array.isArray(history) ? history : [];
   return [
@@ -75,7 +89,14 @@ function buildChatMessages(mode, userText, history, contextBlock = '') {
  * @returns {Promise<{ mode: string, messages: Array<object>, xcodeStreamPath: string | null } | { error: string }>}
  */
 async function selectChatMode(input = {}) {
-  const { userText, history, legacyMessages, payloadMode, payloadXcodeStreamPath } = input;
+  const {
+    userText,
+    history,
+    legacyMessages,
+    payloadMode,
+    payloadXcodeStreamPath,
+    payloadGitContext,
+  } = input;
 
   if (userText != null && String(userText).trim()) {
     const text = String(userText);
@@ -83,7 +104,10 @@ async function selectChatMode(input = {}) {
     let mode;
     let xcodeStreamPath = null;
 
-    if (projectIo.getStatus().connected) {
+    if (payloadMode === CHAT_MODES.GIT) {
+      mode = CHAT_MODES.GIT;
+      contextBlock = payloadGitContext || '';
+    } else if (projectIo.getStatus().connected) {
       mode = CHAT_MODES.AGENT;
       xcodeStreamPath = pickXcodeStreamTarget(text);
     } else {
@@ -122,6 +146,7 @@ function register(ipcMain) {
       legacyMessages,
       payloadMode: payload?.mode,
       payloadXcodeStreamPath: payload?.xcodeStreamPath,
+      payloadGitContext: payload?.gitContext,
     });
     if (selected.error) return { error: selected.error };
 

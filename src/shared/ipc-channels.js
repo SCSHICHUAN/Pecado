@@ -17,6 +17,10 @@
  *   mcp-filesystem/ipc.js、settings/js/register.js
  */
 module.exports = {
+  APP: {
+    /** main → renderer：{ view: 'chat' | 'git' } 切换主内容区 */
+    NAVIGATE_VIEW: 'app-navigate-view',
+  },
   SETTINGS: {
     GET: 'settings-get',
     SAVE: 'settings-save',
@@ -49,5 +53,7 @@ module.exports = {
     COMMIT: 'git-commit',
     /** invoke：节点右键菜单 { action, hash, ... } */
     NODE_ACTION: 'git-node-action',
+    /** invoke：{ command, projectRoot? } → 用户确认后执行 shell 命令 */
+    RUN_SHELL: 'git-run-shell',
   },
 };
