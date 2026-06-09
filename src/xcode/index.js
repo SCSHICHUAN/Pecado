@@ -7,10 +7,14 @@ const project = require('./project');
 const prompt = require('./prompt');
 const liveStream = require('./live-stream');
 const pathParse = require('./path-parse');
+const buildRunner = require('./build-runner');
+const tools = require('./tools');
 
 module.exports = {
   ...project,
   ...prompt,
   ...liveStream,
   ...pathParse,
+  ...buildRunner,
+  ...tools,
 };

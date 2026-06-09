@@ -431,6 +431,19 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
         if (!payload || payload.streamId !== streamId) return;
         if (payload.phase === 'delta' && payload.text) onDelta(payload.text);
         if (payload.phase === 'tool_stream' && payload.text) onDelta(payload.text);
+        if (payload.phase === 'build_log') {
+          if (payload.step === 'start') {
+            onDelta(`\n\n--- Xcode ${payload.action || 'build'} ---\n`);
+          } else if (payload.step === 'line' && payload.line) {
+            onDelta(`${payload.line}\n`);
+          } else if (payload.step === 'end') {
+            onDelta(
+              payload.ok
+                ? `\n--- 完成 (exit ${payload.exitCode ?? 0}) ---\n\n`
+                : `\n--- 失败 (exit ${payload.exitCode ?? '?'}) ---\n\n`
+            );
+          }
+        }
       });
     }
 

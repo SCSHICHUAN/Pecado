@@ -5,6 +5,7 @@
  * 【节点】route_task — Loop 内部编排，非业务模块入口
  */
 const projectIo = require('../mcp-filesystem');
+const { IS_DARWIN } = require('../xcode/project');
 
 /**
  * @param {object} parsedTask
@@ -16,6 +17,18 @@ function route_task(parsedTask) {
   }
 
   switch (parsedTask.type) {
+    case 'xcode_tool': {
+      if (!IS_DARWIN) {
+        return { error: 'DISPATCH：Xcode 工具仅支持 macOS' };
+      }
+      if (!projectIo.getStatus().connected) {
+        return { error: 'DISPATCH：MCP 未连接' };
+      }
+      return {
+        module: 'xcode',
+        task: parsedTask,
+      };
+    }
     case 'mcp_tool': {
       if (!projectIo.getStatus().connected) {
         return { error: 'DISPATCH：MCP 未连接' };

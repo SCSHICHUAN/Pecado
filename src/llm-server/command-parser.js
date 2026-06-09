@@ -4,8 +4,9 @@
  *
  * 【节点】parse_command
  * 【入口】EXECUTE_parse_command — Loop 调用本模块时使用的执行方法
- * 【职责】INFER 原始 tool_calls → 结构化任务（仅 name/args，EXEC 策略在 mcp-filesystem）
+ * 【职责】INFER 原始 tool_calls → 结构化任务（mcp_tool / xcode_tool）
  */
+const { isXcodeToolName } = require('../xcode/tools');
 
 function tryExtractJsonStringField(argsAcc, field) {
   const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
@@ -167,7 +168,7 @@ function EXECUTE_parse_command(inferRound) {
     tasks.push({
       id: tc.id,
       index: idx,
-      type: 'mcp_tool',
+      type: isXcodeToolName(name) ? 'xcode_tool' : 'mcp_tool',
       name,
       args,
     });

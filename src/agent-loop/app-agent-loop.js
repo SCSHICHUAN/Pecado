@@ -9,6 +9,11 @@ const { EXECUTE_call_llm, FEED_infer_round } = require('../llm-server/llm-infer-
 const { EXECUTE_parse_command, FEED_parsed_command } = require('../llm-server/command-parser');
 const { route_task } = require('./task-dispatcher');
 const { EXECUTE_execute_tool, FEED_tool_result } = require('../mcp-filesystem/tool-executor');
+const {
+  EXECUTE_execute_tool: EXECUTE_xcode_tool,
+  FEED_tool_result: FEED_xcode_tool_result,
+} = require('../xcode/tool-executor');
+const { getXcodeTools } = require('../xcode/tools');
 const { feed_observation, feed_assistant_tool_calls } = require('./context-feeder');
 const { createAgentStreamHooks } = require('./stream-hooks');
 const { resolveAbsInProject } = require('../xcode/live-stream');
@@ -38,6 +43,9 @@ async function runAppAgentLoop(uiSink, apiKey, model, messages, loopOpts = {}) {
     return { error: 'MCP 未返回可用 tools' };
   }
 
+  const xcodeTools = getXcodeTools();
+  const allTools = [...mcpTools, ...xcodeTools];
+
   const projectRoot = projectIo.getStatus().projectRoot;
   const conv = messages.map((m) => ({ ...m }));
 
@@ -46,7 +54,7 @@ async function runAppAgentLoop(uiSink, apiKey, model, messages, loopOpts = {}) {
     xcodeAbsPath = resolveAbsInProject(projectRoot, loopOpts.xcodeStreamPath);
   }
 
-  const chatOpts = { apiKey, model, messages: conv, mcpTools };
+  const chatOpts = { apiKey, model, messages: conv, mcpTools: allTools };
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
@@ -94,14 +102,21 @@ async function runAppAgentLoop(uiSink, apiKey, model, messages, loopOpts = {}) {
 
         let execRaw;
         try {
-          execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
+          if (routed.module === 'xcode') {
+            execRaw = await EXECUTE_xcode_tool(routed, { uiSink });
+          } else {
+            execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
+          }
         } catch (e) {
           execRaw = {
             isError: true,
             content: [{ type: 'text', text: e.message || String(e) }],
           };
         }
-        const toolFeed = FEED_tool_result(execRaw);
+        const toolFeed =
+          routed.module === 'xcode'
+            ? FEED_xcode_tool_result(execRaw)
+            : FEED_tool_result(execRaw);
         feed_observation(conv, parsedTask, toolFeed);
       }
 
