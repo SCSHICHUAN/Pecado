@@ -5,7 +5,7 @@
  * 【调用方】settings/html/index.html → ../js/index.js
  */
 const PANEL_META = {
-  volc: { title: '火山设置', desc: '配置火山方舟 API 密钥与 Bot 模型（保存至本地用户目录）。' },
+  volc: { title: '火山设置', desc: '配置 Coding Plan 或 Bots API、密钥与模型（保存至本地用户目录）。' },
   general: { title: '通用', desc: 'Git 提交图与其它基础选项。' },
   appearance: { title: '外观', desc: '主题与界面显示偏好。' },
   shortcuts: { title: '快捷键', desc: '查看常用键盘快捷键。' },
@@ -22,7 +22,9 @@ const detailDesc = document.getElementById('detail-desc');
 const saveBtn = document.getElementById('save-btn');
 const statusEl = document.getElementById('status');
 const apiKeyEl = document.getElementById('api-key');
+const apiModeEl = document.getElementById('api-mode');
 const modelEl = document.getElementById('model');
+const modelHintEl = document.getElementById('model-hint');
 const gitGraphLimitEl = document.getElementById('git-graph-limit');
 const configDirBtn = document.getElementById('config-dir-btn');
 
@@ -76,12 +78,29 @@ function requireSettingsAPI() {
   return api;
 }
 
+function updateModelHint() {
+  if (!modelHintEl || !apiModeEl) return;
+  const mode = apiModeEl.value === 'bots' ? 'bots' : 'coding_plan';
+  if (mode === 'bots') {
+    modelHintEl.textContent =
+      'Bots 接口：模型填 bot- 开头的 Bot ID，例如 bot-20260424113808-wwggn';
+  } else {
+    modelHintEl.textContent =
+      'Coding Plan：填 doubao-seed-2.0-code、kimi-k2.5、glm-4.7、ark-code-latest 等（勿填在线推理的 Model ID）';
+  }
+}
+
+if (apiModeEl) {
+  apiModeEl.addEventListener('change', updateModelHint);
+}
+
 function readFormValues() {
   if (document.activeElement && typeof document.activeElement.blur === 'function') {
     document.activeElement.blur();
   }
   return {
     volcArkApiKey: apiKeyEl.value.trim(),
+    volcApiMode: apiModeEl ? apiModeEl.value : 'coding_plan',
     volcArkModel: modelEl.value.trim(),
     gitGraphCommitLimit: gitGraphLimitEl ? gitGraphLimitEl.value : '',
   };
@@ -93,7 +112,11 @@ function applyConfig(cfg) {
     return;
   }
   apiKeyEl.value = cfg.volcArkApiKey || '';
+  if (apiModeEl) {
+    apiModeEl.value = cfg.volcApiMode === 'bots' ? 'bots' : 'coding_plan';
+  }
   modelEl.value = cfg.volcArkModel || '';
+  updateModelHint();
   if (gitGraphLimitEl && cfg.gitGraphCommitLimit != null) {
     const limit = String(cfg.gitGraphCommitLimit);
     if ([...gitGraphLimitEl.options].some((o) => o.value === limit)) {
@@ -138,7 +161,7 @@ saveBtn.addEventListener('click', async () => {
   const payload = readFormValues();
 
   if (activePanel === 'volc' && !payload.volcArkApiKey) {
-    setStatus('请填写 Volc Ark API Key', true);
+    setStatus('请填写 API Key', true);
     apiKeyEl.focus();
     return;
   }

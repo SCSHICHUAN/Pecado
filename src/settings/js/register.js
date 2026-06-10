@@ -75,11 +75,12 @@ function openSettings() {
 function register(ipcMain, getMainWindowFn) {
   ipcMain.handle(SETTINGS.GET, async () => {
     try {
-      const { apiKey, model, gitGraphCommitLimit } = readUserVolcConfig();
+      const { apiKey, model, volcApiMode, gitGraphCommitLimit } = readUserVolcConfig();
       return {
         ok: true,
         volcArkApiKey: apiKey,
         volcArkModel: model,
+        volcApiMode,
         gitGraphCommitLimit,
         configPath: getUserVolcConfigPath(),
         configDir: getUserConfigDir(),

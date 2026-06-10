@@ -10,6 +10,7 @@
 const { Menu, dialog } = require('electron');
 const { openProjectFolder } = require('../../mcp-filesystem/ipc');
 const { APP } = require('../../shared/ipc-channels');
+const { promptXcodeAutomationPermission } = require('../../xcode/automation-permission');
 
 const APP_NAME = 'Pecado';
 
@@ -65,6 +66,19 @@ function setupApplicationMenu(getMainWindowFn) {
             });
           },
         },
+        ...(isMac
+          ? [
+              {
+                label: 'Authorize Xcode Automation…',
+                click: () => {
+                  const win = getMainWindowFn();
+                  promptXcodeAutomationPermission(win).catch((e) => {
+                    dialog.showErrorBox('Xcode Automation', e.message || String(e));
+                  });
+                },
+              },
+            ]
+          : []),
         ...(isMac ? [] : [{ type: 'separator' }, preferencesItem]),
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },

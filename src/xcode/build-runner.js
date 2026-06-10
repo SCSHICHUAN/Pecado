@@ -9,6 +9,10 @@ const path = require('path');
 const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
 const { findXcodeProject, findXcodeWorkspace, IS_DARWIN, openXcodeForProjectRoot } = require('./project');
+const {
+  ensureXcodeAutomationPermission,
+  isXcodeAutomationDenied,
+} = require('./automation-permission');
 
 const execFileAsync = promisify(execFile);
 const LOG_TAIL_MAX = 12000;
@@ -19,6 +23,14 @@ const XCODE_OPEN_DELAY_MS = 3500;
 
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function getMainBrowserWindow() {
+  try {
+    return require('../mcp-filesystem/ipc').getMainWindow();
+  } catch (_) {
+    return null;
+  }
 }
 
 /**
@@ -398,16 +410,26 @@ async function triggerXcodeCommandR(projectRoot, target) {
     await runAppleScript(script);
     return { launchOutput: '已通过 Xcode Run（⌘R）启动构建与运行' };
   } catch (e) {
+    if (isXcodeAutomationDenied(e)) {
+      throw e;
+    }
     const fallback = `
       tell application "Xcode"
         activate
         run
       end tell
     `;
-    await runAppleScript(fallback);
-    return {
-      launchOutput: `Xcode Run（⌘R）已触发（${e.message || 'open 步骤跳过'}）`,
-    };
+    try {
+      await runAppleScript(fallback);
+      return {
+        launchOutput: `Xcode Run（⌘R）已触发（${e.message || 'open 步骤跳过'}）`,
+      };
+    } catch (fallbackErr) {
+      if (isXcodeAutomationDenied(fallbackErr)) {
+        throw fallbackErr;
+      }
+      throw fallbackErr;
+    }
   }
 }
 
@@ -760,6 +782,31 @@ async function runXcodeProject(projectRoot, opts = {}) {
   opts.onLine?.('Run: 打开 Simulator…');
   await openSimulatorApp();
 
+  const automation = await ensureXcodeAutomationPermission({
+    browserWindow: getMainBrowserWindow(),
+    onLine: opts.onLine,
+    interactive: true,
+  });
+  if (!automation.granted) {
+    if (automation.useFallback) {
+      return runViaSimctl(projectRoot, opts);
+    }
+    return finalizeRunResult({
+      scheme,
+      destination: '(Xcode 当前 Run destination)',
+      launchInfo: {},
+      runtimeLog: '',
+      buildOutcome: null,
+      runMethod: 'xcode-cmd-r',
+      runOk: false,
+      error:
+        automation.canceled
+          ? '已取消：需要允许 Pecado 控制 Xcode（系统设置 → 隐私与安全性 → 自动化）'
+          : '未获得 Xcode 自动化权限。请在系统设置 → 隐私与安全性 → 自动化 中勾选 Pecado → Xcode',
+      crashHints: ['缺少 macOS 自动化权限，无法触发 Xcode ⌘R'],
+    });
+  }
+
   /** @type {object} */
   let launchInfo = {};
   let buildOutcome = null;
@@ -769,6 +816,19 @@ async function runXcodeProject(projectRoot, opts = {}) {
     launchInfo = await triggerXcodeCommandR(projectRoot, target);
     buildOutcome = await waitForXcodeBuildOutcome(opts.onLine);
   } catch (e) {
+    if (isXcodeAutomationDenied(e)) {
+      return finalizeRunResult({
+        scheme,
+        destination: '(Xcode 当前 Run destination)',
+        launchInfo: {},
+        runtimeLog: String(e?.stderr || e?.message || e),
+        buildOutcome: null,
+        runMethod: 'xcode-cmd-r',
+        runOk: false,
+        error: 'Xcode 自动化权限被拒绝，请在系统设置 → 隐私与安全性 → 自动化 中允许 Pecado 控制 Xcode',
+        crashHints: ['自动化权限被拒绝'],
+      });
+    }
     opts.onLine?.(`Run: Xcode ⌘R 不可用 (${e.message || e})，改用 xcodebuild…`);
     return runViaSimctl(projectRoot, opts);
   }

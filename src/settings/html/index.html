@@ -21,7 +21,7 @@
         <div class="detail-header-row">
           <div class="detail-header-text">
             <h1 id="detail-title">火山设置</h1>
-            <p id="detail-desc">配置火山方舟 API 密钥与 Bot 模型。</p>
+            <p id="detail-desc">配置火山方舟 API 密钥、Coding Plan / Bots 接口与模型。</p>
           </div>
           <button type="button" class="action save" id="save-btn">保存</button>
         </div>
@@ -30,12 +30,20 @@
       <div class="detail-body">
         <div class="panel active" id="panel-volc">
           <div class="field-group">
-            <label for="api-key">Volc Ark API Key</label>
+            <label for="api-mode">API 类型</label>
+            <select id="api-mode">
+              <option value="coding_plan">Coding Plan（套餐订阅）</option>
+              <option value="bots">方舟 Bots（在线 Bot）</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="api-key">API Key</label>
             <input id="api-key" type="text" autocomplete="off" spellcheck="false">
           </div>
           <div class="field-group">
-            <label for="model">Bot Model ID</label>
+            <label for="model">Model</label>
             <input id="model" type="text" autocomplete="off" spellcheck="false">
+            <p class="field-hint" id="model-hint"></p>
           </div>
           <p class="config-path">
             配置目录：

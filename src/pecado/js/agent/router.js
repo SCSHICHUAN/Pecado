@@ -152,16 +152,17 @@ function register(ipcMain) {
 
     const { mode, messages, xcodeStreamPath } = selected;
 
-    const { apiKey, model } = resolveVolcCredentials();
+    const { apiKey, model, apiMode, endpoint } = resolveVolcCredentials();
     if (!apiKey) {
       return { error: MISSING_KEY_ERROR };
     }
 
     const sender = event.sender;
+    const llmOpts = { apiKey, model, apiMode, endpoint };
 
     if (isAgentMode(mode)) {
       const uiSink = createUiStreamSink(sender, streamId);
-      return runAppAgentLoop(uiSink, apiKey, model, messages, {
+      return runAppAgentLoop(uiSink, llmOpts, messages, {
         xcodeStreamPath: xcodeStreamPath || undefined,
       });
     }
@@ -169,8 +170,7 @@ function register(ipcMain) {
     const xcodeAbsPath = resolveOpenProjectPath(xcodeStreamPath);
     const uiSink = createUiStreamSink(sender, streamId);
     return runPlainSession({
-      apiKey,
-      model,
+      ...llmOpts,
       messages,
       uiSink,
       xcodeAbsPath,

@@ -19,18 +19,20 @@ const { createLiveWriter } = require('../../../xcode/live-stream');
  * @param {{
  *   apiKey: string,
  *   model: string,
+ *   apiMode?: string,
+ *   endpoint?: string,
  *   messages: Array<{ role: string, content: string }>,
  *   uiSink: ReturnType<typeof import('./stream-ui').createUiStreamSink>,
  *   xcodeAbsPath?: string | null,
  * }} opts
  */
 async function runPlainSession(opts) {
-  const { apiKey, model, messages, uiSink, xcodeAbsPath = null } = opts;
+  const { apiKey, model, apiMode, endpoint, messages, uiSink, xcodeAbsPath = null } = opts;
   const xcodeWriter = createLiveWriter(xcodeAbsPath);
   if (xcodeAbsPath) xcodeWriter.start();
 
   const out = await llm.collectPlainChat(
-    { apiKey, model, messages },
+    { apiKey, model, apiMode, endpoint, messages },
     {
       onTextDelta(piece) {
         uiSink.onTextDelta(piece);

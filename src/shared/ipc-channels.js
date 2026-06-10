@@ -45,6 +45,10 @@ module.exports = {
     /** main → renderer：用户通过菜单 Open Folder 后推送 */
     PROJECT_CHANGED: 'mcp-fs-project-changed',
   },
+  XCODE: {
+    /** invoke：触发 macOS 自动化权限弹窗（Pecado → Xcode） */
+    REQUEST_AUTOMATION: 'xcode-request-automation',
+  },
   GIT: {
     GET_STATE: 'git-get-state',
     GET_PANEL_HTML: 'git-get-panel-html',

@@ -16,7 +16,37 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 
-const DEFAULT_MODEL = 'bot-20260424113808-wwggn';
+const VOLC_API_MODES = {
+  BOTS: 'bots',
+  CODING_PLAN: 'coding_plan',
+};
+
+const VOLC_ENDPOINTS = {
+  [VOLC_API_MODES.BOTS]: 'https://ark.cn-beijing.volces.com/api/v3/bots/chat/completions',
+  [VOLC_API_MODES.CODING_PLAN]: 'https://ark.cn-beijing.volces.com/api/coding/v3/chat/completions',
+};
+
+const DEFAULT_BOTS_MODEL = 'bot-20260424113808-wwggn';
+const DEFAULT_CODING_PLAN_MODEL = 'doubao-seed-2.0-code';
+const DEFAULT_MODEL = DEFAULT_BOTS_MODEL;
+
+/**
+ * @param {unknown} value
+ * @param {string} [model]
+ */
+function normalizeVolcApiMode(value, model) {
+  const v = String(value || '').trim();
+  if (v === VOLC_API_MODES.BOTS || v === VOLC_API_MODES.CODING_PLAN) return v;
+  if (/^bot-/i.test(String(model || ''))) return VOLC_API_MODES.BOTS;
+  return VOLC_API_MODES.CODING_PLAN;
+}
+
+/**
+ * @param {string} apiMode
+ */
+function resolveVolcApiEndpoint(apiMode) {
+  return VOLC_ENDPOINTS[apiMode] || VOLC_ENDPOINTS[VOLC_API_MODES.BOTS];
+}
 const DEFAULT_GIT_GRAPH_COMMIT_LIMIT = 500;
 const GIT_GRAPH_COMMIT_LIMIT_OPTIONS = [100, 200, 500, 1000, 1500, 5000];
 const MIN_GIT_GRAPH_COMMIT_LIMIT = 100;
@@ -61,16 +91,29 @@ function normalizeGitGraphCommitLimit(value) {
 function readUserVolcConfig() {
   try {
     if (!app.isReady()) {
-      return { apiKey: '', model: '', gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT };
+      return {
+        apiKey: '',
+        model: '',
+        volcApiMode: VOLC_API_MODES.CODING_PLAN,
+        gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
+      };
     }
     const j = readRawUserConfigFile();
+    const model = j.volcArkModel != null ? String(j.volcArkModel).trim() : '';
+    const volcApiMode = normalizeVolcApiMode(j.volcApiMode, model);
     return {
       apiKey: j.volcArkApiKey != null ? String(j.volcArkApiKey).trim() : '',
-      model: j.volcArkModel != null ? String(j.volcArkModel).trim() : '',
+      model,
+      volcApiMode,
       gitGraphCommitLimit: normalizeGitGraphCommitLimit(j.gitGraphCommitLimit),
     };
   } catch {
-    return { apiKey: '', model: '', gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT };
+    return {
+      apiKey: '',
+      model: '',
+      volcApiMode: VOLC_API_MODES.CODING_PLAN,
+      gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
+    };
   }
 }
 
@@ -79,13 +122,22 @@ function writeUserVolcConfig(payload) {
   const incoming = payload && typeof payload === 'object' ? payload : {};
   const existing = readRawUserConfigFile();
 
+  const modelRaw = String(
+    incoming.volcArkModel != null ? incoming.volcArkModel : existing.volcArkModel ?? ''
+  ).trim();
+  const volcApiMode = normalizeVolcApiMode(
+    incoming.volcApiMode != null ? incoming.volcApiMode : existing.volcApiMode,
+    modelRaw
+  );
+  const defaultModel =
+    volcApiMode === VOLC_API_MODES.CODING_PLAN ? DEFAULT_CODING_PLAN_MODEL : DEFAULT_BOTS_MODEL;
+
   const base = {
     volcArkApiKey: String(
       incoming.volcArkApiKey != null ? incoming.volcArkApiKey : existing.volcArkApiKey ?? ''
     ).trim(),
-    volcArkModel: String(
-      incoming.volcArkModel != null ? incoming.volcArkModel : existing.volcArkModel ?? ''
-    ).trim() || DEFAULT_MODEL,
+    volcArkModel: modelRaw || defaultModel,
+    volcApiMode,
     gitGraphCommitLimit: normalizeGitGraphCommitLimit(
       incoming.gitGraphCommitLimit != null ? incoming.gitGraphCommitLimit : existing.gitGraphCommitLimit
     ),
@@ -99,15 +151,21 @@ function writeUserVolcConfig(payload) {
     configDir: path.dirname(p),
     volcArkApiKey: base.volcArkApiKey,
     volcArkModel: base.volcArkModel,
+    volcApiMode: base.volcApiMode,
     gitGraphCommitLimit: base.gitGraphCommitLimit,
   };
 }
 
 function resolveVolcCredentials() {
-  const { apiKey, model } = readUserVolcConfig();
+  const { apiKey, model, volcApiMode } = readUserVolcConfig();
+  const apiMode = normalizeVolcApiMode(volcApiMode, model);
+  const defaultModel =
+    apiMode === VOLC_API_MODES.CODING_PLAN ? DEFAULT_CODING_PLAN_MODEL : DEFAULT_BOTS_MODEL;
   return {
     apiKey,
-    model: model || DEFAULT_MODEL,
+    model: model || defaultModel,
+    apiMode,
+    endpoint: resolveVolcApiEndpoint(apiMode),
   };
 }
 
@@ -125,8 +183,14 @@ module.exports = {
   getUserVolcConfigPath,
   getUserConfigDir,
   resolveVolcCredentials,
+  resolveVolcApiEndpoint,
+  normalizeVolcApiMode,
   resolveGitGraphCommitLimit,
   normalizeGitGraphCommitLimit,
+  VOLC_API_MODES,
+  VOLC_ENDPOINTS,
+  DEFAULT_BOTS_MODEL,
+  DEFAULT_CODING_PLAN_MODEL,
   DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
   GIT_GRAPH_COMMIT_LIMIT_OPTIONS,
   MIN_GIT_GRAPH_COMMIT_LIMIT,

@@ -28,7 +28,8 @@ const MAX_TOOL_ROUNDS = 12;
  *   onError?: (error: string) => void,
  * }} uiSink
  */
-async function runAppAgentLoop(uiSink, apiKey, model, messages, loopOpts = {}) {
+async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
+  const { apiKey, model, apiMode, endpoint } = llmOpts || {};
   if (!projectIo.getStatus().connected) {
     return { error: 'MCP 未连接，请先用 File → Open Folder 打开工程目录' };
   }
@@ -54,7 +55,7 @@ async function runAppAgentLoop(uiSink, apiKey, model, messages, loopOpts = {}) {
     xcodeAbsPath = resolveAbsInProject(projectRoot, loopOpts.xcodeStreamPath);
   }
 
-  const chatOpts = { apiKey, model, messages: conv, mcpTools: allTools };
+  const chatOpts = { apiKey, model, apiMode, endpoint, messages: conv, mcpTools: allTools };
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {

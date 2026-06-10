@@ -139,6 +139,25 @@ input:focus, select:focus {
 
 .field-group { margin-bottom: 8px; }
 
+.field-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #888;
+  line-height: 1.5;
+  max-width: 520px;
+}
+
+select {
+  width: 100%;
+  max-width: 520px;
+  padding: 8px 10px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 13px;
+}
+
 .hint {
   font-size: 12px;
   color: #888;
