@@ -20,10 +20,9 @@
     return window.formatMcpTree.formatMcpTreeAscii(tree, maxLines);
   }
 
-  function buildProjectTreeMarkdown(projectRoot, tree) {
-    const treeText = formatMcpTreeAscii(tree, 400);
+  function buildProjectTreeMarkdownFromAscii(projectRoot, treeAscii) {
     const folderName = String(projectRoot).split(/[/\\]/).filter(Boolean).pop() || projectRoot;
-    const indented = treeText
+    const indented = String(treeAscii || '(无)')
       .split('\n')
       .map((line) => `    ${line}`)
       .join('\n');
@@ -32,6 +31,18 @@
       `\`${projectRoot}\`\n\n` +
       `**目录结构**\n\n${indented}`
     );
+  }
+
+  function buildProjectTreeMarkdown(projectRoot, tree) {
+    const treeText = formatMcpTreeAscii(tree, 400);
+    return buildProjectTreeMarkdownFromAscii(projectRoot, treeText);
+  }
+
+  function showProjectTreeMarkdown(projectRoot, md) {
+    if (!uiDeps) return;
+    uiDeps.addMessage(md, 'assistant');
+    uiDeps.pushChatHistory({ role: 'assistant', content: md });
+    uiDeps.scrollChatToBottomForced();
   }
 
   async function showProjectTreeBubble(projectRoot) {
@@ -49,16 +60,19 @@
       return;
     }
     const md = buildProjectTreeMarkdown(projectRoot, res.tree);
-    uiDeps.addMessage(md, 'assistant');
-    uiDeps.pushChatHistory({ role: 'assistant', content: md });
-    uiDeps.scrollChatToBottomForced();
+    showProjectTreeMarkdown(projectRoot, md);
   }
 
   function setupProjectListener() {
     const api = getApi();
     if (!api || typeof api.onMcpFsProjectChanged !== 'function') return;
-    api.onMcpFsProjectChanged(({ projectRoot }) => {
+    api.onMcpFsProjectChanged(({ projectRoot, showTree, treeAscii }) => {
       if (!projectRoot) return;
+      if (showTree !== true) return;
+      if (treeAscii) {
+        showProjectTreeMarkdown(projectRoot, buildProjectTreeMarkdownFromAscii(projectRoot, treeAscii));
+        return;
+      }
       showProjectTreeBubble(projectRoot).catch((e) => {
         console.error('[project-ui] showProjectTreeBubble', e);
         if (uiDeps) {

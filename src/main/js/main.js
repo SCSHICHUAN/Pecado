@@ -10,7 +10,8 @@
  *   4. mcp-filesystem/ipc.js        → MCP_FS + File → Open Folder
  *   5. gitgraph/js/register.js      → GIT 面板
  *   6. xcode/register.js            → Xcode 自动化权限
- *   7. settings.setupApplicationMenu → 菜单栏（含 Open Folder、Preferences）
+ *   7. workflow/register.js        → Workflow 自动化
+ *   8. settings.setupApplicationMenu → 菜单栏（含 Open Folder、Preferences）
  *
  * 【渲染进程】main/html/index.html + preload/preload.js
  *   · pecado/js/index.js — 对话 UI
@@ -19,6 +20,7 @@
  * 【调用方】package.json `"main": "src/main/js/main.js"`
  */
 const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const fs = require('fs');
 const path = require('path');
 
 /* 必须在 app ready 之前设置，否则 macOS 菜单栏仍显示 Electron */
@@ -43,12 +45,18 @@ const commands = require('../../commands/js/register');
 const mcpFilesystemIpc = require('../../mcp-filesystem/ipc');
 const gitgraph = require('../../gitgraph/js/register');
 const xcodeRegister = require('../../xcode/register');
+const workflowRegister = require('../../workflow/register');
 const settings = require('../../settings/js/register');
 
 loadEnvFromSearchRoots(getDefaultSearchRoots());
 
 const RENDERER_HTML = path.join(__dirname, '..', 'html', 'index.html');
 const PRELOAD_SCRIPT = path.join(__dirname, '..', '..', 'preload', 'preload.js');
+const APP_ICON = path.join(__dirname, '..', '..', '..', 'assets', 'icons', 'icon.png');
+
+function resolveAppIcon() {
+  return fs.existsSync(APP_ICON) ? APP_ICON : undefined;
+}
 
 /** @type {import('electron').BrowserWindow | null} */
 let mainWindowRef = null;
@@ -66,6 +74,7 @@ function createWindow() {
 
   const mainWindow = new BrowserWindow({
     title: 'Pecado',
+    icon: resolveAppIcon(),
     show: false,
     width: winWidth,
     height: winHeight,
@@ -92,6 +101,10 @@ function createWindow() {
 
   mainWindow.loadFile(RENDERER_HTML);
 
+  mainWindow.webContents.once('did-finish-load', () => {
+    mcpFilesystemIpc.notifyConnectedProject(() => mainWindowRef);
+  });
+
   mainWindow.webContents.on('preload-error', (event, preloadPath, error) => {
     console.error('Preload script error:', preloadPath, error);
   });
@@ -115,7 +128,11 @@ function createWindow() {
   console.log('Is focused:', mainWindow.isFocused());
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const appIcon = resolveAppIcon();
+  if (appIcon && process.platform === 'darwin' && app.dock) {
+    app.dock.setIcon(appIcon);
+  }
   const roots = getDefaultSearchRoots();
   try {
     roots.push(app.getAppPath());
@@ -128,7 +145,16 @@ app.whenReady().then(() => {
   mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
   gitgraph.register(ipcMain);
   xcodeRegister.register(ipcMain, () => mainWindowRef);
+  workflowRegister.register(ipcMain, () => mainWindowRef);
   settings.setupApplicationMenu(() => mainWindowRef);
+
+  try {
+    const res = await mcpFilesystemIpc.restoreSavedProject(() => mainWindowRef, { notify: false });
+    if (res?.ok) console.log('[main] restored project:', res.projectRoot);
+  } catch (e) {
+    console.error('[main] restoreSavedProject', e);
+  }
+
   createWindow();
 
   app.on('activate', function () {
@@ -138,4 +164,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', function () {
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('will-quit', () => {
+  workflowRegister.shutdown();
 });

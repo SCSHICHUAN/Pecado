@@ -151,12 +151,14 @@
     return mount;
   }
 
-  function setGitPanelVisible(visible) {
+  function setMainPanelVisible(view) {
     const chatPanel = $('panel-chat');
+    const workflowPanel = $('panel-workflow');
     const gitPanel = $('panel-git');
-    gitPanelOpen = Boolean(visible);
-    if (chatPanel) chatPanel.classList.toggle('hidden', gitPanelOpen);
-    if (gitPanel) gitPanel.classList.toggle('hidden', !gitPanelOpen);
+    gitPanelOpen = view === 'git';
+    if (chatPanel) chatPanel.classList.toggle('hidden', view !== 'chat');
+    if (workflowPanel) workflowPanel.classList.toggle('hidden', view !== 'workflow');
+    if (gitPanel) gitPanel.classList.toggle('hidden', view !== 'git');
     syncBottomDockToggleUi();
   }
 
@@ -277,15 +279,24 @@
 
   function setActiveNav(view) {
     const pecado = $('nav-pecado');
+    const workflow = $('nav-workflow');
     const git = $('nav-git');
     if (pecado) pecado.classList.toggle('active', view === 'chat');
+    if (workflow) workflow.classList.toggle('active', view === 'workflow');
     if (git) git.classList.toggle('active', view === 'git');
   }
 
   async function showView(view) {
-    setActiveNav(view);
-    if (view === 'git') {
-      setGitPanelVisible(true);
+    const target = view === 'git' || view === 'workflow' ? view : 'chat';
+    setActiveNav(target);
+    setMainPanelVisible(target);
+
+    if (target === 'workflow') {
+      window.WorkflowPanel?.init?.();
+      return;
+    }
+
+    if (target === 'git') {
       try {
         await loadPanelHtml();
         setGitBottomDockOpen(gitBottomDockOpen);
@@ -296,9 +307,7 @@
         console.error('[git-ui] showView git', e);
         showPanelLoadError(e.message || 'Git 面板加载失败');
       }
-      return;
     }
-    setGitPanelVisible(false);
   }
 
   function setStatusPanelLabel(text) {
@@ -2008,6 +2017,7 @@
 
   function setupSidebar() {
     $('nav-pecado')?.addEventListener('click', () => showView('chat'));
+    $('nav-workflow')?.addEventListener('click', () => showView('workflow'));
     $('nav-git')?.addEventListener('click', () => showView('git'));
   }
 
@@ -2081,7 +2091,7 @@
     if (!api || typeof api.onNavigateView !== 'function') return;
     api.onNavigateView((payload) => {
       const view = String(payload?.view || '').trim();
-      if (view === 'git' || view === 'chat') {
+      if (view === 'git' || view === 'chat' || view === 'workflow') {
         showView(view).catch((e) => console.error('[git-ui] navigate', e));
       }
     });

@@ -31,6 +31,14 @@ async function ensureProjectCached() {
   cache.treeAscii = formatMcpTreeAscii(tree, 400);
 }
 
+async function warmProjectTreeCache() {
+  await ensureProjectCached();
+}
+
+function getCachedTreeAscii() {
+  return cache.treeAscii || '';
+}
+
 function clearProjectCache() {
   cache = { root: '', treeAscii: '' };
 }
@@ -68,4 +76,9 @@ async function buildProjectContextForAi(userText) {
   return lines.join('\n');
 }
 
-module.exports = { buildProjectContextForAi, clearProjectCache };
+module.exports = {
+  buildProjectContextForAi,
+  clearProjectCache,
+  warmProjectTreeCache,
+  getCachedTreeAscii,
+};

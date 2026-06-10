@@ -1,0 +1,576 @@
+/**
+ * @file index.css
+ * 【功能】Workflow 主面板样式
+ */
+.workflow-panel-mount {
+  height: 100%;
+  min-height: 0;
+  background: #1e1e1e;
+}
+
+.workflow-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.workflow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #252526;
+}
+
+.workflow-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.workflow-subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+  word-break: break-all;
+}
+
+.workflow-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  background: #1e1e1e;
+}
+
+.workflow-tab {
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.workflow-tab:hover {
+  background: #2a2a2a;
+  color: #fff;
+}
+
+.workflow-tab.is-active {
+  background: #2f3f5f;
+  color: #fff;
+}
+
+.workflow-panels {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px 24px;
+}
+
+.workflow-panel {
+  display: none;
+  max-width: 720px;
+}
+
+.workflow-panel.is-active {
+  display: block;
+}
+
+.workflow-desc {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #aaa;
+}
+
+.workflow-desc code {
+  color: #9cdcfe;
+  font-size: 12px;
+}
+
+.wf-field {
+  margin-bottom: 12px;
+}
+
+.wf-field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.wf-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.wf-row {
+  display: flex;
+  gap: 8px;
+}
+
+.wf-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-field input,
+.wf-field select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 13px;
+}
+
+.wf-field input:focus,
+.wf-field select:focus {
+  outline: none;
+  border-color: #5a8dee;
+}
+
+.wf-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+
+.wf-btn {
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: #333;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.wf-btn:hover {
+  background: #3a3a3a;
+}
+
+.wf-btn-primary {
+  background: #2f5f9e;
+  border-color: #4a7fc0;
+}
+
+.wf-btn-primary:hover {
+  background: #3a6fb0;
+}
+
+.wf-btn:disabled,
+.wf-btn.is-inactive {
+  opacity: 0.38;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.35);
+}
+
+.wf-btn-start.is-active {
+  background: #2f5f9e;
+  border-color: #4a7fc0;
+  color: #fff;
+}
+
+.wf-btn-start.is-active:hover {
+  background: #3a6fb0;
+}
+
+.wf-btn-stop.is-active {
+  background: #7a3535;
+  border-color: #a04848;
+  color: #fff;
+}
+
+.wf-btn-stop.is-active:hover {
+  background: #8f4040;
+}
+
+.wf-dl-actions .wf-btn-start.is-inactive,
+.wf-dl-actions .wf-btn-stop.is-inactive {
+  background: #2a2a2a;
+  border-color: #3a3a3a;
+  color: #666;
+}
+
+.wf-btn-danger {
+  background: #5a3030;
+  border-color: #804040;
+}
+
+.wf-log {
+  margin: 0;
+  padding: 12px;
+  min-height: 120px;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: 8px;
+  background: #161616;
+  border: 1px solid #2a2a2a;
+  color: #ccc;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.wf-schedule-list-wrap {
+  margin-top: 8px;
+}
+
+.wf-schedule-list-title {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+.wf-schedule-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.wf-schedule-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: #252526;
+  border: 1px solid #333;
+}
+
+.wf-schedule-item-main {
+  min-width: 0;
+  font-size: 13px;
+}
+
+.wf-schedule-item-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #888;
+}
+
+.wf-schedule-item-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.wf-schedule-item-actions button {
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  background: #3a3a3a;
+  color: #ddd;
+}
+
+.wf-schedule-item-actions button:hover {
+  background: #4a4a4a;
+}
+
+.wf-schedule-empty {
+  font-size: 12px;
+  color: #666;
+  padding: 8px 0;
+}
+
+.wf-field-status .wf-dl-status {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #252526;
+  border: 1px solid #333;
+  font-size: 13px;
+  color: #888;
+}
+
+.wf-field-status .wf-dl-status.is-running {
+  color: #7ec699;
+  background: #1e2a22;
+  border-color: #3a5a45;
+}
+
+.wf-field-status .wf-dl-status.is-stopped {
+  color: #999;
+  background: #2a2222;
+  border-color: #4a3838;
+}
+
+.wf-field-status .wf-dl-status.is-stopped::before {
+  content: '● ';
+  color: #888;
+}
+
+.wf-field-status .wf-dl-status.is-running::before {
+  content: '● ';
+  color: #7ec699;
+}
+
+.wf-url-box {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #252526;
+  border: 1px solid #333;
+}
+
+.wf-url-box.is-running {
+  background: #1e2a22;
+  border-color: #3a5a45;
+}
+
+.wf-url-box.is-stopped {
+  background: #252526;
+  border-color: #333;
+}
+
+.wf-url-box.is-stopped .wf-url-label {
+  color: #888;
+}
+
+.wf-url-box.is-stopped .wf-url-box input,
+.wf-url-box.is-stopped input {
+  color: #888;
+  background: #222;
+  border-color: #333;
+}
+
+.wf-url-label {
+  display: block;
+  font-size: 12px;
+  color: #ccc;
+  margin-bottom: 8px;
+}
+
+.wf-url-box.is-running .wf-url-label {
+  color: #7ec699;
+}
+
+.wf-url-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #2a2a2a;
+  color: #eee;
+  font-size: 13px;
+}
+
+.wf-url-box.is-running input {
+  border-color: #3a5a45;
+  background: #243028;
+  color: #d4ebd9;
+}
+
+.wf-url-extra {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #888;
+  white-space: pre-line;
+  line-height: 1.5;
+}
+
+.wf-url-box.is-running .wf-url-extra {
+  color: #6a9a78;
+}
+
+.wf-url-warn {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #3a2a18;
+  border: 1px solid #8a6030;
+  color: #ffcc80;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.wf-url-box.is-stopped .wf-url-warn {
+  display: none !important;
+}
+
+.wf-download-log-wrap {
+  margin-top: 16px;
+}
+
+.wf-download-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: #161616;
+}
+
+.wf-download-log-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  font-size: 12px;
+}
+
+.wf-file-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  border-radius: 6px;
+  background: #252526;
+}
+
+.wf-file-icon.kind-folder { background: #3a3520; }
+.wf-file-icon.kind-image { background: #2a3544; }
+.wf-file-icon.kind-video { background: #352a44; }
+.wf-file-icon.kind-audio { background: #2a4435; }
+.wf-file-icon.kind-document { background: #3a3a2a; }
+.wf-file-icon.kind-code { background: #1e2a32; }
+
+.wf-file-thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+}
+
+.wf-file-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  background: #352a44;
+}
+
+.wf-file-thumb-fallback {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+.wf-file-thumb-wrap.no-thumb .wf-file-thumb {
+  display: none;
+}
+
+.wf-file-thumb-wrap.no-thumb .wf-file-thumb-fallback {
+  display: flex;
+}
+
+.wf-file-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-file-type-tag {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 10px;
+  color: #888;
+}
+
+.wf-download-log-item:last-child {
+  border-bottom: none;
+}
+
+.wf-download-log-name {
+  color: #fff;
+  word-break: break-all;
+}
+
+.wf-download-log-meta {
+  margin-top: 4px;
+  color: #888;
+}
+
+.wf-shared-files .wf-download-log-item {
+  align-items: center;
+}
+
+.wf-cache-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: #161616;
+}
+
+.wf-cache-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.wf-cache-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-cache-label {
+  display: block;
+  font-size: 12px;
+  color: #ccc;
+  margin-bottom: 4px;
+}
+
+.wf-cache-meta {
+  display: block;
+  font-size: 11px;
+  color: #888;
+}
+
+.wf-cache-path {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-size: 10px;
+  color: #6eb5ff;
+  text-align: left;
+  word-break: break-all;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.wf-cache-path:hover:not(:disabled) {
+  background: #222;
+  text-decoration: underline;
+}
+
+.wf-cache-path:disabled {
+  color: #555;
+  cursor: default;
+}
+
+.wf-btn-sm {
+  padding: 5px 10px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.workflow-load-error {
+  padding: 24px;
+  color: #f48771;
+}

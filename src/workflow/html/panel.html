@@ -1,0 +1,165 @@
+<!--
+  @file panel.html
+  【功能】Workflow 面板：文件归类 · 写 PPT · 文件服务 · 定时任务
+-->
+<div class="workflow-shell">
+  <header class="workflow-header">
+    <div class="workflow-header-text">
+      <div class="workflow-title">Workflow</div>
+      <div class="workflow-subtitle" id="wf-project-label">未打开工程</div>
+    </div>
+  </header>
+
+  <nav class="workflow-tabs" role="tablist" aria-label="Workflow 功能">
+    <button type="button" class="workflow-tab is-active" data-wf-tab="download" role="tab" aria-selected="true">文件服务</button>
+    <button type="button" class="workflow-tab" data-wf-tab="organize" role="tab" aria-selected="false">文件归类</button>
+    <button type="button" class="workflow-tab" data-wf-tab="ppt" role="tab" aria-selected="false">写 PPT</button>
+    <button type="button" class="workflow-tab" data-wf-tab="schedule" role="tab" aria-selected="false">定时任务</button>
+  </nav>
+
+  <div class="workflow-panels">
+    <section class="workflow-panel is-active" data-wf-panel="download" role="tabpanel">
+      <p class="workflow-desc">文件服务使用<strong>独立共享目录</strong>（与 Pecado 对话 / Git 的 Open Folder 无关）。选择目录后进入本页会<strong>自动开启</strong>服务；启动后地址会自动复制到剪贴板。</p>
+      <div class="wf-field">
+        <label for="wf-dl-dir">共享文件夹</label>
+        <div class="wf-row">
+          <input id="wf-dl-dir" type="text" placeholder="选择要在局域网共享的目录" spellcheck="false" readonly>
+          <button type="button" class="wf-btn" id="wf-dl-pick">选择…</button>
+        </div>
+      </div>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="wf-dl-port">端口</label>
+          <input id="wf-dl-port" type="number" min="1024" max="65535" value="8765">
+        </div>
+        <div class="wf-field wf-field-status">
+          <label>服务状态</label>
+          <div class="wf-dl-status is-stopped" id="wf-dl-status">服务已停止</div>
+        </div>
+      </div>
+      <div class="wf-url-box is-stopped" id="wf-dl-url-box" hidden>
+        <label class="wf-url-label">手机访问地址</label>
+        <div class="wf-row">
+          <input id="wf-dl-url" type="text" readonly spellcheck="false">
+          <button type="button" class="wf-btn" id="wf-dl-open">浏览器打开</button>
+          <button type="button" class="wf-btn wf-btn-primary" id="wf-dl-copy">复制地址</button>
+        </div>
+        <div class="wf-url-extra" id="wf-dl-url-extra"></div>
+        <div class="wf-url-warn" id="wf-dl-url-warn" hidden></div>
+      </div>
+      <div class="wf-actions wf-dl-actions">
+        <button type="button" class="wf-btn wf-btn-start is-active" id="wf-dl-start">开启服务</button>
+        <button type="button" class="wf-btn wf-btn-stop is-inactive" id="wf-dl-stop" disabled>停止服务</button>
+      </div>
+      <div class="wf-cache-box" id="wf-dl-cache-box">
+        <div class="wf-cache-row">
+          <div class="wf-cache-info">
+            <span class="wf-cache-label">视频封面缓存</span>
+            <span class="wf-cache-meta" id="wf-dl-cache-meta">—</span>
+          </div>
+          <button type="button" class="wf-btn wf-btn-sm" id="wf-dl-clear-cache">清除缓存</button>
+        </div>
+        <button type="button" class="wf-cache-path" id="wf-dl-cache-path" disabled>—</button>
+      </div>
+      <div class="wf-download-log-wrap">
+        <div class="wf-schedule-list-title">根目录内容（文件夹可点进，手机端同步支持）</div>
+        <ul class="wf-download-log wf-shared-files" id="wf-dl-file-list">
+          <li class="wf-schedule-empty">开启服务后显示</li>
+        </ul>
+      </div>
+      <div class="wf-download-log-wrap">
+        <div class="wf-schedule-list-title">访问记录（手机请求的文件）</div>
+        <ul class="wf-download-log" id="wf-dl-log-list">
+          <li class="wf-schedule-empty">暂无访问</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="workflow-panel" data-wf-panel="organize" role="tabpanel" hidden>
+      <p class="workflow-desc">将指定文件夹<strong>顶层文件</strong>按类型移入子目录（图片、文档、代码等）。</p>
+      <div class="wf-field">
+        <label for="wf-organize-dir">目标文件夹</label>
+        <div class="wf-row">
+          <input id="wf-organize-dir" type="text" placeholder="默认使用当前 Open Folder 工程根目录" spellcheck="false">
+          <button type="button" class="wf-btn" id="wf-organize-pick">选择…</button>
+        </div>
+      </div>
+      <div class="wf-actions">
+        <button type="button" class="wf-btn" id="wf-organize-preview">预览</button>
+        <button type="button" class="wf-btn wf-btn-primary" id="wf-organize-run">执行归类</button>
+      </div>
+      <pre class="wf-log" id="wf-organize-log">选择目录后点「预览」查看将要移动的文件。</pre>
+    </section>
+
+    <section class="workflow-panel" data-wf-panel="ppt" role="tabpanel" hidden>
+      <p class="workflow-desc">根据主题生成 PPT 大纲（Markdown），保存到工程的 <code>workflow-output/ppt/</code>。</p>
+      <div class="wf-field">
+        <label for="wf-ppt-title">标题</label>
+        <input id="wf-ppt-title" type="text" placeholder="例如：Q2 产品复盘" spellcheck="false">
+      </div>
+      <div class="wf-field">
+        <label for="wf-ppt-topic">主题说明</label>
+        <input id="wf-ppt-topic" type="text" placeholder="简要描述演示目的" spellcheck="false">
+      </div>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="wf-ppt-slides">页数</label>
+          <input id="wf-ppt-slides" type="number" min="3" max="30" value="8">
+        </div>
+        <div class="wf-field">
+          <label for="wf-ppt-audience">听众</label>
+          <input id="wf-ppt-audience" type="text" placeholder="通用听众" spellcheck="false">
+        </div>
+      </div>
+      <div class="wf-actions">
+        <button type="button" class="wf-btn wf-btn-primary" id="wf-ppt-generate">生成大纲</button>
+      </div>
+      <pre class="wf-log" id="wf-ppt-log">填写标题后生成 Markdown 大纲。</pre>
+    </section>
+
+    <section class="workflow-panel" data-wf-panel="schedule" role="tabpanel" hidden>
+      <p class="workflow-desc">定时打开本机应用（macOS 可填应用名如 Xcode，或选择 .app）。</p>
+      <div class="wf-field">
+        <label for="wf-sch-name">任务名称</label>
+        <input id="wf-sch-name" type="text" placeholder="例如：每天早上打开 Xcode" spellcheck="false">
+      </div>
+      <div class="wf-field-row">
+        <div class="wf-field">
+          <label for="wf-sch-trigger">触发方式</label>
+          <select id="wf-sch-trigger">
+            <option value="interval">每隔 N 分钟</option>
+            <option value="daily">每天固定时刻</option>
+          </select>
+        </div>
+        <div class="wf-field" id="wf-sch-interval-wrap">
+          <label for="wf-sch-interval">间隔（分钟）</label>
+          <input id="wf-sch-interval" type="number" min="1" value="60">
+        </div>
+        <div class="wf-field" id="wf-sch-daily-wrap" hidden>
+          <label for="wf-sch-daily">时刻 (HH:MM)</label>
+          <input id="wf-sch-daily" type="text" value="09:00" placeholder="09:00">
+        </div>
+      </div>
+      <div class="wf-field">
+        <label for="wf-sch-app-name">应用名称（macOS）</label>
+        <input id="wf-sch-app-name" type="text" placeholder="Xcode、Simulator、Safari…" spellcheck="false">
+      </div>
+      <div class="wf-field">
+        <label for="wf-sch-app-path">或 .app / 可执行路径</label>
+        <div class="wf-row">
+          <input id="wf-sch-app-path" type="text" spellcheck="false">
+          <button type="button" class="wf-btn" id="wf-sch-pick-app">选择…</button>
+        </div>
+      </div>
+      <div class="wf-actions">
+        <button type="button" class="wf-btn" id="wf-sch-test">立即试运行</button>
+        <button type="button" class="wf-btn wf-btn-primary" id="wf-sch-save">保存任务</button>
+      </div>
+      <div class="wf-schedule-list-wrap">
+        <div class="wf-schedule-list-title">已保存任务</div>
+        <ul class="wf-schedule-list" id="wf-schedule-list"></ul>
+      </div>
+      <pre class="wf-log" id="wf-schedule-log"></pre>
+    </section>
+  </div>
+</div>

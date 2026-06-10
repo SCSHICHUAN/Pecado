@@ -108,8 +108,16 @@ function setupApplicationMenu(getMainWindowFn) {
           },
         },
         {
-          label: 'Git 面板',
+          label: 'Workflow',
           accelerator: 'CmdOrCtrl+2',
+          click: () => {
+            const win = getMainWindowFn();
+            win?.webContents.send(APP.NAVIGATE_VIEW, { view: 'workflow' });
+          },
+        },
+        {
+          label: 'Git 面板',
+          accelerator: 'CmdOrCtrl+3',
           click: () => {
             const win = getMainWindowFn();
             win?.webContents.send(APP.NAVIGATE_VIEW, { view: 'git' });

@@ -19,10 +19,12 @@
     "icon": "assets/icons/icon.icns"
   },
   "win": {
-    "target": "dir"
+    "target": "dir",
+    "icon": "assets/icons/icon.png"
   },
   "linux": {
     "target": "dir",
-    "category": "Utility"
+    "category": "Utility",
+    "icon": "assets/icons/icon.png"
   }
 }

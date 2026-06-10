@@ -13,7 +13,7 @@
  *   onVolcArkStreamEvent(callback)     → listen BOTS_STREAM_EVENT { streamId, phase, text?, ... }
  *   handleBotCommand(rawContent)       → invoke HANDLE_BOT_COMMAND
  *   mcpFsDirectoryTree(opts)             → invoke DIRECTORY_TREE
- *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools? }
+ *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools?, showTree?, treeAscii? }
  *   gitGetState(payload?)                → invoke GIT.GET_STATE
  *   gitPull(payload?)                    → invoke GIT.PULL
  *   gitPush(payload?)                    → invoke GIT.PUSH
@@ -25,7 +25,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 const MarkdownIt = require('markdown-it');
 const hljs = require('highlight.js/lib/core');
 hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
-const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW } = require('../shared/ipc-channels');
 
 /** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
 const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
@@ -82,6 +82,23 @@ try {
     gitCommit: (payload) => ipcRenderer.invoke(GIT.COMMIT, payload || {}),
     gitNodeAction: (payload) => ipcRenderer.invoke(GIT.NODE_ACTION, payload || {}),
     gitRunShell: (payload) => ipcRenderer.invoke(GIT.RUN_SHELL, payload || {}),
+    workflowGetPanelHtml: () => ipcRenderer.invoke(WORKFLOW.GET_PANEL_HTML),
+    workflowGetState: () => ipcRenderer.invoke(WORKFLOW.GET_STATE),
+    workflowOrganizeFiles: (payload) => ipcRenderer.invoke(WORKFLOW.ORGANIZE_FILES, payload || {}),
+    workflowCreatePptOutline: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.CREATE_PPT_OUTLINE, payload || {}),
+    workflowSaveSchedule: (payload) => ipcRenderer.invoke(WORKFLOW.SAVE_SCHEDULE, payload || {}),
+    workflowDeleteSchedule: (payload) => ipcRenderer.invoke(WORKFLOW.DELETE_SCHEDULE, payload || {}),
+    workflowRunScheduleNow: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.RUN_SCHEDULE_NOW, payload || {}),
+    workflowPickApp: () => ipcRenderer.invoke(WORKFLOW.PICK_APP),
+    workflowPickFolder: (payload) => ipcRenderer.invoke(WORKFLOW.PICK_FOLDER, payload || {}),
+    workflowDownloadServerStart: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.DOWNLOAD_SERVER_START, payload || {}),
+    workflowDownloadServerStop: () => ipcRenderer.invoke(WORKFLOW.DOWNLOAD_SERVER_STOP),
+    workflowGetDownloadServer: () => ipcRenderer.invoke(WORKFLOW.GET_DOWNLOAD_SERVER),
+    workflowClearVideoThumbCache: () => ipcRenderer.invoke(WORKFLOW.CLEAR_VIDEO_THUMB_CACHE),
+    workflowOpenDownloadUrl: (payload) => ipcRenderer.invoke(WORKFLOW.OPEN_DOWNLOAD_URL, payload || {}),
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {

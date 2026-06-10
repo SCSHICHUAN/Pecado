@@ -3,7 +3,7 @@
  *
  * 【功能】mcp-filesystem 的 Electron 集成：对话框、IPC、主窗口引用、持久化工程路径。
  *   - File → Open Folder：dialog 选目录 → projectIo.connect → 若有则打开 Xcode 工程 → saveProjectRoot
- *   - 连接成功 webContents.send MCP_FS.PROJECT_CHANGED → renderer 展示目录树
+ *   - 连接成功 webContents.send MCP_FS.PROJECT_CHANGED → renderer 更新工程路径（仅 Open Folder 时带目录树）
  *   - ipcMain.handle MCP_FS.DIRECTORY_TREE → readDirectoryTree
  *   - app.before-quit → disconnect
  *   - getMainWindow()：供 xcode 弹窗、tool-executor 取 BrowserWindow
@@ -24,6 +24,11 @@ const { app, dialog, shell } = require('electron');
 const { MCP_FS } = require('../shared/ipc-channels');
 const projectIo = require('./index');
 const xcodeProject = require('../xcode/project');
+const {
+  clearProjectCache,
+  warmProjectTreeCache,
+  getCachedTreeAscii,
+} = require('./project-context');
 
 /** @type {() => import('electron').BrowserWindow | null} */
 let getMainWindowRef = () => null;
@@ -57,6 +62,76 @@ function saveProjectRoot(root) {
   fs.writeFileSync(p, JSON.stringify({ projectRoot: root }, null, 2), 'utf8');
 }
 
+/**
+ * @param {string} projectRoot
+ * @param {() => import('electron').BrowserWindow | null} getMainWindowFn
+ * @param {{ notify?: boolean, openXcode?: boolean, showTree?: boolean }} [opts]
+ */
+async function connectProjectRoot(projectRoot, getMainWindowFn, opts = {}) {
+  const root = String(projectRoot || '').trim();
+  if (!root) return { ok: false, error: '未指定目录' };
+  if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
+    return { ok: false, error: '目录不存在或不可用' };
+  }
+  try {
+    const r = await projectIo.connect(root);
+    saveProjectRoot(r.projectRoot);
+    clearProjectCache();
+    let treeAscii = '';
+    if (opts.showTree) {
+      await warmProjectTreeCache();
+      treeAscii = getCachedTreeAscii();
+    }
+    const xcodeOpened = opts.openXcode ? xcodeProject.openXcodeForProjectRoot(r.projectRoot) : null;
+    if (opts.notify !== false) {
+      const notifyWin = getMainWindowFn?.();
+      if (notifyWin && !notifyWin.isDestroyed()) {
+        notifyWin.webContents.send(MCP_FS.PROJECT_CHANGED, {
+          projectRoot: r.projectRoot,
+          tools: r.tools,
+          showTree: opts.showTree === true,
+          treeAscii: opts.showTree ? treeAscii : '',
+        });
+      }
+    }
+    return { ok: true, canceled: false, ...r, xcodeOpened: xcodeOpened || null };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
+function notifyConnectedProject(getMainWindowFn) {
+  const status = projectIo.getStatus();
+  if (!status.connected || !status.projectRoot) return false;
+  const notifyWin = getMainWindowFn?.();
+  if (!notifyWin || notifyWin.isDestroyed()) return false;
+  notifyWin.webContents.send(MCP_FS.PROJECT_CHANGED, {
+    projectRoot: status.projectRoot,
+    tools: status.tools || [],
+    showTree: false,
+  });
+  return true;
+}
+
+async function restoreSavedProject(getMainWindowFn, opts = {}) {
+  const saved = readSavedProjectRoot();
+  if (!saved) return { ok: false, skipped: true, reason: 'no-saved-path' };
+  if (!fs.existsSync(saved) || !fs.statSync(saved).isDirectory()) {
+    console.warn('[mcp-fs] saved project path missing:', saved);
+    return { ok: false, skipped: true, reason: 'path-missing', projectRoot: saved };
+  }
+  const status = projectIo.getStatus();
+  if (status.connected && status.projectRoot === path.resolve(saved)) {
+    if (opts.notify !== false) notifyConnectedProject(getMainWindowFn);
+    return { ok: true, restored: true, projectRoot: status.projectRoot, alreadyConnected: true };
+  }
+  return connectProjectRoot(saved, getMainWindowFn, {
+    openXcode: false,
+    notify: opts.notify !== false,
+    showTree: false,
+  });
+}
+
 async function pickProjectDirectory(browserWindow) {
   const win = browserWindow && !browserWindow.isDestroyed() ? browserWindow : null;
   const saved = readSavedProjectRoot();
@@ -75,29 +150,18 @@ async function pickAndConnectProject(getMainWindowFn) {
   const win = getMainWindowFn?.() || null;
   const picked = await pickProjectDirectory(win);
   if (picked.canceled) return { canceled: true };
-  try {
-    const r = await projectIo.connect(picked.projectRoot);
-    saveProjectRoot(r.projectRoot);
-    const xcodeOpened = xcodeProject.openXcodeForProjectRoot(r.projectRoot);
-    const out = { ok: true, canceled: false, ...r, xcodeOpened: xcodeOpened || null };
-    const notifyWin = getMainWindowFn?.();
-    if (notifyWin && !notifyWin.isDestroyed()) {
-      notifyWin.webContents.send(MCP_FS.PROJECT_CHANGED, {
-        projectRoot: r.projectRoot,
-        tools: r.tools,
-      });
-    }
-    return out;
-  } catch (e) {
-    return { canceled: false, error: e.message || String(e) };
-  }
+  return connectProjectRoot(picked.projectRoot, getMainWindowFn, {
+    openXcode: true,
+    notify: true,
+    showTree: true,
+  });
 }
 
 async function openProjectFolder(getMainWindowFn) {
   const result = await pickAndConnectProject(getMainWindowFn);
   if (result.canceled) return;
-  if (result.error) {
-    dialog.showErrorBox('Open Folder', result.error);
+  if (result.error || result.ok === false) {
+    dialog.showErrorBox('Open Folder', result.error || '无法打开目录');
     return;
   }
   console.log('[menu] Open Folder:', result.projectRoot);
@@ -144,4 +208,13 @@ function register(ipcMain, getMainWindowFn) {
   registerIpcHandlers(ipcMain);
 }
 
-module.exports = { register, pickAndConnectProject, openProjectFolder, getMainWindow };
+module.exports = {
+  register,
+  pickAndConnectProject,
+  openProjectFolder,
+  getMainWindow,
+  readSavedProjectRoot,
+  connectProjectRoot,
+  restoreSavedProject,
+  notifyConnectedProject,
+};

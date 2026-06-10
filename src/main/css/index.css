@@ -190,6 +190,7 @@ body {
 }
 
 .content-area > .main-panel,
+.content-area > .workflow-panel-mount,
 .content-area > .git-panel-mount {
     grid-row: 1;
     grid-column: 1;
@@ -198,6 +199,7 @@ body {
 }
 
 .content-area .main-panel.hidden,
+.content-area .workflow-panel-mount.hidden,
 .content-area .git-panel-mount.hidden {
     display: none;
 }

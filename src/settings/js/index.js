@@ -86,12 +86,21 @@ function updateModelHint() {
       'Bots 接口：模型填 bot- 开头的 Bot ID，例如 bot-20260424113808-wwggn';
   } else {
     modelHintEl.textContent =
-      'Coding Plan：填 doubao-seed-2.0-code、kimi-k2.5、glm-4.7、ark-code-latest 等（勿填在线推理的 Model ID）';
+      'Coding Plan（你已购 Lite）：推荐 ark-code-latest；也可填 doubao-seed-2.0-code、kimi-k2.5、glm-4.7（勿填 bot- 或在线推理 ID）';
   }
 }
 
 if (apiModeEl) {
-  apiModeEl.addEventListener('change', updateModelHint);
+  apiModeEl.addEventListener('change', () => {
+    updateModelHint();
+    if (!modelEl) return;
+    const mode = apiModeEl.value === 'bots' ? 'bots' : 'coding_plan';
+    const model = modelEl.value.trim();
+    if (mode === 'coding_plan' && /^bot-/i.test(model)) {
+      modelEl.value = 'ark-code-latest';
+      setStatus('Coding Plan 不能用 Bot ID，已改为 ark-code-latest，请点保存', false);
+    }
+  });
 }
 
 function readFormValues() {
@@ -164,6 +173,16 @@ saveBtn.addEventListener('click', async () => {
     setStatus('请填写 API Key', true);
     apiKeyEl.focus();
     return;
+  }
+
+  if (activePanel === 'volc') {
+    const mode = payload.volcApiMode === 'bots' ? 'bots' : 'coding_plan';
+    const model = payload.volcArkModel.trim();
+    if (mode === 'coding_plan' && model && /^bot-/i.test(model)) {
+      setStatus('Coding Plan 不能使用 bot- 开头的 Bot ID，请改为 ark-code-latest', true);
+      modelEl.focus();
+      return;
+    }
   }
 
   const limit = parseInt(String(payload.gitGraphCommitLimit), 10);

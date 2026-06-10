@@ -18,7 +18,7 @@
  */
 module.exports = {
   APP: {
-    /** main → renderer：{ view: 'chat' | 'git' } 切换主内容区 */
+    /** main → renderer：{ view: 'chat' | 'workflow' | 'git' } 切换主内容区 */
     NAVIGATE_VIEW: 'app-navigate-view',
   },
   SETTINGS: {
@@ -42,12 +42,28 @@ module.exports = {
     DIRECTORY_TREE: 'mcp-fs-directory-tree',
     /** invoke：{ projectRoot? } → shell.openPath 在 Finder/资源管理器中打开 */
     OPEN_PROJECT_ROOT: 'mcp-fs-open-project-root',
-    /** main → renderer：用户通过菜单 Open Folder 后推送 */
+    /** main → renderer：工程路径变更；showTree 为 true 时仅 Open Folder 会读并展示目录树 */
     PROJECT_CHANGED: 'mcp-fs-project-changed',
   },
   XCODE: {
     /** invoke：触发 macOS 自动化权限弹窗（Pecado → Xcode） */
     REQUEST_AUTOMATION: 'xcode-request-automation',
+  },
+  WORKFLOW: {
+    GET_PANEL_HTML: 'workflow-get-panel-html',
+    GET_STATE: 'workflow-get-state',
+    ORGANIZE_FILES: 'workflow-organize-files',
+    CREATE_PPT_OUTLINE: 'workflow-create-ppt-outline',
+    SAVE_SCHEDULE: 'workflow-save-schedule',
+    DELETE_SCHEDULE: 'workflow-delete-schedule',
+    RUN_SCHEDULE_NOW: 'workflow-run-schedule-now',
+    PICK_APP: 'workflow-pick-app',
+    PICK_FOLDER: 'workflow-pick-folder',
+    DOWNLOAD_SERVER_START: 'workflow-download-server-start',
+    DOWNLOAD_SERVER_STOP: 'workflow-download-server-stop',
+    GET_DOWNLOAD_SERVER: 'workflow-get-download-server',
+    CLEAR_VIDEO_THUMB_CACHE: 'workflow-clear-video-thumb-cache',
+    OPEN_DOWNLOAD_URL: 'workflow-open-download-url',
   },
   GIT: {
     GET_STATE: 'git-get-state',

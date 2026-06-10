@@ -27,8 +27,37 @@ const VOLC_ENDPOINTS = {
 };
 
 const DEFAULT_BOTS_MODEL = 'bot-20260424113808-wwggn';
-const DEFAULT_CODING_PLAN_MODEL = 'doubao-seed-2.0-code';
+/** Coding Plan 专用模型名，勿填 bot- 或在线推理 endpoint ID */
+const DEFAULT_CODING_PLAN_MODEL = 'ark-code-latest';
 const DEFAULT_MODEL = DEFAULT_BOTS_MODEL;
+
+const CODING_PLAN_MODEL_HINT =
+  'ark-code-latest、doubao-seed-2.0-code、kimi-k2.5、glm-4.7、deepseek-v3.2';
+
+function isBotModel(model) {
+  return /^bot-/i.test(String(model || '').trim());
+}
+
+function isCodingPlanCompatibleModel(model) {
+  const m = String(model || '').trim();
+  if (!m) return false;
+  return !isBotModel(m);
+}
+
+/**
+ * @param {string} model
+ * @param {string} apiMode
+ */
+function resolveModelForApiMode(model, apiMode) {
+  const m = String(model || '').trim();
+  const mode = normalizeVolcApiMode(apiMode, m);
+  if (mode === VOLC_API_MODES.CODING_PLAN) {
+    if (isCodingPlanCompatibleModel(m)) return m;
+    return DEFAULT_CODING_PLAN_MODEL;
+  }
+  if (m && isBotModel(m)) return m;
+  return m || DEFAULT_BOTS_MODEL;
+}
 
 /**
  * @param {unknown} value
@@ -129,14 +158,11 @@ function writeUserVolcConfig(payload) {
     incoming.volcApiMode != null ? incoming.volcApiMode : existing.volcApiMode,
     modelRaw
   );
-  const defaultModel =
-    volcApiMode === VOLC_API_MODES.CODING_PLAN ? DEFAULT_CODING_PLAN_MODEL : DEFAULT_BOTS_MODEL;
-
   const base = {
     volcArkApiKey: String(
       incoming.volcArkApiKey != null ? incoming.volcArkApiKey : existing.volcArkApiKey ?? ''
     ).trim(),
-    volcArkModel: modelRaw || defaultModel,
+    volcArkModel: resolveModelForApiMode(modelRaw, volcApiMode),
     volcApiMode,
     gitGraphCommitLimit: normalizeGitGraphCommitLimit(
       incoming.gitGraphCommitLimit != null ? incoming.gitGraphCommitLimit : existing.gitGraphCommitLimit
@@ -159,14 +185,34 @@ function writeUserVolcConfig(payload) {
 function resolveVolcCredentials() {
   const { apiKey, model, volcApiMode } = readUserVolcConfig();
   const apiMode = normalizeVolcApiMode(volcApiMode, model);
-  const defaultModel =
-    apiMode === VOLC_API_MODES.CODING_PLAN ? DEFAULT_CODING_PLAN_MODEL : DEFAULT_BOTS_MODEL;
   return {
     apiKey,
-    model: model || defaultModel,
+    model: resolveModelForApiMode(model, apiMode),
     apiMode,
     endpoint: resolveVolcApiEndpoint(apiMode),
   };
+}
+
+/**
+ * @param {{ volcApiMode?: string, volcArkModel?: string }} payload
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+function validateVolcConfig(payload) {
+  const mode = normalizeVolcApiMode(payload?.volcApiMode, payload?.volcArkModel);
+  const model = String(payload?.volcArkModel || '').trim();
+  if (mode === VOLC_API_MODES.CODING_PLAN && model && !isCodingPlanCompatibleModel(model)) {
+    return {
+      ok: false,
+      error: `Coding Plan 不能使用 Bot ID 或在线推理 Model ID。请填写：${CODING_PLAN_MODEL_HINT}`,
+    };
+  }
+  if (mode === VOLC_API_MODES.BOTS && model && !isBotModel(model)) {
+    return {
+      ok: false,
+      error: 'Bots 接口请填写 bot- 开头的 Bot ID；Coding Plan 请切换 API 类型。',
+    };
+  }
+  return { ok: true };
 }
 
 function resolveGitGraphCommitLimit() {
@@ -183,8 +229,13 @@ module.exports = {
   getUserVolcConfigPath,
   getUserConfigDir,
   resolveVolcCredentials,
+  resolveModelForApiMode,
   resolveVolcApiEndpoint,
   normalizeVolcApiMode,
+  isBotModel,
+  isCodingPlanCompatibleModel,
+  validateVolcConfig,
+  CODING_PLAN_MODEL_HINT,
   resolveGitGraphCommitLimit,
   normalizeGitGraphCommitLimit,
   VOLC_API_MODES,

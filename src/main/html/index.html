@@ -7,14 +7,16 @@
   【渲染脚本】
     · shared/format-tree.js
     · pecado/js/index.js      — 对话 UI
+    · workflow/js/index.js    — Workflow 面板
     · gitgraph/js/index.js    — Git 侧栏
-  【样式】main/css、pecado/css、gitgraph/css
+  【样式】main/css、pecado/css、workflow/css、gitgraph/css
 -->
 <html lang="zh-CN">
 <head>
   <link rel="stylesheet" href="../../../node_modules/highlight.js/styles/github-dark.min.css">
   <link rel="stylesheet" href="../css/index.css">
   <link rel="stylesheet" href="../../pecado/css/index.css">
+  <link rel="stylesheet" href="../../workflow/css/index.css">
   <link rel="stylesheet" href="../../gitgraph/css/index.css">
 </head>
 <body>
@@ -24,6 +26,10 @@
         <div class="function-item active" id="nav-pecado" data-view="chat">
           <div class="function-icon">🤖</div>
           <div>Pecado</div>
+        </div>
+        <div class="function-item" id="nav-workflow" data-view="workflow">
+          <div class="function-icon">⚡</div>
+          <div>Workflow</div>
         </div>
         <div class="function-item" id="nav-git" data-view="git">
           <div class="function-icon">🌿</div>
@@ -90,6 +96,7 @@
         </div>
       </div>
     </div>
+    <div id="panel-workflow" class="workflow-panel-mount hidden"></div>
     <div id="panel-git" class="git-panel-mount hidden"></div>
     </div>
     <footer class="app-bottom-bar">
@@ -100,7 +107,9 @@
     </div>
   </div>
   <script src="../../shared/format-tree.js"></script>
+  <script src="../../workflow/js/file-type.js"></script>
   <script src="../../pecado/js/index.js"></script>
+  <script src="../../workflow/js/index.js"></script>
     <script src="../../gitgraph/js/git-chat.js"></script>
     <script src="../../gitgraph/js/index.js"></script>
 </body>
