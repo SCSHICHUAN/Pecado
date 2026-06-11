@@ -164,6 +164,7 @@ function register(ipcMain) {
       const uiSink = createUiStreamSink(sender, streamId);
       return runAppAgentLoop(uiSink, llmOpts, messages, {
         xcodeStreamPath: xcodeStreamPath || undefined,
+        userText: String(userText || ''),
       });
     }
 

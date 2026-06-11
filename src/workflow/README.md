@@ -25,7 +25,7 @@ workflow/
 |-----|------|
 | **文件归类** | 将文件夹**顶层**文件按扩展名移入子目录（图片、文档、代码…） |
 | **写 PPT** | 生成 Markdown 大纲 → `workflow-output/ppt/*.md` |
-| **文件服务** | 局域网 HTTP 服务；目录层级浏览、预览/下载；视频封面（macOS） |
+| **文件服务** | 局域网 HTTP 服务；目录层级浏览、预览/下载；视频封面（macOS）；**共享目录与 Open Folder 独立**，持久化于 `workflows.json` |
 | **定时任务** | 按间隔或每天固定时刻 `open -a` 启动应用（需 Pecado 保持运行） |
 
 ### 视频封面缓存
@@ -34,6 +34,10 @@ workflow/
 - **缓存位置**：`~/Library/Application Support/pecado/workflow-video-thumbs/`
 - **命名规则**：SHA256(绝对路径 + 修改时间) → `{hash}.png`；视频更新后自动失效
 - **清除**：Workflow → 文件服务 →「清除缓存」（不影响共享文件夹内的视频）
+
+## 与 Agent / Token
+
+Workflow **不调用 LLM**，无 Function Calling。文件服务、定时任务等均在主进程本地执行，**不消耗** Coding Plan / Bots 对话额度。
 
 ## 扩展
 

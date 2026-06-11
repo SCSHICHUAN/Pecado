@@ -11,8 +11,10 @@
 | **流式对话** | SSE 增量输出，渲染进程 Markdown 实时渲染（markdown-it + highlight.js） |
 | **三种对话模式** | plain（纯聊）/ context（拼工程上下文）/ agent（MCP tools 多轮）— 主进程自动选择 |
 | **Open Folder** | 菜单打开工程目录，拉起 MCP server-filesystem，展示目录树 |
-| **Agent 工具** | read / write / edit / create_directory 等，经主进程沙箱执行 |
-| **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`、自动 `open` Xcode |
+| **Agent 工具** | Open Folder 后向 LLM 提供 **13 个 MCP** + **4 个 Xcode**（macOS）Function Calling，见下文 |
+| **Token 策略** | 写代码后 **1 轮 LLM 即结束**；应用 **自动 xcode_build**；`xcode_run` 仅用户明确要运行时 |
+| **Workflow** | 局域网**文件服务**（独立目录）、文件归类、PPT 大纲、定时任务 — 见 [src/workflow/README.md](src/workflow/README.md) |
+| **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`；build/run 工具与自动编译，见 Agent 工具 |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
 | **Git 面板** | 自研 SVG 提交时间线 + 底部 status / log / Pecado 助手；Pull / Push / Commit、节点 Git 操作（见下文） |
 
@@ -62,6 +64,7 @@ Pecado/
 │   ├── xcode/                 # macOS 流式写盘、pbxproj、确认对话框
 │   ├── commands/js/           # 本地 JSON 后置指令
 │   ├── gitgraph/              # Git 面板（自研 SVG 时间线，见 gitgraph/README.md）
+│   ├── workflow/              # Workflow 面板（文件服务、归类、PPT、定时任务，见 workflow/README.md）
 │   ├── settings/              # Preferences（html/css/js + register）
 │   ├── preload/preload.js
 │   ├── shared/                # ipc-channels.js、format-tree.js
@@ -85,6 +88,84 @@ npm run build      # 产物在 release/
 国内 Electron 镜像：`ELECTRON_MIRROR`（见 `package.json` → `config.electron_mirror`）。
 
 配置 API 密钥：**Preferences → 火山设置**（`~/Library/Application Support/pecado/volc-user-config.json`）。
+
+- **Coding Plan**（套餐）：Model 填 `ark-code-latest` 或 `doubao-seed-2.0-code` 等，**勿填** `bot-` 开头的 Bots ID。
+- **Bots**：Model 填 `bot-…` Bot ID。
+
+---
+
+## LLM Function Calling（Agent 工具）
+
+**Open Folder 且 MCP 已连接** 时进入 **agent 模式**。每轮 LLM 请求的 `tools` 数组由主进程组装（`app-agent-loop.js` → `llm-server/format.js` → `mcpToolsToFunctionTools`），**不是** renderer 侧调用。
+
+### 数量
+
+| 来源 | 数量 | 条件 |
+|------|------|------|
+| **MCP server-filesystem** | **13** | Open Folder 后 `listTools()` |
+| **Pecado Xcode** | **4** | 仅 **macOS** |
+| **合计** | **17** | macOS + Agent 模式 |
+| **合计** | **13** | 非 macOS 或无 Xcode 工具 |
+
+### MCP 工具（13）
+
+| 工具名 | 用途 |
+|--------|------|
+| `read_text_file` | 读文本文件（可选 head/tail） |
+| `read_media_file` | 读图片/音频（base64） |
+| `read_multiple_files` | 批量读文件 |
+| `write_file` | 新建或覆盖写文件 |
+| `edit_file` | 按片段编辑已有文件 |
+| `create_directory` | 创建目录 |
+| `list_directory` | 列目录 |
+| `list_directory_with_sizes` | 列目录（含大小） |
+| `move_file` | 移动/重命名 |
+| `search_files` | 递归搜索 |
+| `directory_tree` | 递归目录树 JSON |
+| `get_file_info` | 文件元数据 |
+| `list_allowed_directories` | 当前允许访问的根目录 |
+
+包版本：`@modelcontextprotocol/server-filesystem`（见 `node_modules/.../README.md`）。
+
+### Xcode 工具（4，macOS）
+
+定义于 `src/xcode/tools.js`，经 `task-dispatcher` 的 `xcode_tool` 分发：
+
+| 工具名 | 用途 |
+|--------|------|
+| `xcode_project_status` | scheme / 工程路径 |
+| `xcode_build` | `xcodebuild` 编译 |
+| `xcode_run` | Xcode ⌘R / 模拟器运行 |
+| `xcode_test` | `xcodebuild test` |
+
+### DISPATCH
+
+| `parsedTask.type` | 执行模块 |
+|-------------------|----------|
+| `mcp_tool` | `mcp-filesystem/tool-executor.js` |
+| `xcode_tool` | `xcode/tool-executor.js` |
+
+---
+
+## Token 消耗优化
+
+Agent 默认曾「写代码 → 模型再 build → 再 run → 再修」，**每多一轮都是一次完整 LLM 请求**（带 history + 全套 tools），Coding Plan 下尤其慢且费额度。
+
+当前策略（`agent-loop/post-write-xcode.js` + `app-agent-loop.js`）：
+
+| 场景 | 行为 | LLM 轮次 |
+|------|------|----------|
+| **`write_file` / `edit_file` 成功** | 结束 Agent 循环；应用 **自动 `xcode_build` 一次**（本地，不进 LLM）；编译结果拼进最终回复 | **通常 1 轮** |
+| 用户话含 **运行/Run/启动** 且编译成功 | 再 **自动 `xcode_run` 一次**（本地） | 仍 **1 轮 LLM** |
+| 用户只说「编译」 | 模型可调 `xcode_build` → 执行完即返回，不再下一轮 | **1 轮** |
+| 用户明确要 **Run** | 模型可调 `xcode_run`（无运行意图会被拦截） | **1 轮** |
+| 只读目录/读文件 | 仍可多轮，直到模型输出文字 | 视任务而定 |
+
+**不消耗 LLM token 的操作**：`xcode_build`、`xcode_run`、MCP `callTool` 本地执行；只有 **tool 结果写回 conv 后的下一轮 INFER** 才计 token——写代码路径已避免该下一轮。
+
+**仍会增加 context 的因素**：对话 history 过长、目录树气泡进 history、单次 tool 观测里的 build 日志尾部（约 12k 字符上限，见 `xcode/build-runner.js` `LOG_TAIL_MAX`）。
+
+Prompt 约定见 `src/pecado/js/prompts/agent.js`（写完后勿再调 `xcode_build`；无运行意图勿调 `xcode_run`）。
 
 ---
 
@@ -115,7 +196,9 @@ npm run build      # 产物在 release/
 | 3 | settings | `settings/js/register.js` | `SETTINGS.*` |
 | 4 | mcp-filesystem | `mcp-filesystem/ipc.js` | `MCP_FS.*` + Open Folder |
 | 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*`（含 `NODE_ACTION`） |
-| 6 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
+| 6 | xcode | `xcode/register.js` | Xcode 自动化权限 |
+| 7 | workflow | `workflow/register.js` | `WORKFLOW.*`（文件服务等） |
+| 8 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
 
 渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`。
 
@@ -384,6 +467,14 @@ sequenceDiagram
         L->>MCP: EXECUTE_execute_tool
         MCP-->>L: FEED_tool_result
         L->>L: feed_observation(conv)
+        alt 含 write_file / edit_file
+          L->>L: 自动 xcode_build（本地）
+          L-->>Rt: content（结束 loop）
+        else 仅 xcode_build / run / test
+          L-->>Rt: content（结束 loop）
+        else 读文件等
+          L->>L: 下一轮 INFER
+        end
       else 无 tool_calls
         L-->>Rt: content
       end
@@ -423,7 +514,8 @@ flowchart TB
 
   subgraph DISPATCH [DISPATCH — agent-loop]
     RT[route_task]
-    RT -->|type mcp_tool| MOD[mcp-filesystem]
+    RT -->|mcp_tool| MOD[mcp-filesystem]
+    RT -->|xcode_tool| XC[xcode]
   end
 
   DISPATCH --> EXEC
@@ -608,6 +700,7 @@ git push origin main
 | 对话 IPC + 模式路由 | `src/pecado/js/agent/router.js` |
 | 对话 UI（renderer） | `src/pecado/js/index.js` |
 | Agent 编排 | `src/agent-loop/app-agent-loop.js`（详见 [src/agent-loop/README.md](src/agent-loop/README.md)） |
+| 写代码后自动编译 | `src/agent-loop/post-write-xcode.js` |
 | INFER | `src/llm-server/llm-infer-service.js` |
 | PARSE | `src/llm-server/command-parser.js` |
 | DISPATCH | `src/agent-loop/task-dispatcher.js` |
@@ -623,6 +716,7 @@ git push origin main
 | Git log 解析 | `src/gitgraph/js/log-parser.js` |
 | Git 主进程 IPC | `src/gitgraph/js/register.js` |
 | 工程上下文 | `src/mcp-filesystem/project-context.js` |
+| Workflow 文件服务 | `src/workflow/services/file-download-server.js` |
 | IPC 通道常量 | `src/shared/ipc-channels.js` |
 | Preload | `src/preload/preload.js` |
 
