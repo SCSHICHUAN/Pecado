@@ -256,7 +256,7 @@ instructions → instructions/…
 resources → resources/章节名
 ```
 
-### read_skill_section：按 path 读节内容
+### read_skill_section：按 path 读节点内容
 
 1. **分层树**是按 Markdown **标题**（`#`）生成的树。
 2. **读节点**时：读原 `.md`，按标题生成 path，匹配树里的 path；
