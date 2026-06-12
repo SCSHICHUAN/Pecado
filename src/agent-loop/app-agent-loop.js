@@ -14,6 +14,11 @@ const {
   FEED_tool_result: FEED_xcode_tool_result,
 } = require('../xcode/tool-executor');
 const { getXcodeTools } = require('../xcode/tools');
+const {
+  getDevDocTools,
+  EXECUTE_execute_tool: EXECUTE_dev_doc_tool,
+  FEED_tool_result: FEED_dev_doc_tool_result,
+} = require('../workflow/dev-docs/agent-tools');
 const { feed_observation, feed_assistant_tool_calls } = require('./context-feeder');
 const { createAgentStreamHooks } = require('./stream-hooks');
 const { resolveAbsInProject } = require('../xcode/live-stream');
@@ -54,7 +59,8 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   }
 
   const xcodeTools = getXcodeTools();
-  const allTools = [...mcpTools, ...xcodeTools];
+  const devDocTools = getDevDocTools();
+  const allTools = [...mcpTools, ...xcodeTools, ...devDocTools];
 
   const projectRoot = projectIo.getStatus().projectRoot;
   const conv = messages.map((m) => ({ ...m }));
@@ -135,6 +141,8 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
           if (routed.module === 'xcode') {
             execRaw = await EXECUTE_xcode_tool(routed, { uiSink });
             hadXcodeUserTool = true;
+          } else if (routed.module === 'dev-docs') {
+            execRaw = await EXECUTE_dev_doc_tool(routed);
           } else {
             execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
             if (isCodeWriteTool(parsedTask.name)) hadCodeWrite = true;
@@ -148,7 +156,9 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
         const toolFeed =
           routed.module === 'xcode'
             ? FEED_xcode_tool_result(execRaw)
-            : FEED_tool_result(execRaw);
+            : routed.module === 'dev-docs'
+              ? FEED_dev_doc_tool_result(execRaw)
+              : FEED_tool_result(execRaw);
         feed_observation(conv, parsedTask, toolFeed);
         roundObservations.push(toolFeed.observation);
       }

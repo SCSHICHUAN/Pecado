@@ -7,6 +7,7 @@
  * 【职责】INFER 原始 tool_calls → 结构化任务（mcp_tool / xcode_tool）
  */
 const { isXcodeToolName } = require('../xcode/tools');
+const { isDevDocToolName } = require('../workflow/dev-docs/agent-tools');
 
 function tryExtractJsonStringField(argsAcc, field) {
   const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
@@ -168,7 +169,11 @@ function EXECUTE_parse_command(inferRound) {
     tasks.push({
       id: tc.id,
       index: idx,
-      type: isXcodeToolName(name) ? 'xcode_tool' : 'mcp_tool',
+      type: isXcodeToolName(name)
+        ? 'xcode_tool'
+        : isDevDocToolName(name)
+          ? 'dev_docs_tool'
+          : 'mcp_tool',
       name,
       args,
     });

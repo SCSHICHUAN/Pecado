@@ -18,6 +18,7 @@ const AGENT_SYSTEM_PROMPT =
   '写代码完成后不要调用 xcode_build——应用会自动编译一次并把错误返回给用户。' +
   '仅当用户明确要运行、启动、Run（含 ⌘R）时才调用 xcode_run；没有运行意图时不要调用 xcode_run。' +
   '用户单独要求编译时可调用 xcode_build；需要 scheme/工程信息时用 xcode_project_status；验证测试用 xcode_test。' +
-  '一次对话中完成写代码后给出简短说明即可，不要自动多轮 build/run 循环。';
+  '一次对话中完成写代码后给出简短说明即可，不要自动多轮 build/run 循环。' +
+  '若 system 中存在【Workflow 开发文档 / Skill】：Instructions 与 Layer 树已在 system 中作为导航；正文不在 system，须用 read_skill_section(skill_name, path) 按 Layer path 读取；整段 Resources 可用 read_dev_doc_resources。勾选「原文」时全文已在 system。勿编造未读内容。';
 
 module.exports = { AGENT_SYSTEM_PROMPT };

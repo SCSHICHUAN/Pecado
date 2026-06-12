@@ -25,6 +25,8 @@ const {
   getDownloadServerStatus,
 } = require('./services/file-download-server');
 const { clearVideoThumbnailCache } = require('./services/video-thumbnail');
+const devDocsService = require('./dev-docs/service');
+const { getDevDocsDir } = require('./dev-docs/store');
 
 const PANEL_HTML = path.join(__dirname, 'html', 'panel.html');
 
@@ -88,6 +90,8 @@ function register(ipcMain, getMainWindowFn) {
       downloadServer: getDownloadServerStatus(),
       lastDownloadServiceUrl: getLastDownloadServiceUrl(),
       downloadServiceDir: getDownloadServiceDir(),
+      devDocsDir: getDevDocsDir(),
+      devDocs: devDocsService.listDevDocs().docs || [],
     };
   });
 
@@ -227,6 +231,87 @@ function register(ipcMain, getMainWindowFn) {
       if (!url) return { ok: false, error: '请先开启文件服务' };
       await shell.openExternal(url);
       return { ok: true, url };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_LIST, async () => {
+    try {
+      return devDocsService.listDevDocs();
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_GET, async (_evt, payload) => {
+    try {
+      return devDocsService.getDevDoc(payload?.id);
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_PICK_FILE, async () => {
+    const win = typeof getMainWindowFn === 'function' ? getMainWindowFn() : null;
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择文件',
+      properties: ['openFile'],
+      filters: [{ name: 'All Files', extensions: ['*'] }],
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+      return { ok: false, canceled: true };
+    }
+    return { ok: true, filePath: result.filePaths[0] };
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_CREATE, async (_evt, payload) => {
+    try {
+      return devDocsService.createManual(payload || {});
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_UPDATE, async (_evt, payload) => {
+    try {
+      return await devDocsService.updateDevDoc(payload || {});
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_READ_RESOURCE, async (_evt, payload) => {
+    try {
+      return await devDocsService.readDevDocResource(payload || {});
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_GENERATE_SKILL, async (_evt, payload) => {
+    try {
+      return await devDocsService.generateDevDocSkill(payload || {});
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_DELETE, async (_evt, payload) => {
+    try {
+      return devDocsService.deleteDevDoc(payload || {});
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.DEV_DOCS_OPEN_DIR, async () => {
+    try {
+      const res = devDocsService.openDevDocsDir();
+      if (!res?.ok || !res.dir) return { ok: false, error: '无法定位存储目录' };
+      const err = await shell.openPath(res.dir);
+      if (err) return { ok: false, error: err };
+      return { ok: true, dir: res.dir };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

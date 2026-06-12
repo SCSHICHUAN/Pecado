@@ -29,6 +29,11 @@ function route_task(parsedTask) {
         task: parsedTask,
       };
     }
+    case 'dev_docs_tool':
+      return {
+        module: 'dev-docs',
+        task: parsedTask,
+      };
     case 'mcp_tool': {
       if (!projectIo.getStatus().connected) {
         return { error: 'DISPATCH：MCP 未连接' };

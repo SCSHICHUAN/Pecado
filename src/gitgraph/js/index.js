@@ -132,10 +132,10 @@
       !mount.querySelector('#git-log-output') ||
       !mount.querySelector('#git-meta-branch');
     if (needsHtml) {
-      const res = await api.gitGetPanelHtml();
-      if (!res.ok) throw new Error(res.error || '加载 Git 面板失败');
-      mount.innerHTML = res.html;
-      mount.dataset.loaded = '1';
+    const res = await api.gitGetPanelHtml();
+    if (!res.ok) throw new Error(res.error || '加载 Git 面板失败');
+    mount.innerHTML = res.html;
+    mount.dataset.loaded = '1';
       mount.dataset.panelVersion = PANEL_HTML_VERSION;
       mount.dataset.toolbarBound = '';
       mount.dataset.tabsBound = '';
@@ -297,13 +297,13 @@
     }
 
     if (target === 'git') {
-      try {
-        await loadPanelHtml();
+        try {
+          await loadPanelHtml();
         setGitBottomDockOpen(gitBottomDockOpen);
         const initialScroll = !gitTabInitialScrollDone;
         await refreshGitView({ initialScroll });
         gitTabInitialScrollDone = true;
-      } catch (e) {
+        } catch (e) {
         console.error('[git-ui] showView git', e);
         showPanelLoadError(e.message || 'Git 面板加载失败');
       }
@@ -432,8 +432,8 @@
     const state = cachedGitState;
     if (action === 'init') {
       finishGitMetaOperation(formatGitMetaComplete('init', output, state), false);
-      return;
-    }
+        return;
+      }
     if (action && GIT_OP_META[action]) {
       finishGitMetaOperation(formatGitMetaComplete(action, output, state), false);
       return;

@@ -21,9 +21,10 @@ function readStore() {
       schedules: Array.isArray(j.schedules) ? j.schedules : [],
       lastDownloadServiceUrl: j.lastDownloadServiceUrl ? String(j.lastDownloadServiceUrl).trim() : '',
       downloadServiceDir: j.downloadServiceDir ? String(j.downloadServiceDir).trim() : '',
+      devDocs: Array.isArray(j.devDocs) ? j.devDocs : [],
     };
   } catch {
-    return { schedules: [], lastDownloadServiceUrl: '', downloadServiceDir: '' };
+    return { schedules: [], lastDownloadServiceUrl: '', downloadServiceDir: '', devDocs: [] };
   }
 }
 
@@ -36,6 +37,7 @@ function writeStore(data) {
       ? String(data.lastDownloadServiceUrl).trim()
       : '',
     downloadServiceDir: data?.downloadServiceDir ? String(data.downloadServiceDir).trim() : '',
+    devDocs: Array.isArray(data?.devDocs) ? data.devDocs : readStore().devDocs || [],
   };
   fs.writeFileSync(p, JSON.stringify(payload, null, 2), 'utf8');
   return payload;
@@ -102,6 +104,7 @@ function saveDownloadServiceDir(dir) {
 module.exports = {
   getStorePath,
   readStore,
+  writeStore,
   listSchedules,
   upsertSchedule,
   deleteSchedule,

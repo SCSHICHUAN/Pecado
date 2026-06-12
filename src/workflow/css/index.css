@@ -574,3 +574,907 @@
   padding: 24px;
   color: #f48771;
 }
+
+.workflow-panel[data-wf-panel='devdocs'] {
+  max-width: 820px;
+}
+
+.wf-devdocs-toolbar {
+  margin-bottom: 12px;
+}
+
+.wf-devdocs-toolbar {
+  margin-bottom: 4px;
+}
+
+.wf-devdocs-status {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+  color: #9ab;
+}
+
+.wf-devdocs-status.is-info {
+  color: #9ab;
+}
+
+.wf-devdocs-status.is-success {
+  color: #7ec699;
+}
+
+.wf-devdocs-status.is-error {
+  color: #f0a0a0;
+}
+
+.wf-devdocs-manual {
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #161616;
+}
+
+.wf-devdocs-manual textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 10px 12px;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #1e1e1e;
+  color: #ddd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.wf-skill-list-wrap {
+  margin-top: 8px;
+}
+
+.wf-skill-list-title {
+  font-size: 12px;
+  color: #888;
+  margin-bottom: 8px;
+  text-transform: lowercase;
+}
+
+.wf-skill-items {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.wf-devdocs-toolbar .wf-btn-danger {
+  color: #f0a0a0;
+}
+
+.wf-devdocs-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.wf-devdocs-confirm-overlay[hidden] {
+  display: none !important;
+}
+
+.wf-devdocs-confirm-box {
+  width: min(420px, 100%);
+  padding: 20px;
+  border-radius: 10px;
+  border: 1px solid #444;
+  background: #252526;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.wf-devdocs-confirm-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #e8e8e8;
+}
+
+.wf-devdocs-confirm-msg {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #aaa;
+}
+
+.wf-devdocs-confirm-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 16px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: #1e1e1e;
+  color: #e8e8e8;
+  font-size: 13px;
+}
+
+.wf-devdocs-confirm-input:focus {
+  outline: none;
+  border-color: #666;
+}
+
+.wf-devdocs-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.wf-skill-list-wrap.is-select-mode .wf-skill-item-controls .wf-devdoc-mode-switch,
+.wf-skill-list-wrap.is-select-mode .wf-skill-item-controls .wf-devdoc-enable-check {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.wf-skill-item-select {
+  flex-shrink: 0;
+  margin: 0 4px 0 0;
+  padding: 2px;
+}
+
+.wf-skill-item.is-selecting {
+  cursor: default;
+}
+
+.wf-skill-item.is-selecting .wf-skill-item-main {
+  cursor: pointer;
+}
+
+.wf-skill-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  background: #252526;
+  border: 1px solid #333;
+  cursor: pointer;
+}
+
+.wf-skill-item:hover {
+  border-color: #444;
+  background: #2a2a2b;
+}
+
+.wf-skill-item-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wf-skill-item-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #e8e8e8;
+}
+
+.wf-skill-item-meta {
+  font-size: 11px;
+  color: #888;
+  word-break: break-all;
+}
+
+.wf-skill-item-controls {
+  flex-shrink: 0;
+}
+
+.wf-devdoc-controls-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wf-skill-item-controls .wf-devdoc-controls-inner {
+  gap: 10px;
+}
+
+.wf-skill-item-controls .wf-devdoc-enable-check {
+  margin-left: 4px;
+}
+
+.wf-skill-item-controls .wf-devdoc-delete-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #c8a0a0;
+  border-color: #5a4040;
+  background: transparent;
+}
+
+.wf-skill-item-controls .wf-devdoc-delete-btn:hover {
+  color: #f0a0a0;
+  border-color: #7a5050;
+  background: rgba(120, 60, 60, 0.15);
+}
+
+.wf-skill-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  margin: 8px 0 12px;
+  border-radius: 8px;
+  border: 1px dashed #333;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.12);
+  user-select: none;
+}
+
+.wf-devdocs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wf-devdoc-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2a2a;
+  cursor: pointer;
+}
+
+.wf-devdoc-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wf-devdoc-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wf-devdoc-title {
+  border: none;
+  background: transparent;
+  color: #e8e8e8;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  padding: 0;
+}
+
+.wf-devdoc-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.wf-devdoc-controls-detail {
+  flex-shrink: 0;
+}
+
+.wf-devdocs-detail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  margin-bottom: 10px;
+}
+
+.wf-devdoc-controls-detail.is-view-only {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.wf-devdocs-edit-toolbar.is-edit-only {
+  display: flex;
+}
+
+#wf-devdocs-detail-controls[hidden],
+#wf-devdocs-edit-toolbar[hidden] {
+  display: none !important;
+}
+
+.wf-devdocs-edit-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.wf-devdocs-detail-url-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 120px;
+  max-width: 320px;
+}
+
+.wf-devdocs-detail-url-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: #ddd;
+  font-size: 12px;
+}
+
+.wf-devdocs-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.wf-devdocs-detail-import-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.wf-devdocs-detail-import-row[hidden] {
+  display: none;
+}
+
+.wf-devdocs-edit-source-switch .wf-devdoc-mode-btn {
+  min-width: 44px;
+  padding: 6px 6px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.wf-devdocs-generate-mode-switch .wf-devdoc-mode-btn {
+  min-width: 52px;
+  padding: 6px 8px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.wf-devdocs-generate-mode-switch[hidden] {
+  display: none !important;
+}
+
+.wf-devdocs-detail-title {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.wf-devdocs-detail-title.is-editing {
+  outline: none;
+  cursor: text;
+}
+
+.wf-devdocs-detail-title.is-editing:focus {
+  border-bottom: 1px solid #4a9eff;
+  padding-bottom: 4px;
+}
+
+.wf-devdoc-mode-switch {
+  display: inline-flex;
+  border: 1px solid #444;
+  border-radius: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.wf-devdoc-mode-switch.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.wf-devdoc-mode-btn {
+  border: none;
+  background: #2a2a2a;
+  color: #aaa;
+  font-size: 12px;
+  line-height: 1;
+  padding: 6px 12px;
+  cursor: pointer;
+  min-width: 44px;
+}
+
+.wf-devdoc-mode-btn + .wf-devdoc-mode-btn {
+  border-left: 1px solid #444;
+}
+
+.wf-devdoc-mode-btn.is-active {
+  background: #2f6fed;
+  color: #fff;
+}
+
+.wf-devdoc-enable-check {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px;
+}
+
+.wf-devdoc-check input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: #3a3a3a;
+  border: 1px solid #555;
+  position: relative;
+  vertical-align: middle;
+}
+
+.wf-devdoc-check input[type='checkbox']:checked {
+  background: #3a3a3a;
+  border-color: #2f6fed;
+}
+
+.wf-devdoc-check input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid #6eb5ff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.wf-devdoc-check input[type='checkbox']:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.wf-devdoc-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wf-devdoc-ai-label {
+  font-size: 12px;
+  color: #aaa;
+}
+
+.wf-devdoc-pin-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wf-devdoc-pin-wrap.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.wf-devdoc-pin-label {
+  font-size: 12px;
+  color: #aaa;
+  white-space: nowrap;
+}
+
+.wf-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.wf-switch-sm {
+  width: 38px;
+  height: 22px;
+}
+
+.wf-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.wf-switch-slider {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+  background: #3a3a3a;
+  border-radius: 999px;
+  transition: background 0.2s;
+}
+
+.wf-switch-slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: #ccc;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.wf-switch-sm .wf-switch-slider::before {
+  height: 16px;
+  width: 16px;
+}
+
+.wf-switch input:checked + .wf-switch-slider {
+  background: #2f6fed;
+}
+
+.wf-switch input:checked + .wf-switch-slider::before {
+  transform: translateX(20px);
+}
+
+.wf-switch-sm input:checked + .wf-switch-slider::before {
+  transform: translateX(16px);
+}
+
+.wf-segment {
+  display: inline-flex;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.wf-segment.is-disabled,
+.wf-segment.is-disabled button {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.wf-segment button {
+  border: none;
+  background: #1e1e1e;
+  color: #aaa;
+  font-size: 10px;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.wf-segment button.is-active {
+  background: #2f3f5f;
+  color: #fff;
+}
+
+.wf-segment button:not(:last-child) {
+  border-right: 1px solid #3a3a3a;
+}
+
+.wf-devdoc-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.wf-devdocs-skill-box {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid #2a3a4a;
+  border-radius: 8px;
+  background: #141820;
+}
+
+.wf-devdocs-skill-label {
+  font-size: 11px;
+  color: #6eb5ff;
+  margin-bottom: 6px;
+}
+
+.wf-devdocs-skill-pre {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #9aa;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.wf-devdocs-skill-slot {
+  min-height: 360px;
+}
+
+.wf-devdocs-skill-view {
+  min-height: 360px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.wf-devdocs-skill-view[hidden],
+.wf-devdocs-skill-edit[hidden] {
+  display: none !important;
+}
+
+.wf-devdocs-skill-edit {
+  width: 100%;
+  min-height: 360px;
+  padding: 10px 12px;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #1e1e1e;
+  color: #ddd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.wf-devdocs-skill-edit:focus {
+  outline: none;
+  border-color: #5a8dee;
+}
+
+.wf-devdoc-meta {
+  font-size: 11px;
+  color: #888;
+  word-break: break-all;
+}
+
+.wf-devdocs-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wf-devdocs-skill-panel,
+.wf-devdocs-layer-panel {
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong, #333);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.wf-devdocs-section-head {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ddd;
+}
+
+.wf-skill-tree {
+  max-height: 420px;
+  overflow: auto;
+}
+
+.wf-skill-view-empty {
+  margin: 0;
+  padding: 24px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #888;
+  text-align: center;
+}
+
+.wf-skill-tree-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #888;
+}
+
+.wf-skill-tree-ascii {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #d8d8d8;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.wf-skill-tree-nodes {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+}
+
+.wf-skill-tree-nodes .wf-skill-tree-nodes {
+  padding-left: 16px;
+  margin-top: 4px;
+  border-left: 1px solid #333;
+}
+
+.wf-skill-tree-node {
+  margin: 4px 0;
+}
+
+.wf-skill-tree-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wf-skill-tree-path {
+  font-size: 11px;
+  color: #7ec8ff;
+  background: rgba(126, 200, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.wf-skill-tree-label {
+  font-size: 13px;
+  color: #e8e8e8;
+}
+
+.wf-skill-tree-kind {
+  font-size: 10px;
+  color: #999;
+}
+
+.wf-devdocs-source-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.wf-link-btn {
+  border: none;
+  background: transparent;
+  color: #6eb5ff;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.wf-link-btn:disabled {
+  color: #666;
+  cursor: default;
+  text-decoration: none;
+}
+
+.wf-devdocs-source-meta {
+  font-size: 11px;
+  color: #888;
+  word-break: break-all;
+}
+
+.wf-markdown-body {
+  padding: 16px 18px;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  background: #161616;
+  font-size: 13px;
+  line-height: 1.65;
+  color: #ddd;
+}
+
+.wf-markdown-body h1,
+.wf-markdown-body h2,
+.wf-markdown-body h3 {
+  margin: 1em 0 0.5em;
+  color: #fff;
+}
+
+.wf-markdown-body p {
+  margin: 0.6em 0;
+}
+
+.wf-markdown-body a {
+  color: #6eb5ff;
+}
+
+.wf-markdown-body pre {
+  overflow: auto;
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #0d0d0d;
+}
+
+.wf-markdown-body blockquote {
+  margin: 0.8em 0;
+  padding: 8px 12px;
+  border-left: 4px solid #4a9eff;
+  background: #1e1e1e;
+  color: #aaa;
+}
+
+.wf-btn-danger {
+  border-color: #5a3030;
+  color: #f48771;
+}
+
+.wf-devdoc-ai-toggle-detail {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+
+/* 滚动条：与 main / pecado 一致（使用 :root 中的 --scrollbar-*） */
+.workflow-panels,
+.wf-log,
+.wf-download-log,
+.wf-devdocs-skill-pre,
+.wf-skill-tree,
+.wf-devdocs-edit-panel textarea,
+.wf-markdown-body pre {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.workflow-panels::-webkit-scrollbar,
+.wf-log::-webkit-scrollbar,
+.wf-download-log::-webkit-scrollbar,
+.wf-devdocs-skill-pre::-webkit-scrollbar,
+.wf-skill-tree::-webkit-scrollbar,
+.wf-devdocs-edit-panel textarea::-webkit-scrollbar,
+.wf-markdown-body pre::-webkit-scrollbar {
+  width: var(--scrollbar-w);
+  height: var(--scrollbar-h);
+}
+
+.workflow-panels::-webkit-scrollbar-track,
+.wf-log::-webkit-scrollbar-track,
+.wf-download-log::-webkit-scrollbar-track,
+.wf-devdocs-skill-pre::-webkit-scrollbar-track,
+.wf-skill-tree::-webkit-scrollbar-track,
+.wf-devdocs-edit-panel textarea::-webkit-scrollbar-track,
+.wf-markdown-body pre::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+  margin: 6px 0;
+}
+
+.wf-markdown-body pre::-webkit-scrollbar-track,
+.wf-devdocs-skill-pre::-webkit-scrollbar-track {
+  margin: 4px;
+}
+
+.workflow-panels::-webkit-scrollbar-thumb,
+.wf-log::-webkit-scrollbar-thumb,
+.wf-download-log::-webkit-scrollbar-thumb,
+.wf-devdocs-skill-pre::-webkit-scrollbar-thumb,
+.wf-skill-tree::-webkit-scrollbar-thumb,
+.wf-devdocs-edit-panel textarea::-webkit-scrollbar-thumb,
+.wf-markdown-body pre::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.workflow-panels::-webkit-scrollbar-thumb:hover,
+.wf-log::-webkit-scrollbar-thumb:hover,
+.wf-download-log::-webkit-scrollbar-thumb:hover,
+.wf-devdocs-skill-pre::-webkit-scrollbar-thumb:hover,
+.wf-skill-tree::-webkit-scrollbar-thumb:hover,
+.wf-devdocs-edit-panel textarea::-webkit-scrollbar-thumb:hover,
+.wf-markdown-body pre::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}

@@ -31,6 +31,7 @@ const { runAppAgentLoop } = require('../../../agent-loop');
 const { SYSTEM_PROMPT } = require('../prompts/default');
 const { AGENT_SYSTEM_PROMPT } = require('../prompts/agent');
 const { GIT_CHAT_SYSTEM_PROMPT } = require('../prompts/git-chat');
+const { buildDevDocsContextForAi } = require('../../../workflow/dev-docs/ai-context');
 
 const CHAT_MODES = Object.freeze({
   PLAIN: 'plain',
@@ -60,6 +61,10 @@ function buildChatMessages(mode, userText, history, contextBlock = '') {
     systemContent = GIT_CHAT_SYSTEM_PROMPT;
   } else if (!isAgentMode(mode)) {
     systemContent = SYSTEM_PROMPT;
+  }
+  const devDocsBlock = buildDevDocsContextForAi();
+  if (devDocsBlock.trim()) {
+    systemContent += `\n\n${devDocsBlock.trim()}`;
   }
   if (!isAgentMode(mode) && !isGitChatMode(mode) && contextBlock.trim()) {
     systemContent += `\n\n${contextBlock.trim()}`;

@@ -22,26 +22,8 @@
  *   renderMarkdown(src)                  → HTML string（本地 markdown-it，不经 IPC）
  */
 const { contextBridge, ipcRenderer } = require('electron');
-const MarkdownIt = require('markdown-it');
-const hljs = require('highlight.js/lib/core');
-hljs.registerLanguage('cpp', require('highlight.js/lib/languages/cpp'));
+const { markdownToHtml } = require('../markdown/markdown-html');
 const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW } = require('../shared/ipc-channels');
-
-/** html: false 禁止原文 HTML；不开启 linkify；代码块用 highlight.js（仅注册 cpp，未知语言按 cpp 高亮） */
-const md = new MarkdownIt({ html: false, linkify: false, breaks: true });
-md.options.highlight = (str, lang) => {
-  const raw = (lang || '').trim().toLowerCase();
-  const useLang = raw && hljs.getLanguage(raw) ? raw : 'cpp';
-  try {
-    return hljs.highlight(str, { language: useLang, ignoreIllegals: true }).value;
-  } catch (_) {
-    try {
-      return hljs.highlight(str, { language: 'cpp', ignoreIllegals: true }).value;
-    } catch (__) {
-      return md.utils.escapeHtml(str);
-    }
-  }
-};
 
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
@@ -99,6 +81,17 @@ try {
     workflowGetDownloadServer: () => ipcRenderer.invoke(WORKFLOW.GET_DOWNLOAD_SERVER),
     workflowClearVideoThumbCache: () => ipcRenderer.invoke(WORKFLOW.CLEAR_VIDEO_THUMB_CACHE),
     workflowOpenDownloadUrl: (payload) => ipcRenderer.invoke(WORKFLOW.OPEN_DOWNLOAD_URL, payload || {}),
+    workflowDevDocsList: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_LIST),
+    workflowDevDocsGet: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_GET, payload || {}),
+    workflowDevDocsPickFile: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_PICK_FILE),
+    workflowDevDocsCreate: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_CREATE, payload || {}),
+    workflowDevDocsUpdate: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_UPDATE, payload || {}),
+    workflowDevDocsReadResource: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.DEV_DOCS_READ_RESOURCE, payload || {}),
+    workflowDevDocsGenerateSkill: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.DEV_DOCS_GENERATE_SKILL, payload || {}),
+    workflowDevDocsDelete: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_DELETE, payload || {}),
+    workflowDevDocsOpenDir: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_OPEN_DIR),
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {
@@ -123,7 +116,7 @@ try {
       ipcRenderer.on(ch, fn);
       return () => ipcRenderer.removeListener(ch, fn);
     },
-    renderMarkdown: (src) => md.render(String(src ?? '')),
+    renderMarkdown: markdownToHtml,
   });
 } catch (error) {
   console.error('Failed to expose electronAPI:', error);

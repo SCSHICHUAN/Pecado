@@ -11,14 +11,15 @@
   </header>
 
   <nav class="workflow-tabs" role="tablist" aria-label="Workflow 功能">
-    <button type="button" class="workflow-tab is-active" data-wf-tab="download" role="tab" aria-selected="true">文件服务</button>
+    <button type="button" class="workflow-tab is-active" data-wf-tab="devdocs" role="tab" aria-selected="true">开发文档</button>
+    <button type="button" class="workflow-tab" data-wf-tab="download" role="tab" aria-selected="false">文件服务</button>
     <button type="button" class="workflow-tab" data-wf-tab="organize" role="tab" aria-selected="false">文件归类</button>
     <button type="button" class="workflow-tab" data-wf-tab="ppt" role="tab" aria-selected="false">写 PPT</button>
     <button type="button" class="workflow-tab" data-wf-tab="schedule" role="tab" aria-selected="false">定时任务</button>
   </nav>
 
   <div class="workflow-panels">
-    <section class="workflow-panel is-active" data-wf-panel="download" role="tabpanel">
+    <section class="workflow-panel" data-wf-panel="download" role="tabpanel" hidden>
       <p class="workflow-desc">文件服务使用<strong>独立共享目录</strong>（与 Pecado 对话 / Git 的 Open Folder 无关）。选择目录后进入本页会<strong>自动开启</strong>服务；启动后地址会自动复制到剪贴板。</p>
       <div class="wf-field">
         <label for="wf-dl-dir">共享文件夹</label>
@@ -160,6 +161,93 @@
         <ul class="wf-schedule-list" id="wf-schedule-list"></ul>
       </div>
       <pre class="wf-log" id="wf-schedule-log"></pre>
+    </section>
+
+    <section class="workflow-panel is-active" data-wf-panel="devdocs" role="tabpanel">
+      <div class="wf-devdocs-list-view" id="wf-devdocs-list-view">
+        <p class="workflow-desc">Skill 文件为规范格式（<strong>Metadata</strong> + <strong>Instructions</strong> + <strong>Resources</strong>）。Layer 分层树保存在 <code>{skillName}.json</code>，勾选「加入 AI」时<strong>常驻 system 作导航</strong>；正文不进 context，Agent 用 <code>read_skill_section</code> 按 path 按需读。</p>
+        <div class="wf-actions wf-devdocs-toolbar">
+          <button type="button" class="wf-btn" id="wf-devdocs-open-dir">打开存储文件夹</button>
+          <button type="button" class="wf-btn" id="wf-devdocs-add-skill">添加 skill</button>
+          <button type="button" class="wf-btn" id="wf-devdocs-list-edit">编辑</button>
+          <button type="button" class="wf-btn" id="wf-devdocs-list-toggle-all" hidden>全选</button>
+          <button type="button" class="wf-btn wf-btn-danger" id="wf-devdocs-list-delete" hidden>删除</button>
+        </div>
+        <div class="wf-skill-list-wrap">
+          <div class="wf-skill-list-title">skills</div>
+          <ul class="wf-skill-items" id="wf-devdocs-list">
+            <li class="wf-skill-empty">NO Skills</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="wf-devdocs-detail-view" id="wf-devdocs-detail-view" hidden>
+        <div class="wf-devdocs-detail-head">
+          <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-back">← 返回</button>
+          <div class="wf-devdoc-controls wf-devdoc-controls-detail" id="wf-devdocs-detail-controls" hidden></div>
+          <div class="wf-devdocs-edit-toolbar" id="wf-devdocs-edit-toolbar" hidden>
+            <div class="wf-devdoc-mode-switch wf-devdocs-edit-source-switch" id="wf-devdocs-edit-source-switch" role="group" aria-label="内容来源">
+              <button type="button" class="wf-devdoc-mode-btn" data-source="url">链接</button>
+              <button type="button" class="wf-devdoc-mode-btn" data-source="file">文件</button>
+              <button type="button" class="wf-devdoc-mode-btn" data-source="manual">手动</button>
+            </div>
+            <div class="wf-devdocs-detail-import-row" id="wf-devdocs-detail-import-row">
+              <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-detail-pick-file">选择文件</button>
+              <div class="wf-devdocs-detail-url-row">
+                <input id="wf-devdocs-detail-url" type="text" placeholder="https://…" spellcheck="false">
+              </div>
+            </div>
+          </div>
+          <div class="wf-devdocs-detail-actions">
+            <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-edit">编辑</button>
+            <div class="wf-devdoc-mode-switch wf-devdocs-generate-mode-switch" id="wf-devdocs-generate-mode-switch" role="group" aria-label="生成模式" hidden>
+              <button type="button" class="wf-devdoc-mode-btn" data-generate-mode="markdown">markdown</button>
+              <button type="button" class="wf-devdoc-mode-btn" data-generate-mode="other">其他</button>
+            </div>
+            <button type="button" class="wf-btn wf-btn-sm wf-btn-primary" id="wf-devdocs-generate-skill" hidden>保存</button>
+          </div>
+        </div>
+        <div class="wf-devdocs-status" id="wf-devdocs-status" hidden role="status" aria-live="polite"></div>
+        <h2 class="wf-devdocs-detail-title" id="wf-devdocs-detail-title" hidden></h2>
+        <div class="wf-devdocs-detail-body" id="wf-devdocs-detail-body">
+          <section class="wf-devdocs-skill-panel" id="wf-devdocs-skill-panel">
+            <div class="wf-devdocs-section-head">Skill</div>
+            <div class="wf-devdocs-skill-slot" id="wf-devdocs-skill-slot">
+              <article
+                class="wf-devdocs-skill-view wf-markdown-body"
+                id="wf-devdocs-skill-view"
+              ></article>
+              <textarea
+                id="wf-devdocs-skill-edit"
+                class="wf-devdocs-skill-edit"
+                rows="18"
+                spellcheck="false"
+                hidden
+                placeholder="---&#10;name: ...&#10;description: &quot;...&quot;&#10;---"
+              ></textarea>
+            </div>
+          </section>
+          <section class="wf-devdocs-layer-panel" id="wf-devdocs-layer-panel">
+            <div class="wf-devdocs-section-head">Layer-tree</div>
+            <div class="wf-skill-tree" id="wf-devdocs-skill-tree"></div>
+          </section>
+        </div>
+        <div class="wf-actions">
+          <button type="button" class="wf-btn wf-btn-danger" id="wf-devdocs-delete">删除 skill</button>
+        </div>
+      </div>
+
+      <div class="wf-devdocs-confirm-overlay" id="wf-devdocs-delete-all-confirm" hidden>
+        <div class="wf-devdocs-confirm-box" role="dialog" aria-modal="true" aria-labelledby="wf-devdocs-delete-all-title">
+          <p class="wf-devdocs-confirm-title" id="wf-devdocs-delete-all-title">确认删除全部 skill</p>
+          <p class="wf-devdocs-confirm-msg" id="wf-devdocs-delete-all-msg"></p>
+          <input type="text" class="wf-devdocs-confirm-input" id="wf-devdocs-delete-all-input" placeholder="输入 skills" spellcheck="false" autocomplete="off">
+          <div class="wf-devdocs-confirm-actions">
+            <button type="button" class="wf-btn" id="wf-devdocs-delete-all-cancel">取消</button>
+            <button type="button" class="wf-btn wf-btn-danger" id="wf-devdocs-delete-all-ok">删除</button>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </div>
