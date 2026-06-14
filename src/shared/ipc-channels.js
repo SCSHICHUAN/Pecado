@@ -42,12 +42,12 @@ module.exports = {
     DIRECTORY_TREE: 'mcp-fs-directory-tree',
     /** invoke：{ projectRoot? } → shell.openPath 在 Finder/资源管理器中打开 */
     OPEN_PROJECT_ROOT: 'mcp-fs-open-project-root',
+    /** invoke：{ path } → 在 Finder/资源管理器中定位文件 */
+    OPEN_PATH: 'mcp-fs-open-path',
+    /** invoke：{ path } → 读取文本文件（log 浮层预览） */
+    READ_TEXT_FILE: 'mcp-fs-read-text-file',
     /** main → renderer：工程路径变更；showTree 为 true 时仅 Open Folder 会读并展示目录树 */
     PROJECT_CHANGED: 'mcp-fs-project-changed',
-  },
-  XCODE: {
-    /** invoke：触发 macOS 自动化权限弹窗（Pecado → Xcode） */
-    REQUEST_AUTOMATION: 'xcode-request-automation',
   },
   WORKFLOW: {
     GET_PANEL_HTML: 'workflow-get-panel-html',
@@ -67,12 +67,25 @@ module.exports = {
     DEV_DOCS_LIST: 'workflow-dev-docs-list',
     DEV_DOCS_GET: 'workflow-dev-docs-get',
     DEV_DOCS_PICK_FILE: 'workflow-dev-docs-pick-file',
+    DEV_DOCS_PICK_FOLDER: 'workflow-dev-docs-pick-folder',
     DEV_DOCS_CREATE: 'workflow-dev-docs-create',
     DEV_DOCS_UPDATE: 'workflow-dev-docs-update',
     DEV_DOCS_READ_RESOURCE: 'workflow-dev-docs-read-resource',
     DEV_DOCS_GENERATE_SKILL: 'workflow-dev-docs-generate-skill',
     DEV_DOCS_DELETE: 'workflow-dev-docs-delete',
     DEV_DOCS_OPEN_DIR: 'workflow-dev-docs-open-dir',
+  },
+  SKILL: {
+    /** main → renderer：Skill tool 执行日志 */
+    LOG_EVENT: 'skill-log-event',
+    /** invoke：{ skillName, path } → Layer 节点正文预览 */
+    READ_SECTION: 'skill-read-section',
+    /** invoke：{ skillName, path } → 资源文件正文预览 */
+    READ_RESOURCE: 'skill-read-resource',
+    /** invoke：打开原生预览窗口 */
+    OPEN_PREVIEW: 'skill-open-preview',
+    /** main → preview window：{ title, body, filePath?, subtitle? } */
+    PREVIEW_CONTENT: 'skill-preview-content',
   },
   GIT: {
     GET_STATE: 'git-get-state',

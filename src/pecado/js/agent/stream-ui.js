@@ -45,8 +45,8 @@ function createUiStreamSink(sender, streamId) {
     onTool(payload) {
       send({ phase: 'tool', ...payload });
     },
-    onBuildLog(payload) {
-      send({ phase: 'build_log', ...payload });
+    onAgentLog(entry) {
+      send({ phase: 'agent_log', entry: { ts: Date.now(), ...entry } });
     },
     onError(error) {
       send({ phase: 'error', error });

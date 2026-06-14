@@ -31,7 +31,7 @@ function route_task(parsedTask) {
     }
     case 'dev_docs_tool':
       return {
-        module: 'dev-docs',
+        module: 'skill',
         task: parsedTask,
       };
     case 'mcp_tool': {

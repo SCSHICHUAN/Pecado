@@ -4,12 +4,7 @@
  *
  * 【功能】将 llm-server 流事件接到 pecado UI + xcode（agent-loop 编排层，非 llm 职责）。
  */
-const {
-  IS_DARWIN,
-  createLiveWriter,
-  registerWriteFileStreamTarget,
-  writeDeltaToTarget,
-} = require('../xcode/live-stream');
+const { registerWriteFileStreamTarget, writeDeltaToTarget } = require('../xcode/stream');
 
 /**
  * @param {{
@@ -19,17 +14,14 @@ const {
  * }} opts
  */
 function createAgentStreamHooks(opts = {}) {
-  const { uiSink, projectRoot = '', xcodeAbsPath = null } = opts;
+  const { uiSink, projectRoot = '' } = opts;
   /** @type {Map<number, object>} */
   const writeTargets = new Map();
-  const textXcodeWriter = createLiveWriter(xcodeAbsPath);
-  if (xcodeAbsPath && IS_DARWIN) textXcodeWriter.start();
 
   const hooks = {
     writeTargets,
     onTextDelta(text) {
       uiSink?.onTextDelta?.(text);
-      textXcodeWriter.writeDelta(text);
     },
     onTool(info) {
       uiSink?.onTool?.(info);
@@ -45,9 +37,7 @@ function createAgentStreamHooks(opts = {}) {
         uiSink.onToolStream?.({ name: 'write_file', path: relPath, text: delta });
       }
     },
-    async onRoundEnd() {
-      await textXcodeWriter.finish();
-    },
+    async onRoundEnd() {},
   };
 
   return { hooks, streamContext: { writeTargets } };

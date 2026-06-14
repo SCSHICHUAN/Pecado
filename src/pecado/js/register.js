@@ -13,9 +13,11 @@
  * 【不负责】MCP 连接、tool 执行、LLM HTTP、Git、本地 JSON 指令（见各 sibling 模块）
  */
 const router = require('./agent/router');
+const previewWindow = require('./preview-window');
 
 function register(ipcMain) {
   router.register(ipcMain);
+  previewWindow.register(ipcMain);
 }
 
 module.exports = { register };

@@ -11,7 +11,7 @@
   </header>
 
   <nav class="workflow-tabs" role="tablist" aria-label="Workflow 功能">
-    <button type="button" class="workflow-tab is-active" data-wf-tab="devdocs" role="tab" aria-selected="true">开发文档</button>
+    <button type="button" class="workflow-tab is-active" data-wf-tab="skill" role="tab" aria-selected="true">Skill</button>
     <button type="button" class="workflow-tab" data-wf-tab="download" role="tab" aria-selected="false">文件服务</button>
     <button type="button" class="workflow-tab" data-wf-tab="organize" role="tab" aria-selected="false">文件归类</button>
     <button type="button" class="workflow-tab" data-wf-tab="ppt" role="tab" aria-selected="false">写 PPT</button>
@@ -163,7 +163,7 @@
       <pre class="wf-log" id="wf-schedule-log"></pre>
     </section>
 
-    <section class="workflow-panel is-active" data-wf-panel="devdocs" role="tabpanel">
+    <section class="workflow-panel is-active" data-wf-panel="skill" role="tabpanel">
       <div class="wf-devdocs-list-view" id="wf-devdocs-list-view">
         <p class="workflow-desc">Skill 文件为规范格式（<strong>Metadata</strong> + <strong>Instructions</strong> + <strong>Resources</strong>）。Layer 分层树保存在 <code>{skillName}.json</code>，勾选「加入 AI」时<strong>常驻 system 作导航</strong>；正文不进 context，Agent 用 <code>read_skill_section</code> 按 path 按需读。</p>
         <div class="wf-actions wf-devdocs-toolbar">
@@ -183,31 +183,43 @@
 
       <div class="wf-devdocs-detail-view" id="wf-devdocs-detail-view" hidden>
         <div class="wf-devdocs-detail-head">
-          <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-back">← 返回</button>
-          <div class="wf-devdoc-controls wf-devdoc-controls-detail" id="wf-devdocs-detail-controls" hidden></div>
-          <div class="wf-devdocs-edit-toolbar" id="wf-devdocs-edit-toolbar" hidden>
-            <div class="wf-devdoc-mode-switch wf-devdocs-edit-source-switch" id="wf-devdocs-edit-source-switch" role="group" aria-label="内容来源">
-              <button type="button" class="wf-devdoc-mode-btn" data-source="url">链接</button>
-              <button type="button" class="wf-devdoc-mode-btn" data-source="file">文件</button>
-              <button type="button" class="wf-devdoc-mode-btn" data-source="manual">手动</button>
+          <div class="wf-devdocs-detail-head-row wf-devdocs-detail-head-row--main">
+            <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-back">← 返回</button>
+            <div class="wf-devdoc-controls wf-devdoc-controls-detail" id="wf-devdocs-detail-controls" hidden></div>
+            <div class="wf-devdocs-edit-toolbar" id="wf-devdocs-edit-toolbar" hidden>
+              <div class="wf-devdoc-mode-switch wf-devdocs-edit-source-switch" id="wf-devdocs-edit-source-switch" role="group" aria-label="内容来源">
+                <button type="button" class="wf-devdoc-mode-btn" data-source="url">链接</button>
+                <button type="button" class="wf-devdoc-mode-btn" data-source="file">文件</button>
+                <button type="button" class="wf-devdoc-mode-btn" data-source="manual">手动</button>
+              </div>
             </div>
-            <div class="wf-devdocs-detail-import-row" id="wf-devdocs-detail-import-row">
+            <div class="wf-devdocs-status" id="wf-devdocs-status" hidden role="status" aria-live="polite"></div>
+            <div class="wf-devdocs-detail-actions">
+              <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-edit">编辑</button>
+              <div class="wf-devdoc-mode-switch wf-devdocs-generate-mode-switch" id="wf-devdocs-generate-mode-switch" role="group" aria-label="生成模式" hidden>
+                <button type="button" class="wf-devdoc-mode-btn" data-generate-mode="markdown">markdown</button>
+                <button type="button" class="wf-devdoc-mode-btn" data-generate-mode="other">其他</button>
+              </div>
+              <button type="button" class="wf-btn wf-btn-sm wf-btn-primary" id="wf-devdocs-generate-skill" hidden>保存</button>
+            </div>
+          </div>
+          <div class="wf-devdocs-detail-aux" id="wf-devdocs-detail-aux" hidden>
+            <div class="wf-devdocs-aux-line" id="wf-devdocs-detail-import-line" hidden>
+              <span class="wf-devdocs-import-label" id="wf-devdocs-import-label">链接</span>
               <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-detail-pick-file">选择文件</button>
               <div class="wf-devdocs-detail-url-row">
                 <input id="wf-devdocs-detail-url" type="text" placeholder="https://…" spellcheck="false">
               </div>
             </div>
-          </div>
-          <div class="wf-devdocs-detail-actions">
-            <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-edit">编辑</button>
-            <div class="wf-devdoc-mode-switch wf-devdocs-generate-mode-switch" id="wf-devdocs-generate-mode-switch" role="group" aria-label="生成模式" hidden>
-              <button type="button" class="wf-devdoc-mode-btn" data-generate-mode="markdown">markdown</button>
-              <button type="button" class="wf-devdoc-mode-btn" data-generate-mode="other">其他</button>
+            <div class="wf-devdocs-aux-line" id="wf-devdocs-detail-resource-line">
+              <span class="wf-devdocs-import-label">资源</span>
+              <button type="button" class="wf-btn wf-btn-sm" id="wf-devdocs-detail-pick-resource-folder">选择文件夹</button>
+              <div class="wf-devdocs-detail-url-row">
+                <input id="wf-devdocs-detail-resource-folder" type="text" placeholder="Skill 附属资源目录（保存时拷贝到 workflow-dev-docs/skills/）" spellcheck="false" readonly>
+              </div>
             </div>
-            <button type="button" class="wf-btn wf-btn-sm wf-btn-primary" id="wf-devdocs-generate-skill" hidden>保存</button>
           </div>
         </div>
-        <div class="wf-devdocs-status" id="wf-devdocs-status" hidden role="status" aria-live="polite"></div>
         <h2 class="wf-devdocs-detail-title" id="wf-devdocs-detail-title" hidden></h2>
         <div class="wf-devdocs-detail-body" id="wf-devdocs-detail-body">
           <section class="wf-devdocs-skill-panel" id="wf-devdocs-skill-panel">
@@ -230,6 +242,8 @@
           <section class="wf-devdocs-layer-panel" id="wf-devdocs-layer-panel">
             <div class="wf-devdocs-section-head">Layer-tree</div>
             <div class="wf-skill-tree" id="wf-devdocs-skill-tree"></div>
+            <div class="wf-devdocs-section-head wf-devdocs-section-head-sub">Resource-files</div>
+            <div class="wf-skill-tree" id="wf-devdocs-resource-tree"></div>
           </section>
         </div>
         <div class="wf-actions">

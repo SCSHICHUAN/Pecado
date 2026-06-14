@@ -10,7 +10,7 @@
  *
  * 【调用方】
  *   - mcp-filesystem/ipc.js
- *   - agent-loop/app-agent-loop.js、xcode/live-stream.js、xcode/prompt.js
+ *   - agent-loop/app-agent-loop.js、xcode/stream.js、xcode/prompt.js
  *
  * 【对外能力】
  *   连接：connect(root) / disconnect() / getStatus() / listTools() / callTool() / callToolText()

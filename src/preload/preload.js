@@ -23,7 +23,7 @@
  */
 const { contextBridge, ipcRenderer } = require('electron');
 const { markdownToHtml } = require('../markdown/markdown-html');
-const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW, SKILL } = require('../shared/ipc-channels');
 
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
@@ -45,6 +45,8 @@ try {
     mcpFsDirectoryTree: (opts) => ipcRenderer.invoke(MCP_FS.DIRECTORY_TREE, opts || {}),
     mcpFsOpenProjectRoot: (payload) =>
       ipcRenderer.invoke(MCP_FS.OPEN_PROJECT_ROOT, payload || {}),
+    mcpFsOpenPath: (payload) => ipcRenderer.invoke(MCP_FS.OPEN_PATH, payload || {}),
+    mcpFsReadTextFile: (payload) => ipcRenderer.invoke(MCP_FS.READ_TEXT_FILE, payload || {}),
     onMcpFsProjectChanged: (callback) => {
       const ch = MCP_FS.PROJECT_CHANGED;
       const fn = (_evt, payload) => {
@@ -84,6 +86,7 @@ try {
     workflowDevDocsList: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_LIST),
     workflowDevDocsGet: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_GET, payload || {}),
     workflowDevDocsPickFile: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_PICK_FILE),
+    workflowDevDocsPickFolder: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_PICK_FOLDER),
     workflowDevDocsCreate: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_CREATE, payload || {}),
     workflowDevDocsUpdate: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_UPDATE, payload || {}),
     workflowDevDocsReadResource: (payload) =>
@@ -116,6 +119,21 @@ try {
       ipcRenderer.on(ch, fn);
       return () => ipcRenderer.removeListener(ch, fn);
     },
+    onSkillLogEvent: (callback) => {
+      const ch = SKILL.LOG_EVENT;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onSkillLogEvent', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
+    skillReadSection: (payload) => ipcRenderer.invoke(SKILL.READ_SECTION, payload || {}),
+    skillReadResource: (payload) => ipcRenderer.invoke(SKILL.READ_RESOURCE, payload || {}),
+    openLogPreview: (payload) => ipcRenderer.invoke(SKILL.OPEN_PREVIEW, payload || {}),
     renderMarkdown: markdownToHtml,
   });
 } catch (error) {

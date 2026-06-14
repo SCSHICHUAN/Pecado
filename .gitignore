@@ -27,6 +27,8 @@ Thumbs.db
 
 # Misc
 final_screenshot.png
+__pycache__/
+*.pyc
 
 # Claude Code / local agent
 .claude/

@@ -13,7 +13,7 @@
  *   → { content: string } | { error: string }
  */
 const llm = require('../../../llm-server');
-const { createLiveWriter } = require('../../../xcode/live-stream');
+const { createLiveWriter } = require('../../../xcode/stream');
 
 /**
  * @param {{

@@ -1,6 +1,6 @@
 /**
  * @file file-type.js
- * 【功能】渲染进程文件类型图标（与 shared/file-type.js 规则一致）
+ * 【功能】Workflow 文件列表图标（与 shared/file-type.js 规则一致）
  */
 (function (global) {
   const RULES = [

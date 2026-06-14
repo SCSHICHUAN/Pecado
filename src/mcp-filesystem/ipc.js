@@ -194,6 +194,39 @@ function registerIpcHandlers(ipcMain) {
     }
   });
 
+  ipcMain.handle(MCP_FS.OPEN_PATH, async (_event, payload) => {
+    try {
+      const filePath = String(payload?.path || '').trim();
+      if (!filePath) return { ok: false, error: '缺少 path' };
+      if (!fs.existsSync(filePath)) return { ok: false, error: `路径不存在：${filePath}` };
+      if (process.platform === 'darwin') {
+        shell.showItemInFolder(filePath);
+      } else {
+        const err = await shell.openPath(filePath);
+        if (err) return { ok: false, error: err };
+      }
+      return { ok: true, path: filePath };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(MCP_FS.READ_TEXT_FILE, async (_event, payload) => {
+    try {
+      const filePath = String(payload?.path || '').trim();
+      if (!filePath) return { ok: false, error: '缺少 path' };
+      if (!fs.existsSync(filePath)) return { ok: false, error: `文件不存在：${filePath}` };
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return { ok: false, error: '不是文件' };
+      if (stat.size > 512000) return { ok: false, error: '文件过大，无法在面板内预览' };
+      let body = fs.readFileSync(filePath, 'utf8');
+      if (body.length > 48000) body = `${body.slice(0, 48000)}\n…(已截断)`;
+      return { ok: true, path: filePath, body, title: path.basename(filePath) };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
   app.on('before-quit', () => {
     projectIo.disconnect().catch(() => {});
   });

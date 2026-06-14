@@ -22,16 +22,17 @@
 const { VOLC_ARK } = require('../../../shared/ipc-channels');
 const { resolveVolcCredentials, MISSING_KEY_ERROR } = require('../../../settings/js/volc-user-config');
 const projectIo = require('../../../mcp-filesystem');
-const { buildProjectContextForAi } = require('../../../mcp-filesystem/project-context');
-const { pickXcodeStreamTarget } = require('../../../xcode/path-parse');
+const { buildProjectContextForAi, buildAtMentionContextForAi } = require('../../../mcp-filesystem/project-context');
+const { pickXcodeStreamTarget } = require('../../../xcode/paths');
 const { createUiStreamSink } = require('./stream-ui');
-const { resolveOpenProjectPath } = require('../../../xcode/live-stream');
+const { resolveOpenProjectPath } = require('../../../xcode/stream');
 const { runPlainSession } = require('./plain-stream');
 const { runAppAgentLoop } = require('../../../agent-loop');
+const { bindAgentLogSender, unbindAgentLogSender } = require('../../../shared/agent-log');
 const { SYSTEM_PROMPT } = require('../prompts/default');
 const { AGENT_SYSTEM_PROMPT } = require('../prompts/agent');
 const { GIT_CHAT_SYSTEM_PROMPT } = require('../prompts/git-chat');
-const { buildDevDocsContextForAi } = require('../../../workflow/dev-docs/ai-context');
+const { buildDevDocsContextForAi } = require('../../../workflow/skill/agent/context');
 
 const CHAT_MODES = Object.freeze({
   PLAIN: 'plain',
@@ -71,6 +72,9 @@ function buildChatMessages(mode, userText, history, contextBlock = '') {
   }
   if (isGitChatMode(mode) && contextBlock.trim()) {
     systemContent += `\n\n【当前仓库】\n${contextBlock.trim()}`;
+  }
+  if (isAgentMode(mode) && contextBlock.trim()) {
+    systemContent += `\n\n${contextBlock.trim()}`;
   }
   const hist = Array.isArray(history) ? history : [];
   return [
@@ -115,6 +119,7 @@ async function selectChatMode(input = {}) {
     } else if (projectIo.getStatus().connected) {
       mode = CHAT_MODES.AGENT;
       xcodeStreamPath = pickXcodeStreamTarget(text);
+      contextBlock = await buildAtMentionContextForAi(text);
     } else {
       contextBlock = await buildProjectContextForAi(text);
       mode = contextBlock.trim() ? CHAT_MODES.CONTEXT : CHAT_MODES.PLAIN;
@@ -167,10 +172,15 @@ function register(ipcMain) {
 
     if (isAgentMode(mode)) {
       const uiSink = createUiStreamSink(sender, streamId);
-      return runAppAgentLoop(uiSink, llmOpts, messages, {
-        xcodeStreamPath: xcodeStreamPath || undefined,
-        userText: String(userText || ''),
-      });
+      bindAgentLogSender(sender);
+      try {
+        return await runAppAgentLoop(uiSink, llmOpts, messages, {
+          xcodeStreamPath: xcodeStreamPath || undefined,
+          userText: String(userText || ''),
+        });
+      } finally {
+        unbindAgentLogSender();
+      }
     }
 
     const xcodeAbsPath = resolveOpenProjectPath(xcodeStreamPath);

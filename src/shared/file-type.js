@@ -1,7 +1,7 @@
 /**
  * @file file-type.js
  * 【功能】按扩展名识别文件类型（图标 / 标签 / MIME）
- * 【调用方】workflow/services/file-download-server.js、workflow/js/index.js（复制逻辑见 getFileTypeInfo 同步）
+ * 【调用方】workflow/file-service/server.js、workflow/js/panel.js
  */
 
 /** @type {Array<{ kind: string, label: string, icon: string, exts: string[] }>} */

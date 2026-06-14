@@ -73,6 +73,7 @@
   let nodeMenuContext = null;
   let activeGitBottomTab = 'status';
   let gitPanelOpen = false;
+  let chatPanelOpen = true;
   let gitBottomDockOpen = true;
   /** @type {object | null} */
   let cachedGitState = null;
@@ -156,21 +157,55 @@
     const workflowPanel = $('panel-workflow');
     const gitPanel = $('panel-git');
     gitPanelOpen = view === 'git';
+    chatPanelOpen = view === 'chat';
     if (chatPanel) chatPanel.classList.toggle('hidden', view !== 'chat');
     if (workflowPanel) workflowPanel.classList.toggle('hidden', view !== 'workflow');
     if (gitPanel) gitPanel.classList.toggle('hidden', view !== 'git');
+    document.body.classList.remove('app-view-chat', 'app-view-git', 'app-view-workflow');
+    document.body.classList.add(`app-view-${view}`);
+    document.querySelectorAll('.app-bottom-tools[data-app-view]').forEach((el) => {
+      const active = el.dataset.appView === view;
+      el.hidden = !active;
+      el.setAttribute('aria-hidden', active ? 'false' : 'true');
+    });
     syncBottomDockToggleUi();
   }
 
   function syncBottomDockToggleUi() {
     const appToggle = $('git-dock-toggle');
-    const pressed = gitPanelOpen && gitBottomDockOpen ? 'true' : 'false';
-    if (appToggle) {
-      appToggle.setAttribute('aria-pressed', pressed);
-      appToggle.disabled = !gitPanelOpen;
-      appToggle.classList.toggle('is-disabled', !gitPanelOpen);
+    const bottomBar = document.querySelector('.app-bottom-bar');
+    if (!appToggle) return;
+    const onGit = gitPanelOpen;
+    const onChat = chatPanelOpen;
+    const onWorkflow = !onGit && !onChat;
+    let pressed = false;
+    if (onGit) pressed = gitBottomDockOpen;
+    else if (onChat) pressed = Boolean(window.SkillLogPanel?.isOpen?.());
+
+    appToggle.hidden = onWorkflow;
+    appToggle.setAttribute('aria-hidden', onWorkflow ? 'true' : 'false');
+    if (bottomBar) {
+      bottomBar.hidden = onWorkflow;
+      bottomBar.setAttribute('aria-hidden', onWorkflow ? 'true' : 'false');
+    }
+
+    appToggle.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+    appToggle.disabled = onWorkflow;
+    appToggle.classList.toggle('is-disabled', onWorkflow);
+
+    if (onGit) {
+      appToggle.setAttribute('aria-label', '展开或收起 Git 详情面板');
+      appToggle.title = 'Git 详情面板（status / log / pecado）';
+    } else if (onChat) {
+      appToggle.setAttribute('aria-label', '展开或收起 log 面板');
+      appToggle.title = 'log（tool call / 命令 / 文件）';
+    } else {
+      appToggle.setAttribute('aria-label', '详情面板');
+      appToggle.title = '';
     }
   }
+
+  window.__syncAppBottomDockToggle = syncBottomDockToggleUi;
 
   function setGitBottomDockOpen(open) {
     const mount = $('panel-git');
@@ -184,10 +219,15 @@
     setGitBottomDockOpen(!gitBottomDockOpen);
   }
 
-  /** 窗口最底栏：仅在 Git 页展开/收起底部 status | log | pecado */
-  function toggleAppGitBottomDock() {
-    if (!gitPanelOpen) return;
-    toggleGitBottomDock();
+  /** 窗口最底栏：Pecado 页 → log；Git 页 → status | log | pecado */
+  function toggleAppBottomDock() {
+    if (gitPanelOpen) {
+      toggleGitBottomDock();
+      return;
+    }
+    if (chatPanelOpen) {
+      window.SkillLogPanel?.toggle?.();
+    }
   }
 
   function switchGitBottomTab(tabId) {
@@ -272,7 +312,7 @@
     if (!toggle || toggle.dataset.bound === '1') return;
     toggle.dataset.bound = '1';
     toggle.addEventListener('click', () => {
-      toggleAppGitBottomDock();
+      toggleAppBottomDock();
     });
     syncBottomDockToggleUi();
   }

@@ -116,6 +116,26 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
   let chatProgrammaticScrollActive = false;
   let chatUserDetachedFromStream = false;
   let lastWheelUpIntentAt = 0;
+  /** 本轮对话进行中：大段 Markdown 突增时仍跟滚，除非用户主动上滑 */
+  let activeChatTurnFollow = false;
+  /** @type {ResizeObserver | null} */
+  let activeBubbleResizeObserver = null;
+
+  function isChatWheelCooldownActive() {
+    const now = performance.now();
+    return lastWheelUpIntentAt > 0 && now - lastWheelUpIntentAt < WHEEL_UP_BLOCK_STREAM_MS;
+  }
+
+  function shouldFollowChatOutput() {
+    if (chatUserDetachedFromStream) return false;
+    if (isChatWheelCooldownActive()) return false;
+    if (activeChatTurnFollow) return true;
+    return chatScrollGapFromBottom() <= STREAM_FOLLOW_MAX_GAP_PX;
+  }
+
+  function shouldStreamFollowBottom() {
+    return shouldFollowChatOutput();
+  }
 
   function chatScrollGapFromBottom() {
     const el = workspaceScroll;
@@ -126,23 +146,27 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     return chatScrollGapFromBottom() <= SCROLL_PIN_THRESHOLD_PX;
   }
 
-  function shouldStreamFollowBottom() {
-    if (chatUserDetachedFromStream) return false;
-    const now = performance.now();
-    if (lastWheelUpIntentAt > 0 && now - lastWheelUpIntentAt < WHEEL_UP_BLOCK_STREAM_MS) {
-      return false;
-    }
-    return chatScrollGapFromBottom() <= STREAM_FOLLOW_MAX_GAP_PX;
-  }
-
-  /** 本轮结束时的滚底：比流式略宽松，同样遵守滑轮冷却 */
+  /** 本轮结束时的滚底：跟读中或仍在底部附近 */
   function shouldAutoScrollAfterTurn() {
     if (chatUserDetachedFromStream) return false;
-    const now = performance.now();
-    if (lastWheelUpIntentAt > 0 && now - lastWheelUpIntentAt < WHEEL_UP_BLOCK_STREAM_MS) {
-      return false;
-    }
+    if (isChatWheelCooldownActive()) return false;
+    if (activeChatTurnFollow) return true;
     return chatScrollGapFromBottom() <= SCROLL_PIN_THRESHOLD_PX;
+  }
+
+  function bindActiveBubbleResizeFollow(bubble) {
+    activeBubbleResizeObserver?.disconnect();
+    activeBubbleResizeObserver = null;
+    if (!bubble || typeof ResizeObserver === 'undefined') return;
+    activeBubbleResizeObserver = new ResizeObserver(() => {
+      if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
+    });
+    activeBubbleResizeObserver.observe(bubble);
+  }
+
+  function unbindActiveBubbleResizeFollow() {
+    activeBubbleResizeObserver?.disconnect();
+    activeBubbleResizeObserver = null;
   }
 
   function syncDetachFromStreamOnUserScroll() {
@@ -208,7 +232,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
     chatProgrammaticScrollActive = true;
 
-    /** 大段 Markdown 同帧写入时 scrollHeight 可能尚未涨够，需多帧滚底否则会「离底」>20px 跟读断掉 */
+    /** 大段 Markdown / 代码块同帧写入时 scrollHeight 可能滞后，多帧 + 微延迟滚底 */
     const flushInstant = () => {
       const top = Math.max(0, el.scrollHeight - el.clientHeight);
       el.scrollTo({ top, behavior: 'auto' });
@@ -217,7 +241,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     if (instant) {
       flushInstant();
       let passes = 0;
-      const maxPasses = 20;
+      const maxPasses = 32;
       const settle = () => {
         passes += 1;
         flushInstant();
@@ -225,11 +249,14 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
           requestAnimationFrame(settle);
           return;
         }
-        requestAnimationFrame(() => {
+        setTimeout(() => {
+          flushInstant();
           requestAnimationFrame(() => {
-            chatProgrammaticScrollActive = false;
+            requestAnimationFrame(() => {
+              chatProgrammaticScrollActive = false;
+            });
           });
-        });
+        }, passes < 4 ? 16 : 0);
       };
       requestAnimationFrame(settle);
       return;
@@ -330,14 +357,46 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     });
   }
 
+  function getBubbleReplyEl(bubble) {
+    return bubble.querySelector('.chat-bubble-reply') || bubble;
+  }
+
+  function ensureStreamingBubbleShell(bubble) {
+    if (!bubble || bubble.querySelector('.chat-bubble-reply')) return;
+    const execBlock = document.createElement('div');
+    execBlock.className = 'chat-exec-block';
+    execBlock.hidden = true;
+    const reply = document.createElement('div');
+    reply.className = 'chat-bubble-reply';
+    bubble.textContent = '';
+    bubble.appendChild(execBlock);
+    bubble.appendChild(reply);
+  }
+
+  function updateTurnExecBlock(bubble, entry) {
+    if (!bubble || !entry) return;
+    ensureStreamingBubbleShell(bubble);
+    const execBlock = bubble.querySelector('.chat-exec-block');
+    if (!execBlock) return;
+
+    if (entry.logKind === 'agent-phase') {
+      window.LogPanel?.updateBubbleAgentPhases?.(execBlock, entry);
+      return;
+    }
+
+    window.LogPanel?.updateBubbleToolSummary?.(execBlock, entry);
+  }
+
   function setAssistantBubbleMarkdown(bubble, text) {
+    ensureStreamingBubbleShell(bubble);
+    const target = getBubbleReplyEl(bubble);
     const api = window.electronAPI;
     bubble.classList.add('markdown-body');
     if (api && typeof api.renderMarkdown === 'function') {
-      bubble.innerHTML = api.renderMarkdown(text);
+      target.innerHTML = api.renderMarkdown(text);
       enhanceAssistantCodeBlocks(bubble);
     } else {
-      bubble.textContent = text;
+      target.textContent = text;
     }
   }
 
@@ -354,27 +413,27 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     ctx.setRaf(
       requestAnimationFrame(() => {
         ctx.setRaf(0);
-        const follow = shouldStreamFollowBottom();
         const raw = ctx.getRaw();
         const { bubble } = ctx;
+        const target = getBubbleReplyEl(bubble);
         const api = window.electronAPI;
         if (!raw) {
           clearAssistantMarkdownClass(bubble);
-          bubble.textContent = '…';
-          if (follow) scrollChatToBottomForced({ streamFollow: true });
+          target.textContent = '…';
+          if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
           return;
         }
         bubble.classList.add('markdown-body');
         bubble.classList.add('streaming');
         if (api && typeof api.renderMarkdown === 'function') {
-          bubble.innerHTML = api.renderMarkdown(raw);
+          target.innerHTML = api.renderMarkdown(raw);
           enhanceAssistantCodeBlocks(bubble);
         } else {
           clearAssistantMarkdownClass(bubble);
-          bubble.textContent = raw;
+          target.textContent = raw;
         }
 
-        if (follow) scrollChatToBottomForced({ streamFollow: true });
+        if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
       })
     );
   }
@@ -414,12 +473,22 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble streaming';
     clearAssistantMarkdownClass(bubble);
-    bubble.textContent = '…';
+
+    const execBlock = document.createElement('div');
+    execBlock.className = 'chat-exec-block';
+    execBlock.hidden = true;
+
+    const reply = document.createElement('div');
+    reply.className = 'chat-bubble-reply';
+    reply.textContent = '…';
+
+    bubble.appendChild(execBlock);
+    bubble.appendChild(reply);
 
     messageDiv.appendChild(avatar);
     messageDiv.appendChild(bubble);
     chatContent.insertBefore(messageDiv, scrollAnchor);
-    scrollChatToBottomForced();
+    scrollChatToBottomForced({ streamFollow: true });
     return { messageDiv, bubble };
   }
 
@@ -435,29 +504,19 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
     const streamId = makeStreamId();
     let unsubscribe = () => {};
-    if (
-      typeof api.onVolcArkStreamEvent === 'function' &&
-      streamHandlers &&
-      typeof streamHandlers.onDelta === 'function'
-    ) {
-      const onDelta = streamHandlers.onDelta;
+    if (typeof api.onVolcArkStreamEvent === 'function') {
+      const onDelta = streamHandlers && typeof streamHandlers.onDelta === 'function'
+        ? streamHandlers.onDelta
+        : null;
       unsubscribe = api.onVolcArkStreamEvent((payload) => {
         if (!payload || payload.streamId !== streamId) return;
+        if (payload.phase === 'agent_log' && payload.entry) {
+          window.LogPanel?.notifyTurnExec?.(payload.entry);
+          return;
+        }
+        if (!onDelta) return;
         if (payload.phase === 'delta' && payload.text) onDelta(payload.text);
         if (payload.phase === 'tool_stream' && payload.text) onDelta(payload.text);
-        if (payload.phase === 'build_log') {
-          if (payload.step === 'start') {
-            onDelta(`\n\n--- Xcode ${payload.action || 'build'} ---\n`);
-          } else if (payload.step === 'line' && payload.line) {
-            onDelta(`${payload.line}\n`);
-          } else if (payload.step === 'end') {
-            onDelta(
-              payload.ok
-                ? `\n--- 完成 (exit ${payload.exitCode ?? 0}) ---\n\n`
-                : `\n--- 失败 (exit ${payload.exitCode ?? '?'}) ---\n\n`
-            );
-          }
-        }
       });
     }
 
@@ -489,8 +548,16 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     chatInput.style.height = 'auto';
 
     sendButton.disabled = true;
+    activeChatTurnFollow = true;
 
     const { bubble } = addStreamingAssistantShell();
+    bindActiveBubbleResizeFollow(bubble);
+    window.__pecadoTurnExec = {
+      update(entry) {
+        updateTurnExecBlock(bubble, entry);
+        if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
+      },
+    };
     let rawAccum = '';
     const streamRafRef = { current: 0 };
     const streamCtx = {
@@ -521,7 +588,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
         const stickErr = shouldAutoScrollAfterTurn();
         const errText = `请求失败：${result.error}`;
         clearAssistantMarkdownClass(bubble);
-        bubble.textContent = errText;
+        getBubbleReplyEl(bubble).textContent = errText;
         chatHistory.push({ role: 'assistant', content: errText });
         if (stickErr) scrollChatToBottomForced({ streamFollow: true });
         return;
@@ -543,16 +610,19 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       const stickEx = shouldAutoScrollAfterTurn();
       clearAssistantMarkdownClass(bubble);
       const errText = `请求异常：${err.message || String(err)}`;
-      bubble.textContent = errText;
+      getBubbleReplyEl(bubble).textContent = errText;
       chatHistory.push({ role: 'assistant', content: errText });
       if (stickEx) scrollChatToBottomForced({ streamFollow: true });
     } finally {
+      window.__pecadoTurnExec = null;
+      activeChatTurnFollow = false;
+      unbindActiveBubbleResizeFollow();
       sendButton.disabled = false;
     }
   }
 
   function addMessage(text, type) {
-    const stickAssistant = type === 'assistant' && shouldAutoScrollAfterTurn();
+    const stickAssistant = type === 'assistant' && !chatUserDetachedFromStream;
 
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
@@ -578,8 +648,9 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     }
 
     chatContent.insertBefore(messageDiv, scrollAnchor);
-    if (type === 'user') scrollChatToBottomForced();
-    else if (stickAssistant) scrollChatToBottomForced();
+    if (type === 'user' || stickAssistant) {
+      scrollChatToBottomForced({ streamFollow: true });
+    }
   }
 
   if (window.projectUi && typeof window.projectUi.init === 'function') {

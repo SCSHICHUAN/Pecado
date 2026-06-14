@@ -5,9 +5,11 @@
  * 【功能】为对话拼 AI 工程上下文（directory_tree + 关键文件 + 用户 @ 引用）。
  * 【调用方】pecado/js/agent/router.js → buildProjectContextForAi
  */
+const fs = require('fs');
+const path = require('path');
 const projectIo = require('./index');
 const { formatMcpTreeAscii } = require('../shared/format-tree');
-const { extractRequestedPaths } = require('../xcode/path-parse');
+const { extractRequestedPaths } = require('../xcode/paths');
 
 const MCP_CONTEXT_MAX_TOTAL = 55000;
 const MCP_CONTEXT_MAX_PER_FILE = 10000;
@@ -43,6 +45,55 @@ function clearProjectCache() {
   cache = { root: '', treeAscii: '' };
 }
 
+const AT_MENTION_MAX = 12000;
+const AT_MENTION_MAX_FILE = 4000;
+
+/** Agent 模式下注入用户 @ 的绝对路径摘要（工程外 skill 目录等） */
+async function buildAtMentionContextForAi(userText) {
+  const absPaths = [...extractRequestedPaths(userText)].filter((p) => path.isAbsolute(p));
+  if (!absPaths.length) return '';
+
+  const lines = ['【用户 @ 引用路径】'];
+  let budget = AT_MENTION_MAX;
+
+  for (const p of absPaths) {
+    if (budget <= 500) break;
+    try {
+      if (!fs.existsSync(p)) {
+        lines.push(`- ${p}（路径不存在）`);
+        continue;
+      }
+      const stat = fs.statSync(p);
+      if (stat.isDirectory()) {
+        const entries = fs.readdirSync(p).slice(0, 48);
+        const listing = entries.join('\n');
+        lines.push('', `### 目录 ${p}`, '```', listing, '```');
+        budget -= listing.length + p.length;
+        for (const name of ['SKILL.md', 'README.md', 'CLAUDE.md']) {
+          const rp = path.join(p, name);
+          if (!fs.existsSync(rp) || !fs.statSync(rp).isFile()) continue;
+          let body = fs.readFileSync(rp, 'utf8');
+          const cap = Math.min(AT_MENTION_MAX_FILE, budget);
+          if (body.length > cap) body = `${body.slice(0, cap)}\n…(已截断)`;
+          lines.push('', `### ${name}`, '```markdown', body, '```');
+          budget -= body.length;
+          break;
+        }
+        continue;
+      }
+      let body = fs.readFileSync(p, 'utf8');
+      const cap = Math.min(AT_MENTION_MAX_FILE, budget);
+      if (body.length > cap) body = `${body.slice(0, cap)}\n…(已截断)`;
+      lines.push('', `### 文件 ${p}`, '```', body, '```');
+      budget -= body.length;
+    } catch (e) {
+      lines.push(`- ${p}（读取失败: ${e.message || String(e)}）`);
+    }
+  }
+
+  return lines.length > 1 ? lines.join('\n') : '';
+}
+
 /** @param {string} userText */
 async function buildProjectContextForAi(userText) {
   await ensureProjectCached();
@@ -57,9 +108,18 @@ async function buildProjectContextForAi(userText) {
   ];
 
   const toRead = new Set(MCP_KEY_FILES);
-  extractRequestedPaths(userText).forEach((p) => toRead.add(p));
+  extractRequestedPaths(userText).forEach((p) => {
+    if (!path.isAbsolute(p)) toRead.add(p);
+  });
 
   let budget = MCP_CONTEXT_MAX_TOTAL - lines.join('\n').length;
+
+  const atBlock = await buildAtMentionContextForAi(userText);
+  if (atBlock.trim()) {
+    lines.push('', atBlock.trim());
+    budget -= atBlock.length;
+  }
+
   for (const rel of toRead) {
     if (budget <= 500) break;
     try {
@@ -78,6 +138,7 @@ async function buildProjectContextForAi(userText) {
 
 module.exports = {
   buildProjectContextForAi,
+  buildAtMentionContextForAi,
   clearProjectCache,
   warmProjectTreeCache,
   getCachedTreeAscii,

@@ -1,7 +1,7 @@
 /**
  * @file project.js
  *
- * 【功能】Xcode 工程发现与 project.pbxproj 修改（node-xcode）。
+ * 【功能】Xcode 工程发现、pbxproj 修改、scheme 查询（node-xcode + xcodebuild -list）
  *   - findXcodeProject：自 projectRoot 向下扫描深度≤4 找首个 .xcodeproj
  *   - findXcodeWorkspace：同上找首个 .xcworkspace（跳过 xcodeproj 内嵌的 project.xcworkspace）
  *   - openXcodeForProjectRoot：优先打开 workspace，否则 .xcodeproj
@@ -11,7 +11,7 @@
  *   - openXcodeProject：macOS execFile `open` .xcodeproj
  *   仅 IS_DARWIN 有效；读写 pbxproj 前备份逻辑在函数内部
  *
- * 【调用方】xcode/live-stream.js；mcp-filesystem/tool-executor.js
+ * 【调用方】xcode/stream.js；mcp-filesystem/tool-executor.js
  *
  * 【对外能力】
  *   findXcodeProject(projectRoot) → { xcodeProjDir, pbxPath, xcodeRoot, name } | null
@@ -23,9 +23,11 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+const { promisify } = require('util');
 const xcode = require('xcode');
 
 const IS_DARWIN = process.platform === 'darwin';
+const execFileAsync = promisify(execFile);
 const SOURCE_EXTS = new Set(['.swift', '.m', '.mm', '.c', '.cpp', '.cc']);
 const HEADER_EXTS = new Set(['.h', '.hpp']);
 
@@ -310,6 +312,92 @@ function pathExistsUnderRoot(projectRoot, relPath) {
   }
 }
 
+/**
+ * @param {string} projectRoot
+ * @returns {{ kind: 'workspace'|'project', path: string, name: string } | null}
+ */
+function resolveXcodeTarget(projectRoot) {
+  if (!IS_DARWIN || !projectRoot) return null;
+  const workspace = findXcodeWorkspace(projectRoot);
+  if (workspace) {
+    return { kind: 'workspace', path: workspace.workspaceDir, name: workspace.name };
+  }
+  const proj = findXcodeProject(projectRoot);
+  if (proj) {
+    return { kind: 'project', path: proj.xcodeProjDir, name: proj.name };
+  }
+  return null;
+}
+
+/**
+ * @param {{ kind: string, path: string }} target
+ * @returns {Promise<string[]>}
+ */
+async function listSchemes(target) {
+  const flag = target.kind === 'workspace' ? '-workspace' : '-project';
+  const { stdout } = await execFileAsync(
+    'xcodebuild',
+    ['-list', '-json', flag, target.path],
+    { maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' }
+  );
+  const json = JSON.parse(stdout || '{}');
+  const schemes =
+    json.workspace?.schemes ||
+    json.project?.schemes ||
+    (Array.isArray(json.schemes) ? json.schemes : []);
+  return schemes.filter(Boolean);
+}
+
+/**
+ * @param {string} projectRoot
+ */
+async function getProjectStatus(projectRoot) {
+  if (!IS_DARWIN) {
+    return { ok: false, error: 'Xcode 仅支持 macOS', platform: process.platform };
+  }
+  const target = resolveXcodeTarget(projectRoot);
+  if (!target) {
+    return { ok: false, error: '未找到 .xcodeproj 或 .xcworkspace', projectRoot };
+  }
+  let schemes = [];
+  try {
+    schemes = await listSchemes(target);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `读取 scheme 失败：${e.message || String(e)}`,
+      target,
+      projectRoot,
+    };
+  }
+
+  return {
+    ok: true,
+    projectRoot,
+    target,
+    schemes,
+    defaultScheme: schemes[0] || '',
+  };
+}
+
+/**
+ * @param {object} status
+ * @returns {string}
+ */
+function formatProjectStatusObservation(status) {
+  if (!status?.ok) {
+    return status?.error || '无法读取 Xcode 工程状态';
+  }
+  const lines = [
+    `工程根目录: ${status.projectRoot}`,
+    `Xcode ${status.target.kind}: ${status.target.path}`,
+    `名称: ${status.target.name}`,
+    `Schemes (${status.schemes.length}): ${status.schemes.join(', ') || '—'}`,
+    `默认 scheme: ${status.defaultScheme || '—'}`,
+  ];
+  return lines.join('\n');
+}
+
 module.exports = {
   IS_DARWIN,
   findXcodeProject,
@@ -321,4 +409,8 @@ module.exports = {
   pathExistsUnderRoot,
   toXcodeRelPath,
   SOURCE_EXTS,
+  resolveXcodeTarget,
+  listSchemes,
+  getProjectStatus,
+  formatProjectStatusObservation,
 };

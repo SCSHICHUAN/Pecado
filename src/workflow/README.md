@@ -1,35 +1,31 @@
 # Workflow 模块
 
-侧栏 **Workflow** 面板：本地自动化（主进程 + IPC）。
+Workflow 侧栏面板：五个 Tab 对应五块能力。
 
-## 目录
+## 目录与职责
 
 ```
-workflow/
-  register.js
-  store.js
-  html/panel.html
-  css/index.css
-  js/index.js
-  dev-docs/              Skill 开发文档（见 dev-docs/README.md）
-  services/
-    file-organize.js
-    ppt-outline.js
-    schedule-runner.js
-    file-download-server.js
-    video-thumbnail.js
+src/workflow/
+  config-store.js        全局配置 workflows.json（定时任务、文件服务路径、Skill 索引）
+  register.js            全部 Workflow IPC
+  html/panel.html        面板结构
+  css/index.css          样式
+  js/
+    panel.js             面板 UI 逻辑
+    file-type.js         文件类型图标（渲染进程）
+  skill/                 Tab「Skill」（service / store / agent/）
+  file-service/          Tab「文件服务」
+  services/              Tab「文件归类 / 写 PPT / 定时任务」
 ```
 
-## 功能
+## Tab → 代码
 
-| Tab | 说明 |
-|-----|------|
-| **文件归类** | 顶层文件按扩展名归入子目录 |
-| **写 PPT** | Markdown 大纲 → `workflow-output/ppt/` |
-| **文件服务** | 局域网 HTTP 浏览/下载；视频封面（macOS） |
-| **开发文档** | Skill 生成与 Layer 分层 — 见 [根 README § Skill](../../README.md#skill-开发文档分层读-markdown-的设计) |
-| **定时任务** | 间隔/每日 `open -a` 启动应用 |
+| Tab | 目录 / 文件 | 功能 |
+|-----|-------------|------|
+| **Skill** | `skill/` | 管理 SKILL.md、Layer 树、附属资源；Agent 工具 |
+| **文件服务** | `file-service/server.js` | 局域网 HTTP 共享目录 |
+| **文件归类** | `services/organize.js` | 顶层文件按类型分子目录 |
+| **写 PPT** | `services/ppt.js` | 生成 Markdown 大纲到工程 |
+| **定时任务** | `services/schedule.js` | 定时打开本机应用 |
 
-## 扩展
-
-`services/` 增服务 → `register.js` 注册 IPC → `panel.html` + `js/index.js` 增 Tab。
+详见 [skill/README.md](./skill/README.md)、[file-service/README.md](./file-service/README.md)。

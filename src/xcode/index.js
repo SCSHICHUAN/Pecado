@@ -1,20 +1,14 @@
 /**
  * @file index.js
- *
- * 【功能】xcode 模块门面：工程发现、pbxproj 修改、流式写盘、确认对话框。
+ * 【功能】xcode 模块门面（工程 / 流式写盘 / Agent 工具）
  */
-const project = require('./project');
-const prompt = require('./prompt');
-const liveStream = require('./live-stream');
-const pathParse = require('./path-parse');
-const buildRunner = require('./build-runner');
-const tools = require('./tools');
+const { XCODE_AGENT_GUIDE } = require('./agent/guide');
 
 module.exports = {
-  ...project,
-  ...prompt,
-  ...liveStream,
-  ...pathParse,
-  ...buildRunner,
-  ...tools,
+  ...require('./project'),
+  ...require('./prompt'),
+  ...require('./stream'),
+  ...require('./paths'),
+  ...require('./agent/tools'),
+  XCODE_AGENT_GUIDE,
 };

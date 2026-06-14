@@ -9,7 +9,7 @@
  *     - closeCodeFile / closeAllCodeFiles：finalize（preserve 模式 ftruncate）并清 pending
  *   writeWholeFileStreaming：非流式一次性写整文件（tool-executor macOS 分支）
  *
- * 【调用方】mcp-filesystem/index.js；xcode/live-stream.js；mcp-filesystem/tool-executor.js
+ * 【调用方】mcp-filesystem/index.js；xcode/stream.js；mcp-filesystem/tool-executor.js
  *
  * 【对外能力】
  *   writeText / createDirectory / beginWriteSession / scheduleWriteDelta /
@@ -140,9 +140,8 @@ function scheduleLiveDelta(fileAbsPath, delta, opts = {}) {
 }
 
 async function writeWholeFileStreaming(absPath, content) {
-  const exists = fs.existsSync(absPath);
-  beginWriteSession(absPath, { preserveExisting: exists });
-  writeLiveChunk(absPath, String(content ?? ''));
+  beginWriteSession(absPath, { preserveExisting: false });
+  writeLiveChunk(absPath, String(content ?? ''), { truncate: true });
   finalizeLiveFileSync(absPath);
 }
 

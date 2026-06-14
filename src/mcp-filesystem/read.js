@@ -7,7 +7,7 @@
  *   - readDirectoryTree：MCP directory_tree，默认排除 node_modules/.git/dist 等，返回 JSON 树
  *   - listAllowedDirectories：MCP list_allowed_directories
  *
- * 【调用方】mcp-filesystem/index.js；mcp-filesystem/project-context.js；xcode/live-stream.js
+ * 【调用方】mcp-filesystem/index.js；mcp-filesystem/project-context.js；xcode/stream.js
  *   resolveUnderProject(projectRoot, filePath) → absPath
  *   readText(relPath, { head?, tail? }) → string
  *   readDirectoryTree({ path?, excludePatterns?, directoriesOnly? }) → tree JSON

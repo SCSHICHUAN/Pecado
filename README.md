@@ -83,7 +83,7 @@ Pecado/
 | [src/agent-loop/README.md](src/agent-loop/README.md) | Agent 多轮编排（INFER / PARSE / DISPATCH / EXEC / FEED） |
 | [src/gitgraph/README.md](src/gitgraph/README.md) | Git 提交图谱 UI、SVG 布局、节点菜单、IPC |
 | [src/workflow/README.md](src/workflow/README.md) | Workflow 面板：文件服务、归类、PPT、定时任务、开发文档 Tab |
-| [src/workflow/dev-docs/README.md](src/workflow/dev-docs/README.md) | Skill 开发文档：保存流程、IPC、模块文件、UI 操作 |
+| [src/workflow/skill/README.md](src/workflow/skill/README.md) | Skill 模块：保存、Layer 树、资源脚本执行 |
 
 Skill **分层树设计、建树原理、省 token 策略** 以本文 **[§ Skill 开发文档](#skill-开发文档分层读-markdown-的设计)** 为准；子 README 只做模块索引，不重复设计说明。
 
@@ -163,14 +163,12 @@ npm run build      # 产物在 release/
 
 Agent 默认曾「写代码 → 模型再 build → 再 run → 再修」，**每多一轮都是一次完整 LLM 请求**（带 history + 全套 tools），Coding Plan 下尤其慢且费额度。
 
-当前策略（`agent-loop/post-write-xcode.js` + `app-agent-loop.js`）：
+当前策略（`agent-loop/agent-reply.js` + `app-agent-loop.js`）：
 
 | 场景 | 行为 | LLM 轮次 |
 |------|------|----------|
-| **`write_file` / `edit_file` 成功** | 结束 Agent 循环；应用 **自动 `xcode_build` 一次**（本地，不进 LLM）；编译结果拼进最终回复 | **通常 1 轮** |
-| 用户话含 **运行/Run/启动** 且编译成功 | 再 **自动 `xcode_run` 一次**（本地） | 仍 **1 轮 LLM** |
-| 用户只说「编译」 | 模型可调 `xcode_build` → 执行完即返回，不再下一轮 | **1 轮** |
-| 用户明确要 **Run** | 模型可调 `xcode_run`（无运行意图会被拦截） | **1 轮** |
+| **`write_file` / `edit_file` 成功** | 结束 Agent 循环；`composeAgentReply` 拼装摘要返回 | **通常 1 轮** |
+| 用户要求 **编译 / Run** | 模型可调 `xcode_build` / `xcode_run`（Skill 脚本用 `run_skill_resource_script`） | 视任务 |
 | 只读目录/读文件 | 仍可多轮，直到模型输出文字 | 视任务而定 |
 
 **不消耗 LLM token 的操作**：`xcode_build`、`xcode_run`、MCP `callTool` 本地执行；只有 **tool 结果写回 conv 后的下一轮 INFER** 才计 token——写代码路径已避免该下一轮。
@@ -206,7 +204,7 @@ Prompt 约定见 `src/pecado/js/prompts/agent.js`（写完后勿再调 `xcode_bu
 
 Workflow **开发文档** Tab：链接 / 文件 / 手写 → 规范 Skill（`{skillName}.md` + `{skillName}.json`）。`.md` 是正文唯一来源；`.json` 是从 `.md` 解析出的 **Layer 索引树**（只含 path，不含正文），供 Agent 导航。
 
-实现：`src/markdown/skill-layer.js`、`src/workflow/dev-docs/`。保存流程、IPC、UI 见 **[dev-docs/README.md](src/workflow/dev-docs/README.md)**。
+实现：`src/markdown/skill-layer.js`、`src/workflow/skill/`（见 [skill/README.md](src/workflow/skill/README.md)）。
 
 ### 原始 Markdown 如何生成 Layer 树
 
@@ -284,13 +282,15 @@ path: resources/pdf-processing-guide/overview
 
 ### Agent tool（正文按需读）
 
-Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式注册 3 个 tool（`dev-docs/agent-tools.js`）：
+Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式注册 Skill tools（`workflow/skill/agent/tools.js`）：
 
 | Tool | 作用 |
 |------|------|
 | `read_skill_layer` | 重新拉 Layer JSON（system 已有时一般不必调） |
-| `read_skill_section` | 按 `path` 读一节 **正文**（主要用这个） |
+| `read_skill_section` | 按 `path` 读一节 **正文** |
 | `read_dev_doc_resources` | 整段 Resources |
+| `read_skill_resource_file` | 读 Skill 附属资源文件（文本） |
+| `run_skill_resource_script` | 执行 Skill 资源目录内 `.sh` / `.py` 脚本 |
 
 列表 Switch 切 **「原文」**（`aiContextMode: full`）才会把整份 `.md` 常驻 system（单篇约 120k），一般不必开。
 
@@ -827,7 +827,8 @@ git push origin main
 | 对话 IPC + 模式路由 | `src/pecado/js/agent/router.js` |
 | 对话 UI（renderer） | `src/pecado/js/index.js` |
 | Agent 编排 | `src/agent-loop/app-agent-loop.js`（详见 [src/agent-loop/README.md](src/agent-loop/README.md)） |
-| 写代码后自动编译 | `src/agent-loop/post-write-xcode.js` |
+| 写代码短路返回 | `src/agent-loop/agent-reply.js` |
+| 写入前 read 守卫 | `src/agent-loop/write-guard.js` |
 | INFER | `src/llm-server/llm-infer-service.js` |
 | PARSE | `src/llm-server/command-parser.js` |
 | DISPATCH | `src/agent-loop/task-dispatcher.js` |
@@ -843,8 +844,9 @@ git push origin main
 | Git log 解析 | `src/gitgraph/js/log-parser.js` |
 | Git 主进程 IPC | `src/gitgraph/js/register.js` |
 | 工程上下文 | `src/mcp-filesystem/project-context.js` |
-| Workflow 文件服务 | `src/workflow/services/file-download-server.js` |
-| Skill 开发文档 | `src/workflow/dev-docs/`（见 [dev-docs/README.md](src/workflow/dev-docs/README.md)） |
+| Workflow 文件服务 | `src/workflow/file-service/server.js` |
+| Skill 模块 | `src/workflow/skill/`（见 [skill/README.md](src/workflow/skill/README.md)） |
+| Skill 执行日志 | `src/shared/agent-log.js`、`src/pecado/js/skill-log-panel.js` |
 | IPC 通道常量 | `src/shared/ipc-channels.js` |
 | Preload | `src/preload/preload.js` |
 

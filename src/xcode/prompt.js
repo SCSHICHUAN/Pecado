@@ -5,9 +5,9 @@
  *   - confirmCreateOperation：findXcodeProject 无则直接 proceed；有则三按钮对话框
  *       「加入 Xcode 工程」|「仅写入磁盘」|「取消」
  *   - integrateAfterCreate：toXcodeRelPath → addFileToProject / addDirectoryToProject → openXcodeProject
- *   - 返回 proceed/integrateXcode/xcodeMeta/message 供 tool-executor 与 live-stream 使用
+ *   - 返回 proceed/integrateXcode/xcodeMeta/message 供 tool-executor 与 stream 使用
  *
- * 【调用方】xcode/live-stream.js（write_file 流式新建）；mcp-filesystem/tool-executor.js
+ * 【调用方】xcode/stream.js（write_file 流式新建）；mcp-filesystem/tool-executor.js
  *
  * 【对外能力】
  *   confirmCreateOperation(browserWindow, 'create_directory'|'write_file', projectRoot, relPath)

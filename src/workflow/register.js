@@ -1,7 +1,6 @@
 /**
  * @file register.js
- * 【功能】Workflow IPC：文件归类、PPT 大纲、定时启动应用
- * 【注册】main/js/main.js
+ * 【功能】Workflow IPC 注册（Skill、文件服务、归类、PPT、定时任务）
  */
 const fs = require('fs');
 const path = require('path');
@@ -9,24 +8,34 @@ const { dialog, shell } = require('electron');
 const { WORKFLOW } = require('../shared/ipc-channels');
 const projectIo = require('../mcp-filesystem');
 const { readSavedProjectRoot } = require('../mcp-filesystem/ipc');
-const { organizeFiles } = require('./services/file-organize');
-const { writeOutlineToProject } = require('./services/ppt-outline');
+const { organizeFiles } = require('./services/organize');
+const { writeOutlineToProject } = require('./services/ppt');
 const {
   launchApplication,
   armSchedule,
   reloadAllSchedules,
   stopAllSchedules,
   upsertSchedule,
-} = require('./services/schedule-runner');
-const { listSchedules, deleteSchedule, getStorePath, getLastDownloadServiceUrl, saveLastDownloadServiceUrl, getDownloadServiceDir, saveDownloadServiceDir } = require('./store');
+} = require('./services/schedule');
+const {
+  listSchedules,
+  deleteSchedule,
+  getStorePath,
+  getLastDownloadServiceUrl,
+  saveLastDownloadServiceUrl,
+  getDownloadServiceDir,
+  saveDownloadServiceDir,
+} = require('./config-store');
 const {
   startDownloadServer,
   stopDownloadServer,
   getDownloadServerStatus,
-} = require('./services/file-download-server');
-const { clearVideoThumbnailCache } = require('./services/video-thumbnail');
-const devDocsService = require('./dev-docs/service');
-const { getDevDocsDir } = require('./dev-docs/store');
+} = require('./file-service/server');
+const { clearVideoThumbnailCache } = require('./file-service/thumbnails');
+const skillService = require('./skill/service');
+const { getSkillStorageDir } = require('./skill/store');
+const { readSectionPreview, readResourcePreview } = require('./skill/preview');
+const { SKILL } = require('../shared/ipc-channels');
 
 const PANEL_HTML = path.join(__dirname, 'html', 'panel.html');
 
@@ -90,8 +99,11 @@ function register(ipcMain, getMainWindowFn) {
       downloadServer: getDownloadServerStatus(),
       lastDownloadServiceUrl: getLastDownloadServiceUrl(),
       downloadServiceDir: getDownloadServiceDir(),
-      devDocsDir: getDevDocsDir(),
-      devDocs: devDocsService.listDevDocs().docs || [],
+      skillStorageDir: getSkillStorageDir(),
+      skills: skillService.listSkills().docs || [],
+      /** @deprecated 兼容旧 UI 字段 */
+      devDocsDir: getSkillStorageDir(),
+      devDocs: skillService.listSkills().docs || [],
     };
   });
 
@@ -238,7 +250,7 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_LIST, async () => {
     try {
-      return devDocsService.listDevDocs();
+      return skillService.listSkills();
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -246,7 +258,7 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_GET, async (_evt, payload) => {
     try {
-      return devDocsService.getDevDoc(payload?.id);
+      return skillService.getSkill(payload?.id);
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -265,9 +277,21 @@ function register(ipcMain, getMainWindowFn) {
     return { ok: true, filePath: result.filePaths[0] };
   });
 
+  ipcMain.handle(WORKFLOW.DEV_DOCS_PICK_FOLDER, async () => {
+    const win = typeof getMainWindowFn === 'function' ? getMainWindowFn() : null;
+    const result = await dialog.showOpenDialog(win, {
+      title: '选择 Skill 资源文件夹',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths?.[0]) {
+      return { ok: false, canceled: true };
+    }
+    return { ok: true, folderPath: result.filePaths[0] };
+  });
+
   ipcMain.handle(WORKFLOW.DEV_DOCS_CREATE, async (_evt, payload) => {
     try {
-      return devDocsService.createManual(payload || {});
+      return skillService.createManual(payload || {});
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -275,7 +299,7 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_UPDATE, async (_evt, payload) => {
     try {
-      return await devDocsService.updateDevDoc(payload || {});
+      return await skillService.updateSkill(payload || {});
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -283,7 +307,7 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_READ_RESOURCE, async (_evt, payload) => {
     try {
-      return await devDocsService.readDevDocResource(payload || {});
+      return await skillService.readSkillResource(payload || {});
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -291,7 +315,7 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_GENERATE_SKILL, async (_evt, payload) => {
     try {
-      return await devDocsService.generateDevDocSkill(payload || {});
+      return await skillService.saveSkill(payload || {});
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -299,7 +323,7 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_DELETE, async (_evt, payload) => {
     try {
-      return devDocsService.deleteDevDoc(payload || {});
+      return skillService.deleteSkill(payload || {});
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }
@@ -307,11 +331,27 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.DEV_DOCS_OPEN_DIR, async () => {
     try {
-      const res = devDocsService.openDevDocsDir();
+      const res = skillService.openSkillStorageDir();
       if (!res?.ok || !res.dir) return { ok: false, error: '无法定位存储目录' };
       const err = await shell.openPath(res.dir);
       if (err) return { ok: false, error: err };
       return { ok: true, dir: res.dir };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(SKILL.READ_SECTION, async (_evt, payload) => {
+    try {
+      return readSectionPreview(payload?.skillName, payload?.path, payload?.skillDocId);
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(SKILL.READ_RESOURCE, async (_evt, payload) => {
+    try {
+      return readResourcePreview(payload?.skillName, payload?.path, payload?.skillDocId);
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

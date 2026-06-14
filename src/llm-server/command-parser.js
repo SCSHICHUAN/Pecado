@@ -6,8 +6,8 @@
  * 【入口】EXECUTE_parse_command — Loop 调用本模块时使用的执行方法
  * 【职责】INFER 原始 tool_calls → 结构化任务（mcp_tool / xcode_tool）
  */
-const { isXcodeToolName } = require('../xcode/tools');
-const { isDevDocToolName } = require('../workflow/dev-docs/agent-tools');
+const { isXcodeToolName } = require('../xcode/agent/tools');
+const { isDevDocToolName } = require('../workflow/skill/agent/tools');
 
 function tryExtractJsonStringField(argsAcc, field) {
   const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);

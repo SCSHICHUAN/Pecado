@@ -9,9 +9,8 @@
  *   3. settings/js/register.js      → SETTINGS Preferences
  *   4. mcp-filesystem/ipc.js        → MCP_FS + File → Open Folder
  *   5. gitgraph/js/register.js      → GIT 面板
- *   6. xcode/register.js            → Xcode 自动化权限
- *   7. workflow/register.js        → Workflow 自动化
- *   8. settings.setupApplicationMenu → 菜单栏（含 Open Folder、Preferences）
+ *   6. workflow/register.js         → Workflow 面板
+ *   7. settings.setupApplicationMenu → 菜单栏（含 Open Folder、Preferences）
  *
  * 【渲染进程】main/html/index.html + preload/preload.js
  *   · pecado/js/index.js — 对话 UI
@@ -44,7 +43,6 @@ const pecado = require('../../pecado/js/register');
 const commands = require('../../commands/js/register');
 const mcpFilesystemIpc = require('../../mcp-filesystem/ipc');
 const gitgraph = require('../../gitgraph/js/register');
-const xcodeRegister = require('../../xcode/register');
 const workflowRegister = require('../../workflow/register');
 const settings = require('../../settings/js/register');
 
@@ -144,7 +142,6 @@ app.whenReady().then(async () => {
   settings.register(ipcMain, () => mainWindowRef);
   mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
   gitgraph.register(ipcMain);
-  xcodeRegister.register(ipcMain, () => mainWindowRef);
   workflowRegister.register(ipcMain, () => mainWindowRef);
   settings.setupApplicationMenu(() => mainWindowRef);
 

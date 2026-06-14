@@ -7,7 +7,7 @@
   【渲染脚本】
     · shared/format-tree.js
     · pecado/js/index.js      — 对话 UI
-    · workflow/js/index.js    — Workflow 面板
+    · workflow/js/panel.js    — Workflow 面板
     · gitgraph/js/index.js    — Git 侧栏
   【样式】main/css、pecado/css、workflow/css、gitgraph/css
 -->
@@ -75,6 +75,14 @@
           <div id="chat-scroll-anchor" class="chat-scroll-anchor" aria-hidden="true"></div>
         </div>
       </div>
+      <div class="skill-log-dock" id="skill-log-dock" aria-label="执行日志">
+        <nav class="skill-log-tabs" role="tablist" aria-label="日志">
+          <span class="git-bottom-tab is-active" role="tab" aria-selected="true">log</span>
+        </nav>
+        <div class="skill-log-panels">
+          <div class="skill-log-output" id="skill-log-output" aria-live="polite"></div>
+        </div>
+      </div>
       <div class="chat-input">
         <div class="input-container">
           <div class="control-buttons">
@@ -84,7 +92,17 @@
           <textarea id="chat-input" placeholder="发消息或输入'/'选择技能" rows="1"></textarea>
           <button type="button" class="send-button">▶</button>
         </div>
-        <div class="skills-container skills-buttons">
+      </div>
+    </div>
+    <div id="panel-workflow" class="workflow-panel-mount hidden"></div>
+    <div id="panel-git" class="git-panel-mount hidden"></div>
+    </div>
+    <footer class="app-bottom-bar">
+      <button type="button" class="git-dock-toggle" id="git-dock-toggle" aria-label="展开或收起详情面板" aria-pressed="false" title="详情面板">
+        <span class="git-dock-toggle-icon" aria-hidden="true"></span>
+      </button>
+      <div class="app-bottom-view-tools">
+        <div class="app-bottom-tools app-bottom-tools-chat" id="app-bottom-tools-chat" data-app-view="chat">
           <button type="button" class="skill-button">📊</button>
           <button type="button" class="skill-button">⚡快速</button>
           <button type="button" class="skill-button">⚙️编程</button>
@@ -94,22 +112,18 @@
           <button type="button" class="skill-button">🎬视频生成</button>
           <button type="button" class="skill-button">⚙️更多</button>
         </div>
+        <div class="app-bottom-tools app-bottom-tools-git" id="app-bottom-tools-git" data-app-view="git" hidden aria-hidden="true"></div>
+        <!-- Workflow 底部快捷区：有内容时由 workflow 模块注入 #app-bottom-tools-workflow -->
       </div>
-    </div>
-    <div id="panel-workflow" class="workflow-panel-mount hidden"></div>
-    <div id="panel-git" class="git-panel-mount hidden"></div>
-    </div>
-    <footer class="app-bottom-bar">
-      <button type="button" class="git-dock-toggle" id="git-dock-toggle" aria-label="展开或收起 Git 详情面板" aria-pressed="false" title="Git 详情面板（status / log / pecado）">
-        <span class="git-dock-toggle-icon" aria-hidden="true"></span>
-      </button>
     </footer>
     </div>
   </div>
   <script src="../../shared/format-tree.js"></script>
   <script src="../../workflow/js/file-type.js"></script>
   <script src="../../pecado/js/index.js"></script>
-  <script src="../../workflow/js/index.js"></script>
+  <script src="../../pecado/js/log-preview.js"></script>
+  <script src="../../pecado/js/skill-log-panel.js"></script>
+  <script src="../../workflow/js/panel.js"></script>
     <script src="../../gitgraph/js/git-chat.js"></script>
     <script src="../../gitgraph/js/index.js"></script>
 </body>

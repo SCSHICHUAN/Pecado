@@ -207,11 +207,67 @@ body {
 .app-bottom-bar {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 8px;
     min-height: 28px;
-    padding: 0 8px;
+    padding: 3px 8px;
     border-top: 1px solid var(--line-strong);
     background: #252526;
+}
+
+.app-bottom-view-tools {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+}
+
+.app-bottom-tools {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow-x: auto;
+    padding: 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+body.app-view-chat #app-bottom-tools-chat,
+body.app-view-git #app-bottom-tools-git {
+    display: flex;
+}
+
+/* Workflow 暂无底部面板 / 快捷区，整栏隐藏 */
+body.app-view-workflow .app-bottom-bar {
+    display: none;
+}
+
+#app-bottom-tools-chat .skill-button {
+    height: 22px;
+    margin: 0;
+    padding: 0 10px;
+    line-height: 20px;
+    font-size: 11px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid #4a4a4a;
+    color: #a0a0a0;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+#app-bottom-tools-chat .skill-button:hover {
+    background: #3a3a3a;
+    color: #fff;
+    border-color: #5a5a5a;
+    transform: none;
+}
+
+#app-bottom-tools-chat .skill-button:active {
+    transform: none;
+    box-shadow: none;
 }
 
 .git-dock-toggle {

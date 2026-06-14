@@ -12,26 +12,34 @@ const { EXECUTE_execute_tool, FEED_tool_result } = require('../mcp-filesystem/to
 const {
   EXECUTE_execute_tool: EXECUTE_xcode_tool,
   FEED_tool_result: FEED_xcode_tool_result,
-} = require('../xcode/tool-executor');
-const { getXcodeTools } = require('../xcode/tools');
+  getXcodeTools,
+} = require('../xcode/agent/tools');
 const {
   getDevDocTools,
   EXECUTE_execute_tool: EXECUTE_dev_doc_tool,
   FEED_tool_result: FEED_dev_doc_tool_result,
-} = require('../workflow/dev-docs/agent-tools');
+} = require('../workflow/skill/agent/tools');
 const { feed_observation, feed_assistant_tool_calls } = require('./context-feeder');
 const { createAgentStreamHooks } = require('./stream-hooks');
-const { resolveAbsInProject } = require('../xcode/live-stream');
+const { planTasksWithWriteGuard, attachSyntheticToolCallsToConv } = require('./write-guard');
+const { resolveAbsInProject } = require('../xcode/stream');
 const {
   isCodeWriteTool,
-  userWantsXcodeRun,
   summarizeWriteTasks,
-  runAutoBuild,
-  runAutoRun,
   composeAgentReply,
-} = require('./post-write-xcode');
+} = require('./agent-reply');
+const { publishToolLog, buildAgentPhaseEntry, emitAgentLog } = require('../shared/agent-log');
 
 const MAX_TOOL_ROUNDS = 12;
+
+function logAgentPhase(uiSink, phase, opts = {}) {
+  const entry = { ...buildAgentPhaseEntry(phase, opts), ts: Date.now() };
+  if (typeof uiSink?.onAgentLog === 'function') {
+    uiSink.onAgentLog(entry);
+  } else {
+    emitAgentLog(entry);
+  }
+}
 
 /**
  * @param {{
@@ -43,7 +51,6 @@ const MAX_TOOL_ROUNDS = 12;
  */
 async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   const { apiKey, model, apiMode, endpoint } = llmOpts || {};
-  const userText = String(loopOpts.userText || '');
   if (!projectIo.getStatus().connected) {
     return { error: 'MCP 未连接，请先用 File → Open Folder 打开工程目录' };
   }
@@ -60,7 +67,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
   const xcodeTools = getXcodeTools();
   const devDocTools = getDevDocTools();
-  const allTools = [...mcpTools, ...xcodeTools, ...devDocTools];
+  const allTools = [...mcpTools, ...devDocTools, ...xcodeTools];
 
   const projectRoot = projectIo.getStatus().projectRoot;
   const conv = messages.map((m) => ({ ...m }));
@@ -71,9 +78,23 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   }
 
   const chatOpts = { apiKey, model, apiMode, endpoint, messages: conv, mcpTools: allTools };
+  const diskFreshReadPaths = new Set();
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+      const roundNo = round + 1;
+      logAgentPhase(uiSink, 'FEED', {
+        round: roundNo,
+        status: 'start',
+        note: '喂入上下文',
+      });
+      logAgentPhase(uiSink, 'FEED', {
+        round: roundNo,
+        status: 'done',
+        note: `${conv.length} 条消息`,
+      });
+      logAgentPhase(uiSink, 'INFER', { round: roundNo, status: 'start' });
+
       const { hooks, streamContext } = createAgentStreamHooks({
         uiSink,
         projectRoot,
@@ -83,18 +104,38 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       const inferRaw = await EXECUTE_call_llm(chatOpts, hooks);
       const inferFeed = FEED_infer_round(inferRaw, streamContext);
       if (!inferFeed.ok) {
+        logAgentPhase(uiSink,'INFER', {
+          round: roundNo,
+          status: 'error',
+          note: inferFeed.error,
+          isError: true,
+        });
         uiSink.onError?.(inferFeed.error);
         return { error: inferFeed.error };
       }
+      logAgentPhase(uiSink,'INFER', { round: roundNo, status: 'done' });
 
+      logAgentPhase(uiSink,'PARSE', { round: roundNo, status: 'start' });
       const parseRaw = EXECUTE_parse_command(inferFeed.data);
       const parseFeed = FEED_parsed_command(parseRaw);
       if (!parseFeed.ok) {
+        logAgentPhase(uiSink,'PARSE', {
+          round: roundNo,
+          status: 'error',
+          note: parseFeed.error,
+          isError: true,
+        });
         uiSink.onError?.(parseFeed.error);
         return { error: parseFeed.error };
       }
 
       const parsed = parseFeed.data;
+      logAgentPhase(uiSink,'PARSE', {
+        round: roundNo,
+        status: 'done',
+        note: parsed.finishReason || '',
+      });
+
       if (parsed.finishReason !== 'tool_calls' || !parsed.tasks?.length) {
         if (parsed.content && String(parsed.content).trim()) {
           return { content: String(parsed.content) };
@@ -108,40 +149,54 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       const execStreamContext = inferFeed.data.parseContext;
       const roundObservations = [];
       let hadCodeWrite = false;
-      let hadXcodeUserTool = false;
+      const { tasks: tasksToRun, deferredWrites } = planTasksWithWriteGuard(
+        parsed.tasks,
+        projectRoot,
+        diskFreshReadPaths
+      );
+      attachSyntheticToolCallsToConv(conv, tasksToRun);
 
-      for (const parsedTask of parsed.tasks) {
-        if (parsedTask.name === 'xcode_run' && !userWantsXcodeRun(userText)) {
-          const blocked = {
-            isError: true,
-            content: [
-              {
-                type: 'text',
-                text: '未检测到运行意图。请明确说「运行」或「Run」。写代码后应用会自动编译。',
-              },
-            ],
-          };
-          const toolFeed = FEED_tool_result(blocked);
-          feed_observation(conv, parsedTask, toolFeed);
-          roundObservations.push(toolFeed.observation);
-          hadXcodeUserTool = true;
-          continue;
-        }
-
+      for (const parsedTask of tasksToRun) {
         uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args });
+
+        logAgentPhase(uiSink,'DISPATCH', {
+          round: roundNo,
+          status: 'start',
+          method: parsedTask.name,
+        });
 
         const routed = route_task(parsedTask);
         if (routed.error) {
+          logAgentPhase(uiSink,'DISPATCH', {
+            round: roundNo,
+            status: 'error',
+            method: parsedTask.name,
+            note: routed.error,
+            isError: true,
+          });
           uiSink.onError?.(routed.error);
           return { error: routed.error };
         }
 
+        logAgentPhase(uiSink,'DISPATCH', {
+          round: roundNo,
+          status: 'done',
+          method: parsedTask.name,
+          module: routed.module,
+        });
+
+        logAgentPhase(uiSink,'EXEC', {
+          round: roundNo,
+          status: 'start',
+          method: parsedTask.name,
+          module: routed.module,
+        });
+
         let execRaw;
         try {
           if (routed.module === 'xcode') {
-            execRaw = await EXECUTE_xcode_tool(routed, { uiSink });
-            hadXcodeUserTool = true;
-          } else if (routed.module === 'dev-docs') {
+            execRaw = await EXECUTE_xcode_tool(routed);
+          } else if (routed.module === 'skill') {
             execRaw = await EXECUTE_dev_doc_tool(routed);
           } else {
             execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
@@ -153,39 +208,62 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
             content: [{ type: 'text', text: e.message || String(e) }],
           };
         }
+
+        logAgentPhase(uiSink,'EXEC', {
+          round: roundNo,
+          status: execRaw?.isError ? 'error' : 'done',
+          method: parsedTask.name,
+          module: routed.module,
+          isError: Boolean(execRaw?.isError),
+        });
+
         const toolFeed =
           routed.module === 'xcode'
             ? FEED_xcode_tool_result(execRaw)
-            : routed.module === 'dev-docs'
+            : routed.module === 'skill'
               ? FEED_dev_doc_tool_result(execRaw)
               : FEED_tool_result(execRaw);
+
+        logAgentPhase(uiSink, 'FEED', {
+          round: roundNo,
+          status: 'start',
+          method: parsedTask.name,
+          module: routed.module,
+          note: '喂回 tool 结果',
+        });
+
         feed_observation(conv, parsedTask, toolFeed);
         roundObservations.push(toolFeed.observation);
+
+        logAgentPhase(uiSink, 'FEED', {
+          round: roundNo,
+          status: 'done',
+          method: parsedTask.name,
+          module: routed.module,
+          note: 'observation 已写入',
+        });
+
+        if (routed.module !== 'skill') {
+          publishToolLog(parsedTask, routed, execRaw, toolFeed);
+        }
+
+        if (parsedTask.name === 'read_file' && !execRaw?.isError) {
+          const readPath = parsedTask.args?.path != null ? String(parsedTask.args.path).trim() : '';
+          if (readPath) diskFreshReadPaths.add(readPath);
+        }
       }
 
       chatOpts.messages = conv;
 
+      if (deferredWrites.length) {
+        continue;
+      }
+
       if (hadCodeWrite) {
-        const build = await runAutoBuild(uiSink, projectRoot);
-        let runObservation = '';
-        if (userWantsXcodeRun(userText) && build.ok) {
-          const run = await runAutoRun(uiSink);
-          runObservation = run.observation;
-        }
         return {
           content: composeAgentReply({
             leadText: parsed.content,
             writeSummary: summarizeWriteTasks(parsed.tasks),
-            buildObservation: build.observation,
-            runObservation,
-          }),
-        };
-      }
-
-      if (hadXcodeUserTool) {
-        return {
-          content: composeAgentReply({
-            leadText: parsed.content,
             toolObservations: roundObservations,
           }),
         };
