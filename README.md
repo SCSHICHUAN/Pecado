@@ -141,13 +141,13 @@ npm run build      # 产物在 release/
 
 ### Xcode 工具（4，macOS）
 
-定义于 `src/xcode/tools.js`，经 `task-dispatcher` 的 `xcode_tool` 分发：
+定义于 `src/xcode/agent/tools.js`，经 `task-dispatcher` 的 `xcode_tool` 分发：
 
 | 工具名 | 用途 |
 |--------|------|
 | `xcode_project_status` | scheme / 工程路径 |
 | `xcode_build` | `xcodebuild` 编译 |
-| `xcode_run` | Xcode ⌘R / 模拟器运行 |
+| `xcode_run` | `xcodebuild` + `simctl` 编译并在模拟器启动 |
 | `xcode_test` | `xcodebuild test` |
 
 ### DISPATCH
@@ -155,7 +155,7 @@ npm run build      # 产物在 release/
 | `parsedTask.type` | 执行模块 |
 |-------------------|----------|
 | `mcp_tool` | `mcp-filesystem/tool-executor.js` |
-| `xcode_tool` | `xcode/tool-executor.js` |
+| `xcode_tool` | `xcode/agent/tools.js`（经 `app-agent-loop.js`） |
 
 ---
 
@@ -323,9 +323,8 @@ Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式
 | 3 | settings | `settings/js/register.js` | `SETTINGS.*` |
 | 4 | mcp-filesystem | `mcp-filesystem/ipc.js` | `MCP_FS.*` + Open Folder |
 | 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*`（含 `NODE_ACTION`） |
-| 6 | xcode | `xcode/register.js` | Xcode 自动化权限 |
-| 7 | workflow | `workflow/register.js` | `WORKFLOW.*`（文件服务等） |
-| 8 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
+| 6 | workflow | `workflow/register.js` | `WORKFLOW.*`（文件服务等） |
+| 7 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
 
 渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`。
 
@@ -709,8 +708,45 @@ flowchart TD
 1. **File → Open Folder**（`mcp-filesystem/ipc.js`）选择工程根
 2. 主进程 spawn MCP server-filesystem，推送 `MCP_FS.PROJECT_CHANGED`
 3. Agent 模式：`route_task` → `EXECUTE_execute_tool` → MCP `callTool` 或 macOS 本地写盘
-4. INFER 流式 `write_file`：`stream-hooks` + `xcode/live-stream` 增量落盘
+4. INFER 流式 `write_file`：`stream-hooks` + `xcode/stream.js` 增量落盘
 5. 新建路径：`xcode/prompt.js` 确认是否加入 `.xcodeproj`
+
+### Xcode 编译到模拟器（xcode_run）
+
+`xcode_run` 走纯 CLI：**不依赖 Xcode GUI / AppleScript**。实现见 `src/xcode/build-runner.js`。
+
+**触发方式**
+
+| 方式 | 说明 |
+|------|------|
+| Agent 工具 | 模型调用 `xcode_run`，或用户说「运行 / run」 |
+| 直调 | `xcode_run`、`运行`、`run` 跳过 LLM，直接执行 |
+| 底栏 ▶ | Pecado 输入区旁绿色播放按钮，等同 `xcode_run` |
+
+**执行流程**
+
+```text
+resolveScheme → pickIosSimulator → [可选] xcodebuild
+  → 解析 .app → simctl install → simctl launch → 进程检测
+```
+
+**编译与 Run 加速**
+
+| 策略 | 效果 |
+|------|------|
+| 跳过编译 | `.app` 签名 + `lastSourceMtime` 未变时不跑 `xcodebuild`（约 2s 快速启动） |
+| 跳过安装 | 同一模拟器 + bundleId + 产物签名未变时只 `simctl launch` |
+| DerivedData 复用 | `-derivedDataPath` 指向已有缓存，避免冷编译 |
+| 模拟器 xcconfig | `.pecado/simulator-run.xcconfig`：Manual 签名、关 Index Store、增量 Swift 等 |
+| generic destination | `generic/platform=iOS Simulator,arch=arm64`，减少 destination 切片 |
+| 并行 | 编译期间 boot 模拟器；build 日志出现 `.app` 时提前 install+launch |
+| 缓存 | `.pecado/xcode-cache.json` 存 scheme、bundleId、DerivedData、上次安装签名 |
+
+**日志**：Run 分步进度与 `[耗时]` 诊断写入 Skill 日志面板；聊天气泡只显示阶段摘要，不含耗时明细。
+
+**常见问题**：build log 出现 `DVTPortal … session has expired (1100)` 时，请在 **Xcode → Settings → Accounts** 重新登录 Apple ID，可显著缩短 `xcodebuild` 时间。
+
+更多细节见 **[src/xcode/README.md](src/xcode/README.md)**。
 
 ---
 

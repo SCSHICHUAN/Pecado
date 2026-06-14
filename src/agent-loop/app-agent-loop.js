@@ -13,6 +13,8 @@ const {
   EXECUTE_execute_tool: EXECUTE_xcode_tool,
   FEED_tool_result: FEED_xcode_tool_result,
   getXcodeTools,
+  tryParseDirectXcodeTool,
+  isXcodeSoloToolName,
 } = require('../xcode/agent/tools');
 const {
   getDevDocTools,
@@ -28,9 +30,72 @@ const {
   summarizeWriteTasks,
   composeAgentReply,
 } = require('./agent-reply');
-const { publishToolLog, buildAgentPhaseEntry, emitAgentLog } = require('../shared/agent-log');
+const { publishToolLog, buildAgentPhaseEntry, emitAgentLog, publishXcodeProgress, publishSkillProgress } = require('../shared/agent-log');
 
 const MAX_TOOL_ROUNDS = 12;
+
+async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
+  uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args });
+
+  logAgentPhase(uiSink, 'DISPATCH', {
+    round: roundNo,
+    status: 'start',
+    method: parsedTask.name,
+  });
+  const routed = route_task(parsedTask);
+  if (routed.error) {
+    logAgentPhase(uiSink, 'DISPATCH', {
+      round: roundNo,
+      status: 'error',
+      method: parsedTask.name,
+      note: routed.error,
+      isError: true,
+    });
+    uiSink.onError?.(routed.error);
+    return { error: routed.error };
+  }
+
+  logAgentPhase(uiSink, 'DISPATCH', {
+    round: roundNo,
+    status: 'done',
+    method: parsedTask.name,
+    module: routed.module,
+  });
+  logAgentPhase(uiSink, 'EXEC', {
+    round: roundNo,
+    status: 'start',
+    method: parsedTask.name,
+    module: routed.module,
+  });
+
+  let execRaw;
+  try {
+    execRaw = await EXECUTE_xcode_tool(routed, {
+      onProgress: ({ method, line, isError, elapsedMs }) => {
+        publishXcodeProgress(method, line, { isError, elapsedMs });
+      },
+    });
+  } catch (e) {
+    execRaw = {
+      isError: true,
+      content: [{ type: 'text', text: e.message || String(e) }],
+    };
+  }
+
+  logAgentPhase(uiSink, 'EXEC', {
+    round: roundNo,
+    status: execRaw?.isError ? 'error' : 'done',
+    method: parsedTask.name,
+    module: routed.module,
+    isError: Boolean(execRaw?.isError),
+  });
+
+  const toolFeed = FEED_xcode_tool_result(execRaw);
+  publishToolLog(parsedTask, routed, execRaw, toolFeed);
+  return {
+    content: composeAgentReply({ toolObservations: [toolFeed.observation] }),
+  };
+}
 
 function logAgentPhase(uiSink, phase, opts = {}) {
   const entry = { ...buildAgentPhaseEntry(phase, opts), ts: Date.now() };
@@ -81,6 +146,14 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   const diskFreshReadPaths = new Set();
 
   try {
+    const directXcode = tryParseDirectXcodeTool(loopOpts.userText);
+    if (directXcode) {
+      logAgentPhase(uiSink, 'FEED', { round: 1, status: 'done', note: '直达 xcode 工具' });
+      logAgentPhase(uiSink, 'INFER', { round: 1, status: 'done', note: '跳过 LLM' });
+      logAgentPhase(uiSink, 'PARSE', { round: 1, status: 'done', note: directXcode.name });
+      return await executeSoloXcodeTask(uiSink, directXcode, 1);
+    }
+
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const roundNo = round + 1;
       logAgentPhase(uiSink, 'FEED', {
@@ -194,10 +267,21 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
         let execRaw;
         try {
+          const xcodeExecOpts = {
+            onProgress: ({ method, line, isError, elapsedMs }) => {
+              publishXcodeProgress(method, line, { isError, elapsedMs });
+            },
+          };
           if (routed.module === 'xcode') {
-            execRaw = await EXECUTE_xcode_tool(routed);
+            execRaw = await EXECUTE_xcode_tool(routed, xcodeExecOpts);
           } else if (routed.module === 'skill') {
-            execRaw = await EXECUTE_dev_doc_tool(routed);
+            execRaw = await EXECUTE_dev_doc_tool(routed, {
+              onProgress: (payload) => {
+                if (payload.skill || payload.module === 'skill') {
+                  publishSkillProgress(payload);
+                }
+              },
+            });
           } else {
             execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
             if (isCodeWriteTool(parsedTask.name)) hadCodeWrite = true;
@@ -257,6 +341,17 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
       if (deferredWrites.length) {
         continue;
+      }
+
+      const soloXcodeRound =
+        tasksToRun.length > 0 && tasksToRun.every((t) => isXcodeSoloToolName(t.name));
+      if (soloXcodeRound) {
+        return {
+          content: composeAgentReply({
+            leadText: parsed.content,
+            toolObservations: roundObservations,
+          }),
+        };
       }
 
       if (hadCodeWrite) {

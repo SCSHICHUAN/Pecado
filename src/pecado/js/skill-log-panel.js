@@ -198,6 +198,9 @@
     'read_file',
     'write_file',
     'edit_file',
+    'xcode_build',
+    'xcode_run',
+    'xcode_test',
   ]);
 
   /** 气泡状态行末尾：Layer 取 path 最后一段，文件类取文件名 */
@@ -242,19 +245,187 @@
     return methodLabel || method || '—';
   }
 
-  /** 对话气泡：仅 log 头部 + 执行方法摘要，不含 command 路径 / 输出 / 详情 */
+  /** 气泡第三行：模块 | Func call | 文件名/路径 | 执行信息/阶段 */
+  function formatBubbleToolLine(entry) {
+    if (!entry || typeof entry !== 'object') return '';
+
+    const scope = formatSkillTitle(entry.skill)
+      ? formatSkillTitle(entry.skill).replace(/\/$/, '')
+      : formatModuleTitle(entry.module, entry.moduleLabel);
+
+    const funcCall = String(entry.method || entry.methodLabel || '').trim();
+    const fileOrPath = formatBubbleExecTail(entry) || formatBubbleExecPath(entry);
+    const infoOrPhase = formatBubbleExecInfo(entry);
+
+    return [scope, funcCall, fileOrPath, infoOrPhase].filter(Boolean).join(' | ');
+  }
+
+  function formatBubbleExecPath(entry) {
+    const raw =
+      entry?.relPath ||
+      entry?.previewResourcePath ||
+      entry?.path ||
+      entry?.sourcePath ||
+      entry?.src ||
+      '';
+    const seg = lastPathSegment(raw);
+    return seg || String(raw || '').trim();
+  }
+
+  function formatBubbleExecInfo(entry) {
+    if (entry.logKind === 'agent-phase') {
+      const parts = [entry.phaseLabel || entry.phase, formatAgentPhaseStatus(entry)];
+      return parts.filter(Boolean).join(' · ');
+    }
+    if (entry.logKind === 'xcode-progress' || entry.logKind === 'skill-progress') {
+      return String(entry.command || entry.output || '').trim();
+    }
+    const note = String(entry.note || '').trim();
+    if (note) return note;
+    const out = String(entry.output || entry.body || '').trim();
+    if (!out) return '';
+    const first = out.split('\n').find((l) => l.trim());
+    return first ? first.trim() : '';
+  }
+
+  /** 对话气泡：模块标题 + 第三行 pipe 摘要 */
   function formatBubbleExecSummary(entry) {
     const skillTitle = formatSkillTitle(entry.skill);
     const moduleTitle = formatModuleTitle(entry.module, entry.moduleLabel);
-    let methodLine = formatExecMethodLine(entry);
-    const tail = formatBubbleExecTail(entry);
-    if (tail) methodLine = `${methodLine} · ${tail}`;
     return {
       headTitle: skillTitle || moduleTitle || 'tool',
       headKind: skillTitle ? 'skill' : 'module',
-      methodLine,
+      methodLine: formatBubbleToolLine(entry),
       isError: Boolean(entry.isError),
     };
+  }
+
+  /** 整轮执行秒表：01.09 格式，最大 59.99 */
+  function formatTurnElapsed(ms) {
+    const centis = Math.min(5999, Math.max(0, Math.floor(Number(ms) / 10)));
+    const sec = Math.floor(centis / 100);
+    const frac = centis % 100;
+    return `${String(sec).padStart(2, '0')}.${String(frac).padStart(2, '0')}`;
+  }
+
+  /** @type {WeakMap<HTMLElement, { startedAt: number, timerId: number, stopped: boolean, frozenMs?: number }>} */
+  const turnStopwatchByBubble = new WeakMap();
+  const PROGRESS_BUBBLE_MS = 400;
+  let lastProgressBubbleAt = 0;
+
+  function createExecStopwatchEl() {
+    const el = document.createElement('div');
+    el.className = 'chat-exec-stopwatch';
+    el.hidden = true;
+    el.setAttribute('aria-label', '整轮耗时');
+    return el;
+  }
+
+  function ensureExecSummaryRow(execBlock) {
+    if (!execBlock) return { row: null, text: null };
+    let row = execBlock.querySelector('.chat-exec-summary-row');
+    if (!row) {
+      row = document.createElement('div');
+      row.className = 'chat-exec-summary-row';
+      const text = document.createElement('div');
+      text.className = 'chat-exec-tool-line';
+      text.hidden = true;
+      row.appendChild(text);
+      execBlock.appendChild(row);
+    }
+    return {
+      row,
+      text: row.querySelector('.chat-exec-tool-line'),
+    };
+  }
+
+  function ensureExecStopwatch(execBlock) {
+    if (!execBlock) return null;
+    let el = execBlock.querySelector('.chat-exec-stopwatch');
+    if (el) return el;
+
+    el = createExecStopwatchEl();
+    execBlock.classList.add('has-exec-stopwatch');
+
+    const track = execBlock.querySelector('.chat-agent-phase-track');
+    if (track) {
+      track.appendChild(el);
+      return el;
+    }
+
+    const headRow = execBlock.querySelector('.chat-exec-head-row');
+    if (headRow) {
+      headRow.appendChild(el);
+      return el;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'chat-exec-phase-row';
+    row.appendChild(el);
+    execBlock.insertBefore(row, execBlock.firstChild);
+    return el;
+  }
+
+  function syncStopwatchFromBubble(bubble, execBlock) {
+    if (!bubble || !execBlock) return;
+    const state = turnStopwatchByBubble.get(bubble);
+    if (!state) return;
+    const stopwatch = ensureExecStopwatch(execBlock);
+    if (!stopwatch) return;
+    const ms = state.stopped ? state.frozenMs ?? 0 : performance.now() - state.startedAt;
+    stopwatch.hidden = false;
+    stopwatch.textContent = formatTurnElapsed(ms);
+    stopwatch.classList.toggle('is-running', !state.stopped);
+    stopwatch.classList.toggle('is-done', Boolean(state.stopped));
+  }
+
+  function paintExecStopwatch(execBlock, ms, done) {
+    const el = ensureExecStopwatch(execBlock);
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = formatTurnElapsed(ms);
+    el.classList.toggle('is-running', !done);
+    el.classList.toggle('is-done', Boolean(done));
+  }
+
+  function stopExecStopwatchTimer(state) {
+    if (!state) return;
+    if (state.timerId) {
+      clearInterval(state.timerId);
+      state.timerId = 0;
+    }
+  }
+
+  function startBubbleStopwatch(bubble, startedAt) {
+    if (!bubble) return;
+    const t0 = Number(startedAt) > 0 ? Number(startedAt) : performance.now();
+    stopExecStopwatchTimer(turnStopwatchByBubble.get(bubble));
+    const state = { startedAt: t0, timerId: 0, stopped: false };
+    turnStopwatchByBubble.set(bubble, state);
+    const execBlock = bubble.querySelector('.chat-exec-block');
+    if (execBlock) paintExecStopwatch(execBlock, 0, false);
+    state.timerId = setInterval(() => {
+      const s = turnStopwatchByBubble.get(bubble);
+      const block = bubble.querySelector('.chat-exec-block');
+      if (!s || s.stopped || !block) return;
+      paintExecStopwatch(block, performance.now() - s.startedAt, false);
+    }, 500);
+  }
+
+  function finishBubbleStopwatch(bubble, opts = {}) {
+    if (!bubble) return;
+    const state = turnStopwatchByBubble.get(bubble);
+    const execBlock = bubble.querySelector('.chat-exec-block');
+    if (!state) return;
+    stopExecStopwatchTimer(state);
+    if (!state.stopped) {
+      state.stopped = true;
+      state.frozenMs = performance.now() - state.startedAt;
+    }
+    if (execBlock) {
+      execBlock.classList.toggle('is-error', Boolean(opts.isError));
+      paintExecStopwatch(execBlock, state.frozenMs ?? 0, true);
+    }
   }
 
   function formatExecSummary(entry) {
@@ -411,6 +582,9 @@
     execBlock.replaceChildren();
     execBlock.classList.add('chat-agent-phase-block');
 
+    const phaseRow = document.createElement('div');
+    phaseRow.className = 'chat-exec-phase-row';
+
     track = document.createElement('div');
     track.className = 'chat-agent-phase-track';
     track.setAttribute('role', 'list');
@@ -431,20 +605,21 @@
       track.appendChild(chip);
     });
 
+    track.appendChild(createExecStopwatchEl());
+
     const caption = document.createElement('div');
     caption.className = 'chat-agent-phase-caption';
 
-    const toolLine = document.createElement('div');
-    toolLine.className = 'chat-exec-tool-line';
-    toolLine.hidden = true;
+    phaseRow.appendChild(track);
 
-    execBlock.appendChild(track);
+    execBlock.appendChild(phaseRow);
     execBlock.appendChild(caption);
-    execBlock.appendChild(toolLine);
+    ensureExecSummaryRow(execBlock);
+    execBlock.classList.add('has-exec-stopwatch');
     return track;
   }
 
-  function updateBubbleAgentPhases(execBlock, entry) {
+  function updateBubbleAgentPhases(execBlock, entry, bubble) {
     if (!execBlock || entry?.logKind !== 'agent-phase') return;
     execBlock.hidden = false;
     execBlock.classList.toggle('is-error', Boolean(entry.isError));
@@ -477,10 +652,35 @@
       }
       caption.textContent = parts.filter(Boolean).join(' · ');
     }
+
+    const toolLine = execBlock.querySelector('.chat-exec-summary-row .chat-exec-tool-line');
+    if (toolLine && (entry.method || entry.methodLabel || entry.logKind === 'agent-phase')) {
+      toolLine.hidden = false;
+      toolLine.textContent = formatBubbleToolLine(entry);
+    }
+    syncStopwatchFromBubble(bubble, execBlock);
   }
 
-  function updateBubbleToolSummary(execBlock, entry) {
+  function updateBubbleToolSummary(execBlock, entry, bubble) {
     if (!execBlock || !entry) return;
+
+    if (entry.logKind === 'xcode-progress' || entry.logKind === 'skill-progress') {
+      execBlock.hidden = false;
+      const now = performance.now();
+      const force = Boolean(entry.isError);
+      if (!force && now - lastProgressBubbleAt < PROGRESS_BUBBLE_MS) return;
+      lastProgressBubbleAt = now;
+      if (execBlock.querySelector('.chat-agent-phase-track')) {
+        const toolLine = execBlock.querySelector('.chat-exec-summary-row .chat-exec-tool-line');
+        if (toolLine) {
+          toolLine.hidden = false;
+          toolLine.textContent = formatBubbleToolLine(entry);
+        }
+      }
+      syncStopwatchFromBubble(bubble, execBlock);
+      return;
+    }
+
     const summary = formatBubbleExecSummary(entry);
     execBlock.hidden = false;
     execBlock.classList.toggle('is-error', Boolean(summary.isError));
@@ -489,22 +689,28 @@
       execBlock.replaceChildren();
       execBlock.classList.remove('chat-agent-phase-block');
       if (summary.headTitle) {
+        const headRow = document.createElement('div');
+        headRow.className = 'chat-exec-head-row';
         const headEl = document.createElement('div');
         headEl.className =
           summary.headKind === 'skill' ? 'chat-exec-skill' : 'chat-exec-module';
         headEl.textContent = summary.headTitle;
-        execBlock.appendChild(headEl);
+        headRow.appendChild(headEl);
+        headRow.appendChild(createExecStopwatchEl());
+        execBlock.appendChild(headRow);
+        execBlock.classList.add('has-exec-stopwatch');
       }
-      if (summary.methodLine) {
-        const methodEl = document.createElement('div');
-        methodEl.className = 'chat-exec-method';
-        methodEl.textContent = summary.methodLine;
-        execBlock.appendChild(methodEl);
+      const { text: toolLine } = ensureExecSummaryRow(execBlock);
+      if (summary.methodLine && toolLine) {
+        toolLine.hidden = false;
+        toolLine.textContent = summary.methodLine;
       }
+      syncStopwatchFromBubble(bubble, execBlock);
       return;
     }
 
-    const toolLine = execBlock.querySelector('.chat-exec-tool-line');
+    ensureBubblePhaseTrack(execBlock);
+    const toolLine = execBlock.querySelector('.chat-exec-summary-row .chat-exec-tool-line');
     if (!toolLine) return;
     if (summary.methodLine) {
       toolLine.hidden = false;
@@ -513,11 +719,50 @@
       toolLine.hidden = true;
       toolLine.textContent = '';
     }
+    syncStopwatchFromBubble(bubble, execBlock);
+  }
+
+  function formatXcodeProgressDisplayLine(entry) {
+    let t = String(entry.command || entry.output || '').trim();
+    t = t.replace(/^Run:\s*/i, '');
+    return t || '—';
+  }
+
+  function buildXcodeProgressLogEntry(entry) {
+    const node = document.createElement('article');
+    node.className =
+      'skill-log-entry skill-log-entry-xcode-progress' + (entry.isError ? ' is-error' : '');
+
+    const head = document.createElement('div');
+    head.className = 'skill-log-entry-head';
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'skill-log-entry-module';
+    const method = String(entry.method || 'xcode').trim();
+    const project = String(entry.sourceLabel || '').trim();
+    titleEl.textContent = project ? `${method} · ${project}` : method;
+
+    const timeEl = document.createElement('div');
+    timeEl.className = 'skill-log-entry-time';
+    timeEl.textContent = formatTime(entry.ts);
+
+    head.appendChild(titleEl);
+    head.appendChild(timeEl);
+    node.appendChild(head);
+
+    const line = document.createElement('pre');
+    line.className = 'skill-log-xcode-progress-line';
+    line.textContent = formatXcodeProgressDisplayLine(entry);
+    node.appendChild(line);
+    return node;
   }
 
   function buildLogEntry(entry) {
     if (entry.logKind === 'agent-phase') {
       return buildAgentPhaseLogEntry(entry);
+    }
+    if (entry.logKind === 'xcode-progress') {
+      return buildXcodeProgressLogEntry(entry);
     }
 
     const node = document.createElement('article');
@@ -767,8 +1012,11 @@
     isOpen: () => skillLogDockOpen,
     formatExecSummary,
     formatBubbleExecSummary,
+    formatBubbleToolLine,
     updateBubbleAgentPhases,
     updateBubbleToolSummary,
+    startBubbleStopwatch,
+    finishBubbleStopwatch,
     getOutputPreview: (id) => outputPreviewCache.get(id) || '',
   };
 

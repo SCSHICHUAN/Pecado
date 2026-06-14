@@ -4,7 +4,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { promisify } = require('util');
 const { ensureDevDocsDir, skillFileBase } = require('./store');
 
@@ -16,6 +16,7 @@ const MAX_RESOURCE_FILE = 120000;
 const RUN_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_RUN_OUTPUT = 512 * 1024;
 const MAX_RUN_OBSERVATION = 12000;
+const SKILL_PROGRESS_LINE_MAX = 160;
 const SCRIPT_RUNNERS = {
   '.sh': 'bash',
   '.bash': 'bash',
@@ -392,14 +393,64 @@ function capRunOutput(text, maxLen = MAX_RUN_OUTPUT) {
   return s;
 }
 
+function stripAnsi(text) {
+  return String(text || '').replace(/\x1b\[[0-9;]*m/g, '');
+}
+
+function capSkillProgressLine(line) {
+  const t = stripAnsi(line).trim();
+  if (!t) return '';
+  return t.length > SKILL_PROGRESS_LINE_MAX ? `${t.slice(0, SKILL_PROGRESS_LINE_MAX)}…` : t;
+}
+
+/**
+ * @param {string} runner
+ * @param {string[]} args
+ * @param {{ cwd: string, env: object, onLine?: (line: string, isErr: boolean) => void }} opts
+ */
+function runScriptSpawn(runner, args, opts) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(runner, args, {
+      cwd: opts.cwd,
+      env: opts.env,
+      shell: false,
+    });
+    let stdout = '';
+    let stderr = '';
+
+    const feed = (chunk, isErr) => {
+      const text = chunk.toString();
+      if (isErr) stderr += text;
+      else stdout += text;
+      if (typeof opts.onLine !== 'function') return;
+      for (const raw of text.split('\n')) {
+        const line = capSkillProgressLine(raw);
+        if (line) opts.onLine(line, isErr);
+      }
+    };
+
+    child.stdout.on('data', (c) => feed(c, false));
+    child.stderr.on('data', (c) => feed(c, true));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      resolve({
+        exitCode: code ?? 1,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
+
 /**
  * 在 skill 资源目录内执行附属脚本（.sh / .bash / .zsh / .py）
  * @param {string} skillName
  * @param {string} docId
  * @param {string} rawPath
  * @param {string[]} [extraArgs]
+ * @param {{ onLine?: (line: string, isErr?: boolean) => void }} [opts]
  */
-async function runResourceScript(skillName, docId, rawPath, extraArgs = []) {
+async function runResourceScript(skillName, docId, rawPath, extraArgs = [], opts = {}) {
   const resolved = resolveResourceRelPath(skillName, docId, rawPath);
   if (!resolved.ok) return resolved;
 
@@ -428,13 +479,8 @@ async function runResourceScript(skillName, docId, rawPath, extraArgs = []) {
   }
 
   try {
-    const { stdout, stderr } = await execFileAsync(runner, args, {
-      cwd,
-      timeout: RUN_TIMEOUT_MS,
-      maxBuffer: MAX_RUN_OUTPUT,
-      encoding: 'utf8',
-      env,
-    });
+    const runOpts = { cwd, env, onLine: opts.onLine };
+    const { stdout, stderr, exitCode } = await runScriptSpawn(runner, args, runOpts);
     return {
       ok: true,
       path: rawPath,
@@ -443,7 +489,7 @@ async function runResourceScript(skillName, docId, rawPath, extraArgs = []) {
       requestedPath: resolved.requestedPath,
       matchKind: resolved.matchKind,
       command: commandLine,
-      exitCode: 0,
+      exitCode: exitCode ?? 0,
       stdout: capRunOutput(stdout, MAX_RUN_OBSERVATION),
       stderr: capRunOutput(stderr, MAX_RUN_OBSERVATION),
     };

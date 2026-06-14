@@ -243,6 +243,24 @@ body.app-view-workflow .app-bottom-bar {
     display: none;
 }
 
+#app-bottom-tools-chat .skill-button-run {
+    min-width: 28px;
+    padding: 0 8px;
+    color: #6fcf6f;
+    border-color: #3d5a3d;
+}
+
+#app-bottom-tools-chat .skill-button-run:hover {
+    color: #fff;
+    background: #2a4030;
+    border-color: #6fcf6f;
+}
+
+#app-bottom-tools-chat .skill-button-run:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 #app-bottom-tools-chat .skill-button {
     height: 22px;
     margin: 0;

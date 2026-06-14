@@ -25,6 +25,8 @@ const AGENT_SYSTEM_PROMPT =
   'system 已含 Layer 树时勿调 read_skill_layer。跑脚本用 run_skill_resource_script(skill_name, path, args)，path 按 Skill 正文（如 scripts/app_launcher.py）。' +
   '用户要求按 Skill Quick Start / 多步流程时：按顺序逐步 run，上一步成功且任务未结束则继续下一步，勿在第一步成功后就用文字结束。' +
   '仅当 Instructions 不足以决定参数时才 read_skill_section。' +
-  '同一步无依赖的多个脚本可在同一轮并行 run_skill_resource_script。勿用 xcode_project_status 代替 Skill。';
+  '同一步无依赖的多个脚本可在同一轮并行 run_skill_resource_script。勿用 xcode_project_status 代替 Skill。' +
+  '@ ios-simulator-skill 且要在模拟器看最新代码：先 run sim_health_check.sh，再 xcode_build，再 xcode_run（或仅 xcode_run）；' +
+  '勿只用 app_launcher.py 或 xcode_build 代替在模拟器预览；要在模拟器看到 App 必须 xcode_run。';
 
 module.exports = { AGENT_SYSTEM_PROMPT };

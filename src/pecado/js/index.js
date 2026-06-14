@@ -93,6 +93,7 @@
 // —— 对话 UI ——
 const chatInput = document.getElementById('chat-input');
 const sendButton = document.querySelector('.send-button');
+const xcodeRunBtn = document.getElementById('pecado-xcode-run-btn');
 const chatContent = document.getElementById('chat-content');
 const scrollAnchor = document.getElementById('chat-scroll-anchor');
 const workspaceScroll = document.getElementById('workspace-scroll');
@@ -380,11 +381,11 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     if (!execBlock) return;
 
     if (entry.logKind === 'agent-phase') {
-      window.LogPanel?.updateBubbleAgentPhases?.(execBlock, entry);
+      window.LogPanel?.updateBubbleAgentPhases?.(execBlock, entry, bubble);
       return;
     }
 
-    window.LogPanel?.updateBubbleToolSummary?.(execBlock, entry);
+    window.LogPanel?.updateBubbleToolSummary?.(execBlock, entry, bubble);
   }
 
   function setAssistantBubbleMarkdown(bubble, text) {
@@ -450,7 +451,11 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     this.style.height = Math.min(this.scrollHeight, 120) + 'px';
   });
 
-  sendButton.addEventListener('click', sendMessage);
+  sendButton.addEventListener('click', () => sendMessage());
+  xcodeRunBtn?.addEventListener('click', () => {
+    if (sendButton.disabled) return;
+    sendMessage('xcode_run');
+  });
   chatInput.addEventListener('keypress', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -511,7 +516,11 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       unsubscribe = api.onVolcArkStreamEvent((payload) => {
         if (!payload || payload.streamId !== streamId) return;
         if (payload.phase === 'agent_log' && payload.entry) {
-          window.LogPanel?.notifyTurnExec?.(payload.entry);
+          if (payload.entry.logKind === 'agent-phase') {
+            window.LogPanel?.notifyTurnExec?.(payload.entry);
+          } else {
+            window.LogPanel?.append?.(payload.entry);
+          }
           return;
         }
         if (!onDelta) return;
@@ -534,8 +543,8 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     }
   }
 
-  async function sendMessage() {
-    const message = chatInput.value.trim();
+  async function sendMessage(overrideText) {
+    const message = (overrideText != null ? String(overrideText) : chatInput.value).trim();
     if (!message) return;
 
     chatUserDetachedFromStream = false;
@@ -544,18 +553,30 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     addMessage(message, 'user');
     const priorHistory = [...chatHistory];
     chatHistory.push({ role: 'user', content: message });
-    chatInput.value = '';
-    chatInput.style.height = 'auto';
+    if (overrideText == null) {
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+    }
 
     sendButton.disabled = true;
+    if (xcodeRunBtn) xcodeRunBtn.disabled = true;
     activeChatTurnFollow = true;
 
     const { bubble } = addStreamingAssistantShell();
     bindActiveBubbleResizeFollow(bubble);
+    const turnStartedAt = performance.now();
+    window.LogPanel?.startBubbleStopwatch?.(bubble, turnStartedAt);
     window.__pecadoTurnExec = {
+      bubble,
+      startedAt: turnStartedAt,
       update(entry) {
         updateTurnExecBlock(bubble, entry);
-        if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
+        const kind = entry?.logKind;
+        const scrollOnProgress =
+          kind === 'xcode-progress' || kind === 'skill-progress';
+        if (!scrollOnProgress && shouldFollowChatOutput()) {
+          scrollChatToBottomForced({ streamFollow: true });
+        }
       },
     };
     let rawAccum = '';
@@ -568,6 +589,8 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
         streamRafRef.current = n;
       },
     };
+
+    let turnHadError = false;
 
     try {
       const result = await runBotAgent(
@@ -585,6 +608,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       bubble.classList.remove('streaming');
 
       if (result.error) {
+        turnHadError = true;
         const stickErr = shouldAutoScrollAfterTurn();
         const errText = `请求失败：${result.error}`;
         clearAssistantMarkdownClass(bubble);
@@ -605,6 +629,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       chatHistory.push({ role: 'assistant', content: displayText });
       if (stickEnd) scrollChatToBottomForced({ streamFollow: true });
     } catch (err) {
+      turnHadError = true;
       cancelStreamMarkdownRender(streamRafRef);
       bubble.classList.remove('streaming');
       const stickEx = shouldAutoScrollAfterTurn();
@@ -614,10 +639,12 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       chatHistory.push({ role: 'assistant', content: errText });
       if (stickEx) scrollChatToBottomForced({ streamFollow: true });
     } finally {
+      window.LogPanel?.finishBubbleStopwatch?.(bubble, { isError: turnHadError });
       window.__pecadoTurnExec = null;
       activeChatTurnFollow = false;
       unbindActiveBubbleResizeFollow();
       sendButton.disabled = false;
+      if (xcodeRunBtn) xcodeRunBtn.disabled = false;
     }
   }
 

@@ -394,6 +394,10 @@ function formatProjectStatusObservation(status) {
     `名称: ${status.target.name}`,
     `Schemes (${status.schemes.length}): ${status.schemes.join(', ') || '—'}`,
     `默认 scheme: ${status.defaultScheme || '—'}`,
+    `建议 destination: generic/platform=iOS Simulator`,
+    '',
+    '可用工具: xcode_build（编译检查）、xcode_run（编译+安装+启动+运行日志）、xcode_test（运行测试）。' +
+      '与 @ ios-simulator-skill 联用时：Skill 脚本管模拟器/UI；编译最新代码须 xcode_build/xcode_run。',
   ];
   return lines.join('\n');
 }

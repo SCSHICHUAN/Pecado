@@ -27,7 +27,7 @@ const {
   runResourceScript,
   getSkillResourcesDir,
 } = require('../resources');
-const { emitAgentLog } = require('../../../shared/agent-log');
+const { emitAgentLog, publishSkillProgress } = require('../../../shared/agent-log');
 const projectIo = require('../../../mcp-filesystem');
 
 const DEV_DOC_TOOL_NAMES = new Set([
@@ -187,6 +187,41 @@ function isDevDocToolName(name) {
   return DEV_DOC_TOOL_NAMES.has(String(name || '').trim());
 }
 
+const SKILL_PROGRESS_SKIP =
+  /^[\s\u2500─━=]+$/;
+
+function shouldPublishSkillProgressLine(line) {
+  const t = String(line || '').trim();
+  if (!t || SKILL_PROGRESS_SKIP.test(t)) return false;
+  if (/^\[\d+\/\d+\]/.test(t)) return true;
+  if (/^[✓✔⚠✗]/.test(t)) return true;
+  if (/^(Checks passed|Environment is ready|Next steps:|Summary|iOS Simulator)/i.test(t)) return true;
+  if (/error|fail|warning|ready|booted|simulator|install|launch|BUILD/i.test(t)) return true;
+  if (t.startsWith('Run:')) return true;
+  return t.length <= 80;
+}
+
+function emitSkillProgress(meta, name, args, line, execOpts = {}) {
+  const text = String(line || '').trim();
+  if (!text || !shouldPublishSkillProgressLine(text)) return;
+  const skillName = meta?.skillName || args?.skill_name || '';
+  const payload = {
+    skill: skillName,
+    skillDocId: meta?.id ? String(meta.id) : '',
+    method: name,
+    methodLabel: METHOD_LABELS[name] || name,
+    line: text,
+    path: args?.path,
+    relPath: args?.path,
+    isError: Boolean(execOpts.isError),
+  };
+  if (typeof execOpts.onProgress === 'function') {
+    execOpts.onProgress({ ...payload, module: 'skill' });
+  } else {
+    publishSkillProgress(payload);
+  }
+}
+
 function findEnabledDocBySkillName(skillName) {
   const key = String(skillName || '').trim().toLowerCase();
   if (!key) return null;
@@ -299,7 +334,7 @@ function publishSkillLog(name, args, meta, execRaw, extra = {}) {
   return execRaw;
 }
 
-async function EXECUTE_execute_tool(routedTask) {
+async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
   if (routedTask.module !== 'skill') {
     return {
       isError: true,
@@ -422,13 +457,28 @@ async function EXECUTE_execute_tool(routedTask) {
 
   if (name === 'run_skill_resource_script') {
     const extraArgs = Array.isArray(args.args) ? args.args : [];
-    const res = await runResourceScript(meta.skillName || meta.id, meta.id, args.path, extraArgs);
+    const skillName = meta.skillName || meta.id;
+    emitSkillProgress(meta, name, args, `开始 ${args.path}`, execOpts);
+    const res = await runResourceScript(skillName, meta.id, args.path, extraArgs, {
+      onLine: (line) => emitSkillProgress(meta, name, args, line, execOpts),
+    });
     if (!res.ok) {
+      emitSkillProgress(meta, name, args, `失败：${res.error || args.path}`, {
+        ...execOpts,
+        isError: true,
+      });
       return publishSkillLog(name, args, meta, {
         isError: true,
         content: [{ type: 'text', text: res.error || `无法执行脚本「${args.path}」` }],
       }, { path: args.path });
     }
+    emitSkillProgress(
+      meta,
+      name,
+      args,
+      res.exitCode === 0 ? `完成 ${args.path} (exit 0)` : `结束 ${args.path} (exit ${res.exitCode})`,
+      { ...execOpts, isError: res.exitCode !== 0 }
+    );
     return publishSkillLog(name, args, meta, {
       isError: res.exitCode !== 0,
       content: [{ type: 'text', text: '(see output)' }],
