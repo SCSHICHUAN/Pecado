@@ -42,6 +42,8 @@ module.exports = {
     DIRECTORY_TREE: 'mcp-fs-directory-tree',
     /** invoke：{ projectRoot? } → shell.openPath 在 Finder/资源管理器中打开 */
     OPEN_PROJECT_ROOT: 'mcp-fs-open-project-root',
+    /** invoke：{ path } → 在 Xcode 中打开 .xcodeproj / .xcworkspace */
+    OPEN_XCODE_PROJECT: 'mcp-fs-open-xcode-project',
     /** invoke：{ path } → 在 Finder/资源管理器中定位文件 */
     OPEN_PATH: 'mcp-fs-open-path',
     /** invoke：{ path } → 读取文本文件（log 浮层预览） */

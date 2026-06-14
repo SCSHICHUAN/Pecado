@@ -20,22 +20,25 @@
     return window.formatMcpTree.formatMcpTreeAscii(tree, maxLines);
   }
 
-  function buildProjectTreeMarkdownFromAscii(projectRoot, treeAscii) {
+  function buildProjectTreeMarkdownFromAscii(projectRoot, treeAscii, xcodeProject) {
     const folderName = String(projectRoot).split(/[/\\]/).filter(Boolean).pop() || projectRoot;
     const indented = String(treeAscii || '(无)')
       .split('\n')
       .map((line) => `    ${line}`)
       .join('\n');
+    const xcodeHint = xcodeProject
+      ? `\n\n检测到 Xcode 工程 **${xcodeProject.name}**（${xcodeProject.kind === 'workspace' ? '.xcworkspace' : '.xcodeproj'}），可点击底栏 **打开项目**。`
+      : '';
     return (
-      `已打开工程 **${folderName}**\n\n` +
+      `已选择工程 **${folderName}**${xcodeHint}\n\n` +
       `\`${projectRoot}\`\n\n` +
       `**目录结构**\n\n${indented}`
     );
   }
 
-  function buildProjectTreeMarkdown(projectRoot, tree) {
+  function buildProjectTreeMarkdown(projectRoot, tree, xcodeProject) {
     const treeText = formatMcpTreeAscii(tree, 400);
-    return buildProjectTreeMarkdownFromAscii(projectRoot, treeText);
+    return buildProjectTreeMarkdownFromAscii(projectRoot, treeText, xcodeProject);
   }
 
   function showProjectTreeMarkdown(projectRoot, md) {
@@ -45,38 +48,80 @@
     uiDeps.scrollChatToBottomForced();
   }
 
-  async function showProjectTreeBubble(projectRoot) {
+  async function showProjectTreeBubble(projectRoot, xcodeProject) {
     if (!uiDeps) return;
     const api = getApi();
     if (!api || typeof api.mcpFsDirectoryTree !== 'function') {
-      uiDeps.addMessage('已打开工程，但当前环境无法读取文件树。', 'assistant');
+      uiDeps.addMessage('已选择工程，但当前环境无法读取文件树。', 'assistant');
       uiDeps.scrollChatToBottomForced();
       return;
     }
     const res = await api.mcpFsDirectoryTree({});
     if (res.error) {
-      uiDeps.addMessage(`已打开工程，但读取目录树失败：${res.error}`, 'assistant');
+      uiDeps.addMessage(`已选择工程，但读取目录树失败：${res.error}`, 'assistant');
       uiDeps.scrollChatToBottomForced();
       return;
     }
-    const md = buildProjectTreeMarkdown(projectRoot, res.tree);
+    const md = buildProjectTreeMarkdown(projectRoot, res.tree, xcodeProject);
     showProjectTreeMarkdown(projectRoot, md);
+  }
+
+  /** @type {HTMLButtonElement | null} */
+  let openXcodeBtn = null;
+  /** @type {{ kind: string, name: string, path: string } | null} */
+  let currentXcodeProject = null;
+
+  function syncOpenXcodeToolbar(xcodeProject) {
+    currentXcodeProject = xcodeProject?.path ? xcodeProject : null;
+    if (!openXcodeBtn) return;
+    const has = Boolean(currentXcodeProject);
+    openXcodeBtn.hidden = !has;
+    openXcodeBtn.disabled = !has;
+    openXcodeBtn.textContent = '打开项目';
+    openXcodeBtn.title = has
+      ? `在 Xcode 中打开：${currentXcodeProject.path}`
+      : '当前工程未检测到 .xcodeproj / .xcworkspace';
+  }
+
+  async function openXcodeProjectFromToolbar() {
+    const api = getApi();
+    const filePath = String(currentXcodeProject?.path || '').trim();
+    if (!filePath || !openXcodeBtn || !api || typeof api.mcpFsOpenXcodeProject !== 'function') return;
+    openXcodeBtn.disabled = true;
+    try {
+      const res = await api.mcpFsOpenXcodeProject({ path: filePath });
+      if (res?.ok) return;
+      if (uiDeps) {
+        uiDeps.addMessage(`打开 Xcode 工程失败：${res?.error || '未知错误'}`, 'assistant');
+        uiDeps.scrollChatToBottomForced();
+      }
+    } catch (e) {
+      if (uiDeps) {
+        uiDeps.addMessage(`打开 Xcode 工程异常：${e.message || String(e)}`, 'assistant');
+        uiDeps.scrollChatToBottomForced();
+      }
+    } finally {
+      if (openXcodeBtn) openXcodeBtn.disabled = false;
+    }
   }
 
   function setupProjectListener() {
     const api = getApi();
     if (!api || typeof api.onMcpFsProjectChanged !== 'function') return;
-    api.onMcpFsProjectChanged(({ projectRoot, showTree, treeAscii }) => {
-      if (!projectRoot) return;
-      if (showTree !== true) return;
+    api.onMcpFsProjectChanged(({ projectRoot, showTree, treeAscii, xcodeProject }) => {
+      if (projectRoot) syncOpenXcodeToolbar(xcodeProject);
+      if (!projectRoot || showTree !== true) return;
       if (treeAscii) {
-        showProjectTreeMarkdown(projectRoot, buildProjectTreeMarkdownFromAscii(projectRoot, treeAscii));
+        showProjectTreeMarkdown(
+          projectRoot,
+          buildProjectTreeMarkdownFromAscii(projectRoot, treeAscii, xcodeProject)
+        );
         return;
       }
-      showProjectTreeBubble(projectRoot).catch((e) => {
+      showProjectTreeBubble(projectRoot, xcodeProject).catch((e) => {
         console.error('[project-ui] showProjectTreeBubble', e);
         if (uiDeps) {
-          uiDeps.addMessage(`已打开工程，但展示目录树失败：${e.message || String(e)}`, 'assistant');
+          uiDeps.addMessage(`已选择工程，但展示目录树失败：${e.message || String(e)}`, 'assistant');
           uiDeps.scrollChatToBottomForced();
         }
       });
@@ -85,6 +130,14 @@
 
   function init(deps) {
     uiDeps = deps;
+    openXcodeBtn = document.getElementById('pecado-open-xcode-btn');
+    openXcodeBtn?.addEventListener('click', () => {
+      if (openXcodeBtn?.disabled) return;
+      openXcodeProjectFromToolbar().catch((err) => {
+        console.error('[project-ui] openXcodeProjectFromToolbar', err);
+      });
+    });
+    syncOpenXcodeToolbar(null);
     setupProjectListener();
   }
 
@@ -678,6 +731,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     if (type === 'user' || stickAssistant) {
       scrollChatToBottomForced({ streamFollow: true });
     }
+    return bubble;
   }
 
   if (window.projectUi && typeof window.projectUi.init === 'function') {

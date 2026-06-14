@@ -2,7 +2,7 @@
  * @file ipc.js
  *
  * 【功能】mcp-filesystem 的 Electron 集成：对话框、IPC、主窗口引用、持久化工程路径。
- *   - File → Open Folder：dialog 选目录 → projectIo.connect → 若有则打开 Xcode 工程 → saveProjectRoot
+ *   - File → Open Folder：dialog 选目录 → projectIo.connect → 推送 xcodeProject 供底栏「打开项目」→ saveProjectRoot
  *   - 连接成功 webContents.send MCP_FS.PROJECT_CHANGED → renderer 更新工程路径（仅 Open Folder 时带目录树）
  *   - ipcMain.handle MCP_FS.DIRECTORY_TREE → readDirectoryTree
  *   - app.before-quit → disconnect
@@ -82,7 +82,9 @@ async function connectProjectRoot(projectRoot, getMainWindowFn, opts = {}) {
       await warmProjectTreeCache();
       treeAscii = getCachedTreeAscii();
     }
-    const xcodeOpened = opts.openXcode ? xcodeProject.openXcodeForProjectRoot(r.projectRoot) : null;
+    const xcodeMeta = xcodeProject.findXcodeForProjectRoot(r.projectRoot);
+    const xcodeOpened =
+      opts.openXcode && xcodeMeta ? xcodeProject.openXcodeForProjectRoot(r.projectRoot) : null;
     if (opts.notify !== false) {
       const notifyWin = getMainWindowFn?.();
       if (notifyWin && !notifyWin.isDestroyed()) {
@@ -91,10 +93,11 @@ async function connectProjectRoot(projectRoot, getMainWindowFn, opts = {}) {
           tools: r.tools,
           showTree: opts.showTree === true,
           treeAscii: opts.showTree ? treeAscii : '',
+          xcodeProject: xcodeMeta || null,
         });
       }
     }
-    return { ok: true, canceled: false, ...r, xcodeOpened: xcodeOpened || null };
+    return { ok: true, canceled: false, ...r, xcodeProject: xcodeMeta || null, xcodeOpened: xcodeOpened || null };
   } catch (e) {
     return { ok: false, error: e.message || String(e) };
   }
@@ -109,6 +112,7 @@ function notifyConnectedProject(getMainWindowFn) {
     projectRoot: status.projectRoot,
     tools: status.tools || [],
     showTree: false,
+    xcodeProject: xcodeProject.findXcodeForProjectRoot(status.projectRoot) || null,
   });
   return true;
 }
@@ -151,7 +155,7 @@ async function pickAndConnectProject(getMainWindowFn) {
   const picked = await pickProjectDirectory(win);
   if (picked.canceled) return { canceled: true };
   return connectProjectRoot(picked.projectRoot, getMainWindowFn, {
-    openXcode: true,
+    openXcode: false,
     notify: true,
     showTree: true,
   });
@@ -165,8 +169,8 @@ async function openProjectFolder(getMainWindowFn) {
     return;
   }
   console.log('[menu] Open Folder:', result.projectRoot);
-  if (result.xcodeOpened) {
-    console.log('[menu] Open Xcode:', result.xcodeOpened.path);
+  if (result.xcodeProject) {
+    console.log('[menu] Xcode project detected:', result.xcodeProject.path);
   } else if (xcodeProject.IS_DARWIN) {
     console.log('[menu] Open Folder: no Xcode project found under', result.projectRoot);
   }
@@ -179,6 +183,18 @@ function registerIpcHandlers(ipcMain) {
       return { ok: true, tree };
     } catch (e) {
       return { error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(MCP_FS.OPEN_XCODE_PROJECT, async (_event, payload) => {
+    try {
+      const filePath = String(payload?.path || '').trim();
+      if (!filePath) return { ok: false, error: '缺少 path' };
+      if (!fs.existsSync(filePath)) return { ok: false, error: `路径不存在：${filePath}` };
+      xcodeProject.openXcodeProject(filePath);
+      return { ok: true, path: filePath };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
     }
   });
 

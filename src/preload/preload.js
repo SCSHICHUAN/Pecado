@@ -13,7 +13,8 @@
  *   onVolcArkStreamEvent(callback)     → listen BOTS_STREAM_EVENT { streamId, phase, text?, ... }
  *   handleBotCommand(rawContent)       → invoke HANDLE_BOT_COMMAND
  *   mcpFsDirectoryTree(opts)             → invoke DIRECTORY_TREE
- *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools?, showTree?, treeAscii? }
+ *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools?, showTree?, treeAscii?, xcodeProject? }
+ *   mcpFsOpenXcodeProject(payload)       → invoke OPEN_XCODE_PROJECT { path }
  *   gitGetState(payload?)                → invoke GIT.GET_STATE
  *   gitPull(payload?)                    → invoke GIT.PULL
  *   gitPush(payload?)                    → invoke GIT.PUSH
@@ -45,6 +46,8 @@ try {
     mcpFsDirectoryTree: (opts) => ipcRenderer.invoke(MCP_FS.DIRECTORY_TREE, opts || {}),
     mcpFsOpenProjectRoot: (payload) =>
       ipcRenderer.invoke(MCP_FS.OPEN_PROJECT_ROOT, payload || {}),
+    mcpFsOpenXcodeProject: (payload) =>
+      ipcRenderer.invoke(MCP_FS.OPEN_XCODE_PROJECT, payload || {}),
     mcpFsOpenPath: (payload) => ipcRenderer.invoke(MCP_FS.OPEN_PATH, payload || {}),
     mcpFsReadTextFile: (payload) => ipcRenderer.invoke(MCP_FS.READ_TEXT_FILE, payload || {}),
     onMcpFsProjectChanged: (callback) => {

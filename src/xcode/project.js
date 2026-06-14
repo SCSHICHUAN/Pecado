@@ -4,7 +4,8 @@
  * 【功能】Xcode 工程发现、pbxproj 修改、scheme 查询（node-xcode + xcodebuild -list）
  *   - findXcodeProject：自 projectRoot 向下扫描深度≤4 找首个 .xcodeproj
  *   - findXcodeWorkspace：同上找首个 .xcworkspace（跳过 xcodeproj 内嵌的 project.xcworkspace）
- *   - openXcodeForProjectRoot：优先打开 workspace，否则 .xcodeproj
+ *   - findXcodeForProjectRoot：发现 workspace / .xcodeproj（不打开 Xcode）
+ *   - openXcodeForProjectRoot：find + 在 Xcode 中打开
  *   - pathExistsUnderRoot / toXcodeRelPath：路径是否在 xcodeRoot 内及相对路径
  *   - addFileToProject：按扩展名 .swift/.m/.h 等加入 PBXGroup + PBXBuildFile（Sources/Headers）
  *   - addDirectoryToProject：PBXGroup 递归或单层目录
@@ -15,6 +16,7 @@
  *
  * 【对外能力】
  *   findXcodeProject(projectRoot) → { xcodeProjDir, pbxPath, xcodeRoot, name } | null
+ *   findXcodeForProjectRoot(projectRoot) → { kind, name, path } | null
  *   openXcodeForProjectRoot(projectRoot) → { kind, name, path } | null
  *   pathExistsUnderRoot / toXcodeRelPath
  *   addFileToProject(pbxPath, xcodeRel, absPath) / addDirectoryToProject(pbxPath, xcodeRel)
@@ -110,26 +112,36 @@ function findXcodeWorkspace(projectRoot) {
 }
 
 /**
- * Open Folder 后自动在 Xcode 中打开对应工程（macOS）。
+ * 发现 Open Folder 下的 Xcode 工程（不打开 Xcode）。
  * @param {string} projectRoot
  * @returns {{ kind: 'workspace'|'project', name: string, path: string } | null}
  */
-function openXcodeForProjectRoot(projectRoot) {
+function findXcodeForProjectRoot(projectRoot) {
   if (!IS_DARWIN || !projectRoot) return null;
 
   const workspace = findXcodeWorkspace(projectRoot);
   if (workspace) {
-    openXcodeProject(workspace.workspaceDir);
     return { kind: 'workspace', name: workspace.name, path: workspace.workspaceDir };
   }
 
   const meta = findXcodeProject(projectRoot);
   if (meta) {
-    openXcodeProject(meta.xcodeProjDir);
     return { kind: 'project', name: meta.name, path: meta.xcodeProjDir };
   }
 
   return null;
+}
+
+/**
+ * 在 Xcode 中打开 Open Folder 下的工程（macOS）。
+ * @param {string} projectRoot
+ * @returns {{ kind: 'workspace'|'project', name: string, path: string } | null}
+ */
+function openXcodeForProjectRoot(projectRoot) {
+  const found = findXcodeForProjectRoot(projectRoot);
+  if (!found) return null;
+  openXcodeProject(found.path);
+  return found;
 }
 
 function getMainGroupKey(proj) {
@@ -406,6 +418,7 @@ module.exports = {
   IS_DARWIN,
   findXcodeProject,
   findXcodeWorkspace,
+  findXcodeForProjectRoot,
   openXcodeForProjectRoot,
   addFileToProject,
   addDirectoryToProject,
