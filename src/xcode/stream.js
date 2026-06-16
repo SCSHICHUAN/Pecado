@@ -133,13 +133,22 @@ function registerWriteFileStreamTarget(projectRoot, relPath) {
     }
 
     if (xcodeLiveStream) {
-      projectIo.beginWriteSession(absPath, { preserveExisting: false });
+      const fileEmpty = !fs.existsSync(absPath) || fs.statSync(absPath).size === 0;
+      if (fileEmpty) {
+        projectIo.beginWriteSession(absPath, { preserveExisting: false });
+      } else {
+        xcodeLiveStream = false;
+      }
     }
 
     console.log(
       '[xcode-stream] write_file →',
       absPath,
-      xcodeLiveStream ? (isNew ? '(live stream, new file)' : '(live stream, replace)') : '(skipped)'
+      xcodeLiveStream
+        ? isNew || !fs.existsSync(absPath)
+          ? '(live stream, new/empty → disk)'
+          : '(live stream, empty → disk)'
+        : '(CodX deferred → editor, Cmd+S / 确认写入)'
     );
 
     return {
@@ -147,6 +156,7 @@ function registerWriteFileStreamTarget(projectRoot, relPath) {
       relPath,
       fileStarted: false,
       xcodeLiveStream,
+      codxDeferred: !xcodeLiveStream && !cancelled,
       cancelled: false,
       xcodeIntegrate,
       xcodeMeta,
@@ -159,11 +169,12 @@ function registerWriteFileStreamTarget(projectRoot, relPath) {
 
 /** @param {ReturnType<typeof registerWriteFileStreamTarget>} target */
 function writeDeltaToTarget(target, delta) {
-  if (!target || target.cancelled || !target.xcodeLiveStream || !IS_DARWIN || !delta || !target.absPath) {
-    return;
-  }
+  if (!target || target.cancelled || !delta || !target.absPath) return;
+  if (!target.xcodeLiveStream && !target.codxDeferred) return;
   target.fileStarted = true;
-  projectIo.scheduleWriteDelta(target.absPath, delta);
+  if (target.xcodeLiveStream) {
+    projectIo.scheduleWriteDelta(target.absPath, delta);
+  }
 }
 
 module.exports = {

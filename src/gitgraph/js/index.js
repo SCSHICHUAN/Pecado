@@ -156,12 +156,14 @@
     const chatPanel = $('panel-chat');
     const workflowPanel = $('panel-workflow');
     const gitPanel = $('panel-git');
+    const codxPanel = $('panel-codx');
     gitPanelOpen = view === 'git';
     chatPanelOpen = view === 'chat';
     if (chatPanel) chatPanel.classList.toggle('hidden', view !== 'chat');
     if (workflowPanel) workflowPanel.classList.toggle('hidden', view !== 'workflow');
     if (gitPanel) gitPanel.classList.toggle('hidden', view !== 'git');
-    document.body.classList.remove('app-view-chat', 'app-view-git', 'app-view-workflow');
+    if (codxPanel) codxPanel.classList.add('hidden');
+    document.body.classList.remove('app-view-chat', 'app-view-git', 'app-view-workflow', 'app-view-codx');
     document.body.classList.add(`app-view-${view}`);
     document.querySelectorAll('.app-bottom-tools[data-app-view]').forEach((el) => {
       const active = el.dataset.appView === view;
@@ -175,11 +177,13 @@
     const appToggle = $('git-dock-toggle');
     const bottomBar = document.querySelector('.app-bottom-bar');
     if (!appToggle) return;
+    const onCodx = document.body.classList.contains('app-view-codx');
     const onGit = gitPanelOpen;
-    const onChat = chatPanelOpen;
-    const onWorkflow = !onGit && !onChat;
+    const onChat = chatPanelOpen && !onCodx;
+    const onWorkflow = !onGit && !onChat && !onCodx;
     let pressed = false;
-    if (onGit) pressed = gitBottomDockOpen;
+    if (onCodx) pressed = Boolean(window.__codxDockOpen?.());
+    else if (onGit) pressed = gitBottomDockOpen;
     else if (onChat) pressed = Boolean(window.SkillLogPanel?.isOpen?.());
 
     appToggle.hidden = onWorkflow;
@@ -193,7 +197,10 @@
     appToggle.disabled = onWorkflow;
     appToggle.classList.toggle('is-disabled', onWorkflow);
 
-    if (onGit) {
+    if (onCodx) {
+      appToggle.setAttribute('aria-label', '展开或收起 Pecado / log 面板');
+      appToggle.title = 'Pecado / log';
+    } else if (onGit) {
       appToggle.setAttribute('aria-label', '展开或收起 Git 详情面板');
       appToggle.title = 'Git 详情面板（status / log / pecado）';
     } else if (onChat) {
@@ -206,6 +213,7 @@
   }
 
   window.__syncAppBottomDockToggle = syncBottomDockToggleUi;
+  window.__setMainPanelVisible = setMainPanelVisible;
 
   function setGitBottomDockOpen(open) {
     const mount = $('panel-git');
@@ -221,6 +229,11 @@
 
   /** 窗口最底栏：Pecado 页 → log；Git 页 → status | log | pecado */
   function toggleAppBottomDock() {
+    if (document.body.classList.contains('app-view-codx')) {
+      window.__codxToggleDock?.();
+      syncBottomDockToggleUi();
+      return;
+    }
     if (gitPanelOpen) {
       toggleGitBottomDock();
       return;

@@ -36,6 +36,18 @@ function resolveUnderProject(projectRoot, filePath) {
 }
 
 /**
+ * 工程内相对路径（绝对/相对输入均可）
+ * @param {string} projectRoot
+ * @param {string} filePath
+ * @returns {string}
+ */
+function toProjectRelPath(projectRoot, filePath) {
+  const abs = resolveUnderProject(projectRoot, filePath);
+  const root = path.resolve(String(projectRoot));
+  return path.relative(root, abs).replace(/\\/g, '/');
+}
+
+/**
  * @param {string} relPath
  * @param {{ head?: number, tail?: number }} [opts]
  */
@@ -75,6 +87,7 @@ async function listAllowedDirectories() {
 module.exports = {
   DEFAULT_TREE_EXCLUDES,
   resolveUnderProject,
+  toProjectRelPath,
   readText,
   readDirectoryTree,
   listAllowedDirectories,

@@ -6,6 +6,7 @@
  */
 const projectIo = require('../mcp-filesystem');
 const { IS_DARWIN } = require('../xcode/project');
+const { isCodxToolName } = require('../codX/agent/tools');
 
 /**
  * @param {object} parsedTask
@@ -34,6 +35,15 @@ function route_task(parsedTask) {
         module: 'skill',
         task: parsedTask,
       };
+    case 'codx_tool': {
+      if (!isCodxToolName(parsedTask.name)) {
+        return { error: `DISPATCH：未知 CodX 工具「${parsedTask.name}」` };
+      }
+      return {
+        module: 'codx',
+        task: parsedTask,
+      };
+    }
     case 'mcp_tool': {
       if (!projectIo.getStatus().connected) {
         return { error: 'DISPATCH：MCP 未连接' };

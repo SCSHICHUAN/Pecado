@@ -33,6 +33,7 @@ const { SYSTEM_PROMPT } = require('../prompts/default');
 const { AGENT_SYSTEM_PROMPT } = require('../prompts/agent');
 const { GIT_CHAT_SYSTEM_PROMPT } = require('../prompts/git-chat');
 const { buildDevDocsContextForAi } = require('../../../workflow/skill/agent/context');
+const { buildCodxEditorContextForAi } = require('../../../codX/agent/context');
 
 const CHAT_MODES = Object.freeze({
   PLAIN: 'plain',
@@ -105,6 +106,7 @@ async function selectChatMode(input = {}) {
     payloadMode,
     payloadXcodeStreamPath,
     payloadGitContext,
+    payloadCodxActiveFile,
   } = input;
 
   if (userText != null && String(userText).trim()) {
@@ -118,8 +120,15 @@ async function selectChatMode(input = {}) {
       contextBlock = payloadGitContext || '';
     } else if (projectIo.getStatus().connected) {
       mode = CHAT_MODES.AGENT;
-      xcodeStreamPath = pickXcodeStreamTarget(text);
+      const codxActiveFile = String(payloadCodxActiveFile || '').trim();
+      xcodeStreamPath = pickXcodeStreamTarget(text, codxActiveFile);
       contextBlock = await buildAtMentionContextForAi(text);
+      const codxBlock = buildCodxEditorContextForAi(codxActiveFile);
+      if (codxBlock) {
+        contextBlock = contextBlock.trim()
+          ? `${contextBlock.trim()}\n\n${codxBlock}`
+          : codxBlock;
+      }
     } else {
       contextBlock = await buildProjectContextForAi(text);
       mode = contextBlock.trim() ? CHAT_MODES.CONTEXT : CHAT_MODES.PLAIN;
@@ -157,6 +166,7 @@ function register(ipcMain) {
       payloadMode: payload?.mode,
       payloadXcodeStreamPath: payload?.xcodeStreamPath,
       payloadGitContext: payload?.gitContext,
+      payloadCodxActiveFile: payload?.codxActiveFile,
     });
     if (selected.error) return { error: selected.error };
 

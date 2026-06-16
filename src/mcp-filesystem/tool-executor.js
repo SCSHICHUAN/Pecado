@@ -10,6 +10,7 @@ const projectIo = require('./index');
 const { getMainWindow } = require('./ipc');
 const { confirmCreateOperation, integrateAfterCreate } = require('../xcode/prompt');
 const xcodeProject = require('../xcode/project');
+const { formatWithLineNumbers } = require('../shared/line-numbers');
 
 const IS_DARWIN = process.platform === 'darwin';
 
@@ -65,6 +66,7 @@ function resolveExecHints(task, streamContext = {}) {
     xcodeIntegrate: streamTarget?.xcodeIntegrate,
     xcodeMeta: streamTarget?.xcodeMeta,
     cancelled: streamTarget?.cancelled,
+    codxDeferred: !!streamTarget?.codxDeferred,
     skipPrompt: name === 'write_file' && !!streamTarget,
     streamAbsPath: alreadyStreamedToDisk ? streamTarget?.absPath : null,
   };
@@ -109,6 +111,17 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
     return result;
   }
 
+  if (execHints.codxDeferred && name === 'write_file') {
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `已在 CodX 编辑器生成 ${args.path}，请确认差异后同步到 Xcode。`,
+        },
+      ],
+    };
+  }
+
   const isCreateDir = name === 'create_directory';
   const isWriteFile = name === 'write_file';
   const isNewPath = relPath && !xcodeProject.pathExistsUnderRoot(projectRoot, relPath);
@@ -138,6 +151,10 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
     };
   } else {
     result = await projectIo.callTool(name, args);
+  }
+
+  if ((name === 'read_text_file' || name === 'read_file') && result?.content?.[0]?.text != null) {
+    result.content[0].text = formatWithLineNumbers(result.content[0].text);
   }
 
   if (xcodeIntegrate && xcodeMeta && (isCreateDir || isWriteFile) && relPath) {

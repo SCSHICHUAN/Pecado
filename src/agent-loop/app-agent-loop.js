@@ -21,9 +21,17 @@ const {
   EXECUTE_execute_tool: EXECUTE_dev_doc_tool,
   FEED_tool_result: FEED_dev_doc_tool_result,
 } = require('../workflow/skill/agent/tools');
+const {
+  getCodxTools,
+  EXECUTE_codx_tool,
+  FEED_codx_tool_result,
+  CODX_EDIT_TOOL_NAME,
+  CODX_EDIT_PLAN_TOOL_NAME,
+} = require('../codX/agent/tools');
+const { PECADO_LLM_LINE_END } = require('../shared/codx-edit-plan');
 const { feed_observation, feed_assistant_tool_calls } = require('./context-feeder');
 const { createAgentStreamHooks } = require('./stream-hooks');
-const { planTasksWithWriteGuard, attachSyntheticToolCallsToConv } = require('./write-guard');
+const { planTasksWithWriteGuard, attachSyntheticToolCallsToConv, pathKey } = require('./write-guard');
 const { resolveAbsInProject } = require('../xcode/stream');
 const {
   isCodeWriteTool,
@@ -35,7 +43,7 @@ const { publishToolLog, buildAgentPhaseEntry, emitAgentLog, publishXcodeProgress
 const MAX_TOOL_ROUNDS = 12;
 
 async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
-  uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args });
+  uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
 
   logAgentPhase(uiSink, 'DISPATCH', {
     round: roundNo,
@@ -132,7 +140,8 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
   const xcodeTools = getXcodeTools();
   const devDocTools = getDevDocTools();
-  const allTools = [...mcpTools, ...devDocTools, ...xcodeTools];
+  const codxTools = getCodxTools();
+  const allTools = [...mcpTools, ...devDocTools, ...xcodeTools, ...codxTools];
 
   const projectRoot = projectIo.getStatus().projectRoot;
   const conv = messages.map((m) => ({ ...m }));
@@ -144,6 +153,8 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
   const chatOpts = { apiKey, model, apiMode, endpoint, messages: conv, mcpTools: allTools };
   const diskFreshReadPaths = new Set();
+  /** @type {string | null} plan 已登记、待 codx_edit 的工程相对路径 */
+  let pendingCodxEditPath = null;
 
   try {
     const directXcode = tryParseDirectXcodeTool(loopOpts.userText);
@@ -210,6 +221,16 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       });
 
       if (parsed.finishReason !== 'tool_calls' || !parsed.tasks?.length) {
+        if (pendingCodxEditPath) {
+          conv.push({
+            role: 'user',
+            content:
+              `【系统】${pendingCodxEditPath} 的 codx_edit_plan 尚未完成 codx_edit。` +
+              `你必须调用 codx_edit（path="${pendingCodxEditPath}"），text 流式写入，段末 ${PECADO_LLM_LINE_END}。禁止文字结束。`,
+          });
+          chatOpts.messages = conv;
+          continue;
+        }
         if (parsed.content && String(parsed.content).trim()) {
           return { content: String(parsed.content) };
         }
@@ -222,6 +243,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       const execStreamContext = inferFeed.data.parseContext;
       const roundObservations = [];
       let hadCodeWrite = false;
+      let hadCodxEditStream = false;
       const { tasks: tasksToRun, deferredWrites } = planTasksWithWriteGuard(
         parsed.tasks,
         projectRoot,
@@ -230,7 +252,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       attachSyntheticToolCallsToConv(conv, tasksToRun);
 
       for (const parsedTask of tasksToRun) {
-        uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args });
+        uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
 
         logAgentPhase(uiSink,'DISPATCH', {
           round: roundNo,
@@ -282,6 +304,23 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
                 }
               },
             });
+          } else if (routed.module === 'codx') {
+            execRaw = await EXECUTE_codx_tool(routed, { streamContext: execStreamContext });
+            if (execRaw?.codxPlan?.path && execRaw.codxPlan.edits) {
+              pendingCodxEditPath = String(execRaw.codxPlan.path).trim();
+              uiSink.onCodxEditPlan?.({
+                path: execRaw.codxPlan.path,
+                edits: execRaw.codxPlan.edits,
+              });
+            }
+            if (parsedTask.name === CODX_EDIT_TOOL_NAME) {
+              const target = execStreamContext?.codxEditTargets?.get(parsedTask.index ?? 0);
+              if (target?.streamed || (target?.textLen ?? 0) > 0) {
+                hadCodxEditStream = true;
+                pendingCodxEditPath = null;
+              }
+            }
+            if (isCodeWriteTool(parsedTask.name)) hadCodeWrite = true;
           } else {
             execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
             if (isCodeWriteTool(parsedTask.name)) hadCodeWrite = true;
@@ -306,7 +345,9 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
             ? FEED_xcode_tool_result(execRaw)
             : routed.module === 'skill'
               ? FEED_dev_doc_tool_result(execRaw)
-              : FEED_tool_result(execRaw);
+              : routed.module === 'codx'
+                ? FEED_codx_tool_result(execRaw)
+                : FEED_tool_result(execRaw);
 
         logAgentPhase(uiSink, 'FEED', {
           round: roundNo,
@@ -319,25 +360,42 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
         feed_observation(conv, parsedTask, toolFeed);
         roundObservations.push(toolFeed.observation);
 
+        const observation = String(toolFeed?.observation || '').trim();
         logAgentPhase(uiSink, 'FEED', {
           round: roundNo,
           status: 'done',
           method: parsedTask.name,
           module: routed.module,
-          note: 'observation 已写入',
+          note: observation ? '' : 'observation 已写入',
+          observation,
         });
 
         if (routed.module !== 'skill') {
           publishToolLog(parsedTask, routed, execRaw, toolFeed);
         }
 
-        if (parsedTask.name === 'read_file' && !execRaw?.isError) {
+        if (
+          (parsedTask.name === 'read_text_file' || parsedTask.name === 'read_file') &&
+          !execRaw?.isError
+        ) {
           const readPath = parsedTask.args?.path != null ? String(parsedTask.args.path).trim() : '';
-          if (readPath) diskFreshReadPaths.add(readPath);
+          if (readPath) diskFreshReadPaths.add(pathKey(projectRoot, readPath));
         }
       }
 
       chatOpts.messages = conv;
+
+      const calledCodxEdit = tasksToRun.some((t) => t.name === CODX_EDIT_TOOL_NAME);
+      if (pendingCodxEditPath && !hadCodxEditStream && !calledCodxEdit) {
+        conv.push({
+          role: 'user',
+          content:
+            `【系统】已对 ${pendingCodxEditPath} 完成 codx_edit_plan。你必须在本轮立即调用 codx_edit，` +
+            `path 为「${pendingCodxEditPath}」，text 从大行号到小行号流式写入，每段末尾 ${PECADO_LLM_LINE_END}。` +
+            '禁止仅用文字回复、禁止再次 plan。',
+        });
+        chatOpts.messages = conv;
+      }
 
       if (deferredWrites.length) {
         continue;

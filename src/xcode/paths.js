@@ -34,13 +34,25 @@ function extractRequestedPaths(userText) {
   return paths;
 }
 
-/** 从用户输入提取 Xcode 流式写入目标（.swift / .m 等） */
-function pickXcodeStreamTarget(userText) {
+/** 用户是否指「当前/这个/选中的文件」（CodX 编辑器激活 tab） */
+function userRefersToCurrentFile(userText) {
+  const s = String(userText || '');
+  return (
+    /(?:在|对|向|于)?(?:当前|这个|此|该|选中(?:中)?|打开(?:着)?|正在编辑(?:的)?)(?:的)?(?:文件|标签|tab)/i.test(s) ||
+    /(?:current|this)\s+file/i.test(s) ||
+    /在当前文件/i.test(s)
+  );
+}
+
+/** 从用户输入提取 Xcode 流式写入目标（.swift / .m 等）；无显式路径时可回落 CodX 当前文件 */
+function pickXcodeStreamTarget(userText, codxActiveFile) {
   const codeExt = /\.(swift|m|mm|h|hpp|c|cpp|cc)$/i;
   for (const p of extractRequestedPaths(userText)) {
     if (codeExt.test(p)) return p;
   }
+  const active = String(codxActiveFile || '').trim();
+  if (active && userRefersToCurrentFile(userText)) return active;
   return null;
 }
 
-module.exports = { extractRequestedPaths, pickXcodeStreamTarget, normalizeMentionPath };
+module.exports = { extractRequestedPaths, pickXcodeStreamTarget, normalizeMentionPath, userRefersToCurrentFile };

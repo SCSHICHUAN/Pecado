@@ -18,7 +18,7 @@
  *
  * 【调用方】package.json `"main": "src/main/js/main.js"`
  */
-const { app, BrowserWindow, screen, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -45,6 +45,8 @@ const mcpFilesystemIpc = require('../../mcp-filesystem/ipc');
 const gitgraph = require('../../gitgraph/js/register');
 const workflowRegister = require('../../workflow/register');
 const settings = require('../../settings/js/register');
+const codxIpc = require('../../codX/ipc');
+const windowState = require('./window-state');
 
 loadEnvFromSearchRoots(getDefaultSearchRoots());
 
@@ -60,15 +62,8 @@ function resolveAppIcon() {
 let mainWindowRef = null;
 
 function createWindow() {
-  const display = screen.getPrimaryDisplay();
-  const { bounds, workArea } = display;
-  // 宽度按整屏 bounds 取 2/3；高度取可用工作区 workArea 的 8/10。再限制在 workArea 内，避免超出可视区
-  let winWidth = Math.floor((bounds.width * 2) / 3);
-  let winHeight = Math.floor((workArea.height * 8) / 10);
-  winWidth = Math.max(480, Math.min(winWidth, workArea.width));
-  winHeight = Math.max(400, Math.min(winHeight, workArea.height));
-  const x = Math.floor(workArea.x + (workArea.width - winWidth) / 2);
-  const y = Math.floor(workArea.y + (workArea.height - winHeight) / 2);
+  const { bounds, isMaximized } = windowState.resolveInitialWindowOptions();
+  const { x, y, width: winWidth, height: winHeight } = bounds;
 
   const mainWindow = new BrowserWindow({
     title: 'Pecado',
@@ -87,14 +82,16 @@ function createWindow() {
   });
 
   mainWindowRef = mainWindow;
+  windowState.attachWindowStatePersistence(mainWindow);
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.setBounds({ x, y, width: winWidth, height: winHeight });
+    if (isMaximized) mainWindow.maximize();
     mainWindow.show();
   });
 
   console.log(
-    `[window] workArea ${workArea.width}x${workArea.height} @ (${workArea.x},${workArea.y}) → open ${winWidth}x${winHeight} @ (${x},${y})`
+    `[window] restore ${winWidth}x${winHeight} @ (${x},${y})${isMaximized ? ' maximized' : ''}`
   );
 
   mainWindow.loadFile(RENDERER_HTML);
@@ -143,6 +140,7 @@ app.whenReady().then(async () => {
   mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
   gitgraph.register(ipcMain);
   workflowRegister.register(ipcMain, () => mainWindowRef);
+  codxIpc.register(ipcMain);
   settings.setupApplicationMenu(() => mainWindowRef);
 
   try {

@@ -146,7 +146,7 @@ function buildAgentPhaseEntry(phase, opts = {}) {
     method: String(opts.method || '').trim(),
     methodLabel: String(opts.methodLabel || opts.method || '').trim(),
     detail,
-    output: String(opts.note || '').trim(),
+    output: String(opts.observation || opts.note || '').trim(),
     isError: Boolean(opts.isError),
   };
 }

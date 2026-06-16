@@ -24,7 +24,7 @@
  */
 const { contextBridge, ipcRenderer } = require('electron');
 const { markdownToHtml } = require('../markdown/markdown-html');
-const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW, SKILL } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW, SKILL, CODX } = require('../shared/ipc-channels');
 
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
@@ -46,10 +46,16 @@ try {
     mcpFsDirectoryTree: (opts) => ipcRenderer.invoke(MCP_FS.DIRECTORY_TREE, opts || {}),
     mcpFsOpenProjectRoot: (payload) =>
       ipcRenderer.invoke(MCP_FS.OPEN_PROJECT_ROOT, payload || {}),
+    mcpFsWriteTextFile: (payload) =>
+      ipcRenderer.invoke(MCP_FS.WRITE_TEXT_FILE, payload || {}),
+    codxCheckSyntax: (payload) => ipcRenderer.invoke(CODX.CHECK_SYNTAX, payload || {}),
+    getAppSettings: () => ipcRenderer.invoke(SETTINGS.GET),
+    saveAppSettings: (payload) => ipcRenderer.invoke(SETTINGS.SAVE, payload || {}),
     mcpFsOpenXcodeProject: (payload) =>
       ipcRenderer.invoke(MCP_FS.OPEN_XCODE_PROJECT, payload || {}),
     mcpFsOpenPath: (payload) => ipcRenderer.invoke(MCP_FS.OPEN_PATH, payload || {}),
     mcpFsReadTextFile: (payload) => ipcRenderer.invoke(MCP_FS.READ_TEXT_FILE, payload || {}),
+    mcpFsPreviewFile: (payload) => ipcRenderer.invoke(MCP_FS.PREVIEW_FILE, payload || {}),
     onMcpFsProjectChanged: (callback) => {
       const ch = MCP_FS.PROJECT_CHANGED;
       const fn = (_evt, payload) => {

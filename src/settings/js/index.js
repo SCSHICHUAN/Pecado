@@ -26,6 +26,16 @@ const apiModeEl = document.getElementById('api-mode');
 const modelEl = document.getElementById('model');
 const modelHintEl = document.getElementById('model-hint');
 const gitGraphLimitEl = document.getElementById('git-graph-limit');
+const codxEditorThemeEl = document.getElementById('codx-editor-theme');
+const codxEditorLineHeightEl = document.getElementById('codx-editor-line-height');
+const codxEditorLetterSpacingEl = document.getElementById('codx-editor-letter-spacing');
+const codxEditorSpaceWidthEl = document.getElementById('codx-editor-space-width');
+const codxEditorTabSizeEl = document.getElementById('codx-editor-tab-size');
+const codxEditorFontSizeEl = document.getElementById('codx-editor-font-size');
+const codxEditorLineNumbersEl = document.getElementById('codx-editor-line-numbers');
+const codxEditorLineNumberMinCharsEl = document.getElementById('codx-editor-line-number-min-chars');
+const codxEditorLineNumberFontSizeEl = document.getElementById('codx-editor-line-number-font-size');
+const codxEditorLineNumberFontWeightEl = document.getElementById('codx-editor-line-number-font-weight');
 const configDirBtn = document.getElementById('config-dir-btn');
 
 let activePanel = 'volc';
@@ -112,6 +122,22 @@ function readFormValues() {
     volcApiMode: apiModeEl ? apiModeEl.value : 'coding_plan',
     volcArkModel: modelEl.value.trim(),
     gitGraphCommitLimit: gitGraphLimitEl ? gitGraphLimitEl.value : '',
+    codxEditorTheme: codxEditorThemeEl ? codxEditorThemeEl.value : 'pecado-dark',
+    codxEditorLineHeight: codxEditorLineHeightEl ? codxEditorLineHeightEl.value : '0',
+    codxEditorLetterSpacing: codxEditorLetterSpacingEl ? codxEditorLetterSpacingEl.value : '0',
+    codxEditorSpaceWidth: codxEditorSpaceWidthEl ? codxEditorSpaceWidthEl.value : '0',
+    codxEditorTabSize: codxEditorTabSizeEl ? codxEditorTabSizeEl.value : '2',
+    codxEditorFontSize: codxEditorFontSizeEl ? codxEditorFontSizeEl.value : '0',
+    codxEditorLineNumbers: codxEditorLineNumbersEl ? codxEditorLineNumbersEl.value : 'on',
+    codxEditorLineNumberMinChars: codxEditorLineNumberMinCharsEl
+      ? codxEditorLineNumberMinCharsEl.value
+      : '3',
+    codxEditorLineNumberFontSize: codxEditorLineNumberFontSizeEl
+      ? codxEditorLineNumberFontSizeEl.value
+      : '0',
+    codxEditorLineNumberFontWeight: codxEditorLineNumberFontWeightEl
+      ? codxEditorLineNumberFontWeightEl.value
+      : '0',
   };
 }
 
@@ -132,6 +158,56 @@ function applyConfig(cfg) {
       gitGraphLimitEl.value = limit;
     } else {
       gitGraphLimitEl.value = '500';
+    }
+  }
+  if (codxEditorThemeEl && cfg.codxEditorTheme) {
+    const theme = String(cfg.codxEditorTheme);
+    if ([...codxEditorThemeEl.options].some((o) => o.value === theme)) {
+      codxEditorThemeEl.value = theme;
+    } else {
+      codxEditorThemeEl.value = 'pecado-dark';
+    }
+  }
+  if (codxEditorLineHeightEl && cfg.codxEditorLineHeight != null) {
+    codxEditorLineHeightEl.value = String(cfg.codxEditorLineHeight);
+  }
+  if (codxEditorLetterSpacingEl && cfg.codxEditorLetterSpacing != null) {
+    codxEditorLetterSpacingEl.value = String(cfg.codxEditorLetterSpacing);
+  }
+  if (codxEditorSpaceWidthEl && cfg.codxEditorSpaceWidth != null) {
+    codxEditorSpaceWidthEl.value = String(cfg.codxEditorSpaceWidth);
+  }
+  if (codxEditorTabSizeEl && cfg.codxEditorTabSize != null) {
+    const tab = String(cfg.codxEditorTabSize);
+    if ([...codxEditorTabSizeEl.options].some((o) => o.value === tab)) {
+      codxEditorTabSizeEl.value = tab;
+    } else {
+      codxEditorTabSizeEl.value = '2';
+    }
+  }
+  if (codxEditorFontSizeEl && cfg.codxEditorFontSize != null) {
+    codxEditorFontSizeEl.value = String(cfg.codxEditorFontSize);
+  }
+  if (codxEditorLineNumbersEl && cfg.codxEditorLineNumbers) {
+    const mode = String(cfg.codxEditorLineNumbers);
+    if ([...codxEditorLineNumbersEl.options].some((o) => o.value === mode)) {
+      codxEditorLineNumbersEl.value = mode;
+    } else {
+      codxEditorLineNumbersEl.value = 'on';
+    }
+  }
+  if (codxEditorLineNumberMinCharsEl && cfg.codxEditorLineNumberMinChars != null) {
+    codxEditorLineNumberMinCharsEl.value = String(cfg.codxEditorLineNumberMinChars);
+  }
+  if (codxEditorLineNumberFontSizeEl && cfg.codxEditorLineNumberFontSize != null) {
+    codxEditorLineNumberFontSizeEl.value = String(cfg.codxEditorLineNumberFontSize);
+  }
+  if (codxEditorLineNumberFontWeightEl && cfg.codxEditorLineNumberFontWeight != null) {
+    const weight = String(cfg.codxEditorLineNumberFontWeight);
+    if ([...codxEditorLineNumberFontWeightEl.options].some((o) => o.value === weight)) {
+      codxEditorLineNumberFontWeightEl.value = weight;
+    } else {
+      codxEditorLineNumberFontWeightEl.value = '0';
     }
   }
   showConfigDir(cfg.configDir || '');

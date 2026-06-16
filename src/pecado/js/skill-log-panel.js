@@ -954,6 +954,7 @@
 
     const stick = shouldAutoScrollLog();
     logEl.appendChild(buildLogEntry(entry));
+    if (window.CodX?.isActive?.()) window.CodXLog?.append?.(entry);
     if (stick) scrollLogToBottom();
     notifyTurnExec(entry);
   }

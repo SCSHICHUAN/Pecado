@@ -8,7 +8,13 @@ const { registerWriteFileStreamTarget, writeDeltaToTarget } = require('../xcode/
 
 /**
  * @param {{
- *   uiSink?: { onTextDelta?: Function, onTool?: Function, onToolStream?: Function },
+ *   uiSink?: {
+ *     onTextDelta?: Function,
+ *     onTool?: Function,
+ *     onToolStream?: Function,
+ *     onWriteFileBegin?: Function,
+ *     onCodxEditBegin?: Function,
+ *   },
  *   projectRoot?: string,
  *   xcodeAbsPath?: string | null,
  * }} opts
@@ -17,9 +23,12 @@ function createAgentStreamHooks(opts = {}) {
   const { uiSink, projectRoot = '' } = opts;
   /** @type {Map<number, object>} */
   const writeTargets = new Map();
+  /** @type {Map<number, object>} */
+  const codxEditTargets = new Map();
 
   const hooks = {
     writeTargets,
+    codxEditTargets,
     onTextDelta(text) {
       uiSink?.onTextDelta?.(text);
     },
@@ -29,6 +38,13 @@ function createAgentStreamHooks(opts = {}) {
     onWriteFilePath(index, relPath) {
       const target = registerWriteFileStreamTarget(projectRoot, relPath);
       if (target) writeTargets.set(index, target);
+      if (target && !target.cancelled && uiSink?.onWriteFileBegin) {
+        uiSink.onWriteFileBegin({
+          path: relPath,
+          xcodeLiveStream: !!target.xcodeLiveStream,
+          codxDeferred: !!target.codxDeferred,
+        });
+      }
     },
     onWriteFileContentDelta(index, delta, relPath) {
       const target = writeTargets.get(index);
@@ -37,10 +53,29 @@ function createAgentStreamHooks(opts = {}) {
         uiSink.onToolStream?.({ name: 'write_file', path: relPath, text: delta });
       }
     },
+    onCodxEditPath(index, relPath) {
+      const target = {
+        relPath,
+        streamed: false,
+        textLen: 0,
+      };
+      codxEditTargets.set(index, target);
+      uiSink?.onCodxEditBegin?.({ index, path: relPath });
+    },
+    onCodxEditTextDelta(index, delta, relPath) {
+      const target = codxEditTargets.get(index);
+      if (target) {
+        target.streamed = true;
+        target.textLen = (target.textLen || 0) + String(delta || '').length;
+      }
+      if (delta && uiSink) {
+        uiSink.onToolStream?.({ name: 'codx_edit', index, path: relPath, text: delta });
+      }
+    },
     async onRoundEnd() {},
   };
 
-  return { hooks, streamContext: { writeTargets } };
+  return { hooks, streamContext: { writeTargets, codxEditTargets } };
 }
 
 module.exports = { createAgentStreamHooks };

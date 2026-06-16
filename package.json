@@ -35,6 +35,7 @@
     "@modelcontextprotocol/server-filesystem": "^2026.1.14",
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
+    "monaco-editor": "^0.55.1",
     "xcode": "^3.0.1"
   }
 }

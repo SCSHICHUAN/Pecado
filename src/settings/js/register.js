@@ -75,13 +75,38 @@ function openSettings() {
 function register(ipcMain, getMainWindowFn) {
   ipcMain.handle(SETTINGS.GET, async () => {
     try {
-      const { apiKey, model, volcApiMode, gitGraphCommitLimit } = readUserVolcConfig();
+      const {
+        apiKey,
+        model,
+        volcApiMode,
+        gitGraphCommitLimit,
+        codxEditorTheme,
+        codxEditorLineHeight,
+        codxEditorLetterSpacing,
+        codxEditorSpaceWidth,
+        codxEditorTabSize,
+        codxEditorFontSize,
+        codxEditorLineNumbers,
+        codxEditorLineNumberMinChars,
+        codxEditorLineNumberFontSize,
+        codxEditorLineNumberFontWeight,
+      } = readUserVolcConfig();
       return {
         ok: true,
         volcArkApiKey: apiKey,
         volcArkModel: model,
         volcApiMode,
         gitGraphCommitLimit,
+        codxEditorTheme,
+        codxEditorLineHeight,
+        codxEditorLetterSpacing,
+        codxEditorSpaceWidth,
+        codxEditorTabSize,
+        codxEditorFontSize,
+        codxEditorLineNumbers,
+        codxEditorLineNumberMinChars,
+        codxEditorLineNumberFontSize,
+        codxEditorLineNumberFontWeight,
         configPath: getUserVolcConfigPath(),
         configDir: getUserConfigDir(),
       };
@@ -99,6 +124,16 @@ function register(ipcMain, getMainWindowFn) {
       if (mainWin && !mainWin.isDestroyed()) {
         mainWin.webContents.send(SETTINGS.CONFIG_CHANGED, {
           gitGraphCommitLimit: saved.gitGraphCommitLimit,
+          codxEditorTheme: saved.codxEditorTheme,
+          codxEditorLineHeight: saved.codxEditorLineHeight,
+          codxEditorLetterSpacing: saved.codxEditorLetterSpacing,
+          codxEditorSpaceWidth: saved.codxEditorSpaceWidth,
+          codxEditorTabSize: saved.codxEditorTabSize,
+          codxEditorFontSize: saved.codxEditorFontSize,
+          codxEditorLineNumbers: saved.codxEditorLineNumbers,
+          codxEditorLineNumberMinChars: saved.codxEditorLineNumberMinChars,
+          codxEditorLineNumberFontSize: saved.codxEditorLineNumberFontSize,
+          codxEditorLineNumberFontWeight: saved.codxEditorLineNumberFontWeight,
         });
       }
       return { ok: true, ...saved };

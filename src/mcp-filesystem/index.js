@@ -46,4 +46,5 @@ module.exports = {
   writeWholeFileToDisk: write.writeWholeFileStreaming,
 
   resolveUnderProject: read.resolveUnderProject,
+  toProjectRelPath: read.toProjectRelPath,
 };

@@ -7,14 +7,15 @@
  * 【出口】FEED_infer_round(inferRaw)
  */
 const { streamChat } = require('./stream');
-const { createWriteFileArgsStreamer } = require('./command-parser');
+const { createWriteFileArgsStreamer, createCodxEditArgsStreamer } = require('./command-parser');
 
 /**
  * @typedef {object} LlmStreamHooks
  * @property {(text: string) => void} [onTextDelta]
  * @property {(info: { name: string, streaming?: boolean }) => void} [onTool]
  * @property {(index: number, relPath: string) => void} [onWriteFilePath]
- * @property {(index: number, delta: string, relPath: string) => void} [onWriteFileContentDelta]
+ * @property {(index: number, relPath: string) => void} [onCodxEditPath]
+ * @property {(index: number, delta: string, relPath: string) => void} [onCodxEditTextDelta]
  * @property {() => void | Promise<void>} [onRoundEnd]
  */
 
@@ -25,8 +26,12 @@ const { createWriteFileArgsStreamer } = require('./command-parser');
 async function EXECUTE_call_llm(chatOpts, streamHooks = {}) {
   /** @type {Map<number, ReturnType<typeof createWriteFileArgsStreamer>>} */
   const writeParsers = new Map();
+  /** @type {Map<number, ReturnType<typeof createCodxEditArgsStreamer>>} */
+  const codxEditParsers = new Map();
   /** @type {Set<number>} */
   const writeSeeded = new Set();
+  /** @type {Set<number>} */
+  const codxEditSeeded = new Set();
 
   function ensureWriteParser(index) {
     if (writeParsers.has(index)) return writeParsers.get(index);
@@ -36,6 +41,16 @@ async function EXECUTE_call_llm(chatOpts, streamHooks = {}) {
         streamHooks.onWriteFileContentDelta?.(index, delta, relPath),
     });
     writeParsers.set(index, parser);
+    return parser;
+  }
+
+  function ensureCodxEditParser(index) {
+    if (codxEditParsers.has(index)) return codxEditParsers.get(index);
+    const parser = createCodxEditArgsStreamer({
+      onPath: (p) => streamHooks.onCodxEditPath?.(index, p),
+      onTextDelta: (delta, relPath) => streamHooks.onCodxEditTextDelta?.(index, delta, relPath),
+    });
+    codxEditParsers.set(index, parser);
     return parser;
   }
 
@@ -59,6 +74,15 @@ async function EXECUTE_call_llm(chatOpts, streamHooks = {}) {
         } else if (ev.argumentsFragment) {
           parser.push(ev.argumentsFragment);
         }
+      } else if (name === 'codx_edit') {
+        const parser = ensureCodxEditParser(ev.index);
+        if (!codxEditSeeded.has(ev.index)) {
+          const args = ev.accumulated?.function?.arguments;
+          if (args) parser.push(args);
+          codxEditSeeded.add(ev.index);
+        } else if (ev.argumentsFragment) {
+          parser.push(ev.argumentsFragment);
+        }
       } else if (name) {
         streamHooks.onTool?.({ name, streaming: true });
       }
@@ -70,7 +94,7 @@ async function EXECUTE_call_llm(chatOpts, streamHooks = {}) {
         finishReason: ev.finishReason,
         content: ev.content,
         toolCalls: ev.toolCalls,
-        parseContext: { writeParsers },
+        parseContext: { writeParsers, codxEditParsers },
       };
     }
   }
@@ -97,7 +121,9 @@ function FEED_infer_round(inferRound, streamContext = {}) {
       ...inferRound,
       parseContext: {
         writeParsers: inferRound.parseContext?.writeParsers || new Map(),
+        codxEditParsers: inferRound.parseContext?.codxEditParsers || new Map(),
         writeTargets: streamContext.writeTargets || new Map(),
+        codxEditTargets: streamContext.codxEditTargets || new Map(),
       },
     },
   };

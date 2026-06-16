@@ -80,6 +80,39 @@ const DEFAULT_GIT_GRAPH_COMMIT_LIMIT = 500;
 const GIT_GRAPH_COMMIT_LIMIT_OPTIONS = [100, 200, 500, 1000, 1500, 5000];
 const MIN_GIT_GRAPH_COMMIT_LIMIT = 100;
 const MAX_GIT_GRAPH_COMMIT_LIMIT = 5000;
+const CODX_EDITOR_THEME_OPTIONS = [
+  'pecado-dark',
+  'cursor-dark',
+  'xcode-dark',
+  'xcode-light',
+  'vs-dark',
+  'vs',
+];
+const DEFAULT_CODX_EDITOR_THEME = 'pecado-dark';
+const DEFAULT_CODX_EDITOR_LINE_HEIGHT = 0;
+const DEFAULT_CODX_EDITOR_LETTER_SPACING = 0;
+const DEFAULT_CODX_EDITOR_SPACE_WIDTH = 0;
+const CODX_EDITOR_TAB_SIZE_OPTIONS = [2, 4, 8];
+const DEFAULT_CODX_EDITOR_TAB_SIZE = 2;
+const DEFAULT_CODX_EDITOR_FONT_SIZE = 0;
+const MIN_CODX_EDITOR_FONT_SIZE = 8;
+const MAX_CODX_EDITOR_FONT_SIZE = 32;
+const CODX_EDITOR_LINE_NUMBER_MODES = ['on', 'off', 'relative'];
+const DEFAULT_CODX_EDITOR_LINE_NUMBERS = 'on';
+const DEFAULT_CODX_EDITOR_LINE_NUMBER_MIN_CHARS = 3;
+const MIN_CODX_EDITOR_LINE_NUMBER_MIN_CHARS = 2;
+const MAX_CODX_EDITOR_LINE_NUMBER_MIN_CHARS = 6;
+const DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_SIZE = 0;
+const MIN_CODX_EDITOR_LINE_NUMBER_FONT_SIZE = 8;
+const MAX_CODX_EDITOR_LINE_NUMBER_FONT_SIZE = 24;
+const CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT_OPTIONS = [0, 300, 400, 500, 600, 700];
+const DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT = 0;
+const MIN_CODX_EDITOR_LINE_HEIGHT = 0;
+const MAX_CODX_EDITOR_LINE_HEIGHT = 48;
+const MIN_CODX_EDITOR_LETTER_SPACING = -2;
+const MAX_CODX_EDITOR_LETTER_SPACING = 10;
+const MIN_CODX_EDITOR_SPACE_WIDTH = 0;
+const MAX_CODX_EDITOR_SPACE_WIDTH = 24;
 
 function getUserVolcConfigPath() {
   return path.join(app.getPath('userData'), 'volc-user-config.json');
@@ -117,6 +150,79 @@ function normalizeGitGraphCommitLimit(value) {
   return best;
 }
 
+function normalizeCodxEditorTheme(value) {
+  const key = String(value || '').trim();
+  return CODX_EDITOR_THEME_OPTIONS.includes(key) ? key : DEFAULT_CODX_EDITOR_THEME;
+}
+
+function clampCodxNumber(value, min, max, fallback) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function normalizeCodxEditorLineHeight(value) {
+  return clampCodxNumber(value, MIN_CODX_EDITOR_LINE_HEIGHT, MAX_CODX_EDITOR_LINE_HEIGHT, DEFAULT_CODX_EDITOR_LINE_HEIGHT);
+}
+
+function normalizeCodxEditorLetterSpacing(value) {
+  return clampCodxNumber(
+    value,
+    MIN_CODX_EDITOR_LETTER_SPACING,
+    MAX_CODX_EDITOR_LETTER_SPACING,
+    DEFAULT_CODX_EDITOR_LETTER_SPACING
+  );
+}
+
+function normalizeCodxEditorSpaceWidth(value) {
+  return clampCodxNumber(
+    value,
+    MIN_CODX_EDITOR_SPACE_WIDTH,
+    MAX_CODX_EDITOR_SPACE_WIDTH,
+    DEFAULT_CODX_EDITOR_SPACE_WIDTH
+  );
+}
+
+function normalizeCodxEditorTabSize(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  return CODX_EDITOR_TAB_SIZE_OPTIONS.includes(n) ? n : DEFAULT_CODX_EDITOR_TAB_SIZE;
+}
+
+function normalizeCodxEditorFontSize(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n) || n === 0) return DEFAULT_CODX_EDITOR_FONT_SIZE;
+  return Math.min(MAX_CODX_EDITOR_FONT_SIZE, Math.max(MIN_CODX_EDITOR_FONT_SIZE, n));
+}
+
+function normalizeCodxEditorLineNumbers(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return CODX_EDITOR_LINE_NUMBER_MODES.includes(v) ? v : DEFAULT_CODX_EDITOR_LINE_NUMBERS;
+}
+
+function normalizeCodxEditorLineNumberMinChars(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n)) return DEFAULT_CODX_EDITOR_LINE_NUMBER_MIN_CHARS;
+  return Math.min(
+    MAX_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
+    Math.max(MIN_CODX_EDITOR_LINE_NUMBER_MIN_CHARS, n)
+  );
+}
+
+function normalizeCodxEditorLineNumberFontSize(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n) || n === 0) return DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_SIZE;
+  return Math.min(
+    MAX_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
+    Math.max(MIN_CODX_EDITOR_LINE_NUMBER_FONT_SIZE, n)
+  );
+}
+
+function normalizeCodxEditorLineNumberFontWeight(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n) || n === 0) return DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT;
+  return CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT_OPTIONS.includes(n) ? n : DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT;
+}
+
 function readUserVolcConfig() {
   try {
     if (!app.isReady()) {
@@ -125,6 +231,16 @@ function readUserVolcConfig() {
         model: '',
         volcApiMode: VOLC_API_MODES.CODING_PLAN,
         gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
+        codxEditorTheme: DEFAULT_CODX_EDITOR_THEME,
+        codxEditorLineHeight: DEFAULT_CODX_EDITOR_LINE_HEIGHT,
+        codxEditorLetterSpacing: DEFAULT_CODX_EDITOR_LETTER_SPACING,
+        codxEditorSpaceWidth: DEFAULT_CODX_EDITOR_SPACE_WIDTH,
+        codxEditorTabSize: DEFAULT_CODX_EDITOR_TAB_SIZE,
+        codxEditorFontSize: DEFAULT_CODX_EDITOR_FONT_SIZE,
+        codxEditorLineNumbers: DEFAULT_CODX_EDITOR_LINE_NUMBERS,
+        codxEditorLineNumberMinChars: DEFAULT_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
+        codxEditorLineNumberFontSize: DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
+        codxEditorLineNumberFontWeight: DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT,
       };
     }
     const j = readRawUserConfigFile();
@@ -135,6 +251,22 @@ function readUserVolcConfig() {
       model,
       volcApiMode,
       gitGraphCommitLimit: normalizeGitGraphCommitLimit(j.gitGraphCommitLimit),
+      codxEditorTheme: normalizeCodxEditorTheme(j.codxEditorTheme),
+      codxEditorLineHeight: normalizeCodxEditorLineHeight(j.codxEditorLineHeight),
+      codxEditorLetterSpacing: normalizeCodxEditorLetterSpacing(j.codxEditorLetterSpacing),
+      codxEditorSpaceWidth: normalizeCodxEditorSpaceWidth(j.codxEditorSpaceWidth),
+      codxEditorTabSize: normalizeCodxEditorTabSize(j.codxEditorTabSize),
+      codxEditorFontSize: normalizeCodxEditorFontSize(j.codxEditorFontSize),
+      codxEditorLineNumbers: normalizeCodxEditorLineNumbers(j.codxEditorLineNumbers),
+      codxEditorLineNumberMinChars: normalizeCodxEditorLineNumberMinChars(
+        j.codxEditorLineNumberMinChars
+      ),
+      codxEditorLineNumberFontSize: normalizeCodxEditorLineNumberFontSize(
+        j.codxEditorLineNumberFontSize
+      ),
+      codxEditorLineNumberFontWeight: normalizeCodxEditorLineNumberFontWeight(
+        j.codxEditorLineNumberFontWeight
+      ),
     };
   } catch {
     return {
@@ -142,6 +274,16 @@ function readUserVolcConfig() {
       model: '',
       volcApiMode: VOLC_API_MODES.CODING_PLAN,
       gitGraphCommitLimit: DEFAULT_GIT_GRAPH_COMMIT_LIMIT,
+      codxEditorTheme: DEFAULT_CODX_EDITOR_THEME,
+      codxEditorLineHeight: DEFAULT_CODX_EDITOR_LINE_HEIGHT,
+      codxEditorLetterSpacing: DEFAULT_CODX_EDITOR_LETTER_SPACING,
+      codxEditorSpaceWidth: DEFAULT_CODX_EDITOR_SPACE_WIDTH,
+      codxEditorTabSize: DEFAULT_CODX_EDITOR_TAB_SIZE,
+      codxEditorFontSize: DEFAULT_CODX_EDITOR_FONT_SIZE,
+      codxEditorLineNumbers: DEFAULT_CODX_EDITOR_LINE_NUMBERS,
+      codxEditorLineNumberMinChars: DEFAULT_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
+      codxEditorLineNumberFontSize: DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
+      codxEditorLineNumberFontWeight: DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT,
     };
   }
 }
@@ -167,6 +309,46 @@ function writeUserVolcConfig(payload) {
     gitGraphCommitLimit: normalizeGitGraphCommitLimit(
       incoming.gitGraphCommitLimit != null ? incoming.gitGraphCommitLimit : existing.gitGraphCommitLimit
     ),
+    codxEditorTheme: normalizeCodxEditorTheme(
+      incoming.codxEditorTheme != null ? incoming.codxEditorTheme : existing.codxEditorTheme
+    ),
+    codxEditorLineHeight: normalizeCodxEditorLineHeight(
+      incoming.codxEditorLineHeight != null ? incoming.codxEditorLineHeight : existing.codxEditorLineHeight
+    ),
+    codxEditorLetterSpacing: normalizeCodxEditorLetterSpacing(
+      incoming.codxEditorLetterSpacing != null
+        ? incoming.codxEditorLetterSpacing
+        : existing.codxEditorLetterSpacing
+    ),
+    codxEditorSpaceWidth: normalizeCodxEditorSpaceWidth(
+      incoming.codxEditorSpaceWidth != null ? incoming.codxEditorSpaceWidth : existing.codxEditorSpaceWidth
+    ),
+    codxEditorTabSize: normalizeCodxEditorTabSize(
+      incoming.codxEditorTabSize != null ? incoming.codxEditorTabSize : existing.codxEditorTabSize
+    ),
+    codxEditorFontSize: normalizeCodxEditorFontSize(
+      incoming.codxEditorFontSize != null ? incoming.codxEditorFontSize : existing.codxEditorFontSize
+    ),
+    codxEditorLineNumbers: normalizeCodxEditorLineNumbers(
+      incoming.codxEditorLineNumbers != null
+        ? incoming.codxEditorLineNumbers
+        : existing.codxEditorLineNumbers
+    ),
+    codxEditorLineNumberMinChars: normalizeCodxEditorLineNumberMinChars(
+      incoming.codxEditorLineNumberMinChars != null
+        ? incoming.codxEditorLineNumberMinChars
+        : existing.codxEditorLineNumberMinChars
+    ),
+    codxEditorLineNumberFontSize: normalizeCodxEditorLineNumberFontSize(
+      incoming.codxEditorLineNumberFontSize != null
+        ? incoming.codxEditorLineNumberFontSize
+        : existing.codxEditorLineNumberFontSize
+    ),
+    codxEditorLineNumberFontWeight: normalizeCodxEditorLineNumberFontWeight(
+      incoming.codxEditorLineNumberFontWeight != null
+        ? incoming.codxEditorLineNumberFontWeight
+        : existing.codxEditorLineNumberFontWeight
+    ),
   };
 
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -179,6 +361,16 @@ function writeUserVolcConfig(payload) {
     volcArkModel: base.volcArkModel,
     volcApiMode: base.volcApiMode,
     gitGraphCommitLimit: base.gitGraphCommitLimit,
+    codxEditorTheme: base.codxEditorTheme,
+    codxEditorLineHeight: base.codxEditorLineHeight,
+    codxEditorLetterSpacing: base.codxEditorLetterSpacing,
+    codxEditorSpaceWidth: base.codxEditorSpaceWidth,
+    codxEditorTabSize: base.codxEditorTabSize,
+    codxEditorFontSize: base.codxEditorFontSize,
+    codxEditorLineNumbers: base.codxEditorLineNumbers,
+    codxEditorLineNumberMinChars: base.codxEditorLineNumberMinChars,
+    codxEditorLineNumberFontSize: base.codxEditorLineNumberFontSize,
+    codxEditorLineNumberFontWeight: base.codxEditorLineNumberFontWeight,
   };
 }
 
@@ -246,5 +438,35 @@ module.exports = {
   GIT_GRAPH_COMMIT_LIMIT_OPTIONS,
   MIN_GIT_GRAPH_COMMIT_LIMIT,
   MAX_GIT_GRAPH_COMMIT_LIMIT,
+  CODX_EDITOR_THEME_OPTIONS,
+  DEFAULT_CODX_EDITOR_THEME,
+  normalizeCodxEditorTheme,
+  DEFAULT_CODX_EDITOR_LINE_HEIGHT,
+  DEFAULT_CODX_EDITOR_LETTER_SPACING,
+  DEFAULT_CODX_EDITOR_SPACE_WIDTH,
+  CODX_EDITOR_TAB_SIZE_OPTIONS,
+  DEFAULT_CODX_EDITOR_TAB_SIZE,
+  normalizeCodxEditorLineHeight,
+  normalizeCodxEditorLetterSpacing,
+  normalizeCodxEditorSpaceWidth,
+  normalizeCodxEditorTabSize,
+  DEFAULT_CODX_EDITOR_FONT_SIZE,
+  MIN_CODX_EDITOR_FONT_SIZE,
+  MAX_CODX_EDITOR_FONT_SIZE,
+  normalizeCodxEditorFontSize,
+  CODX_EDITOR_LINE_NUMBER_MODES,
+  DEFAULT_CODX_EDITOR_LINE_NUMBERS,
+  DEFAULT_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
+  MIN_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
+  MAX_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
+  DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
+  MIN_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
+  MAX_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
+  normalizeCodxEditorLineNumbers,
+  normalizeCodxEditorLineNumberMinChars,
+  normalizeCodxEditorLineNumberFontSize,
+  CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT_OPTIONS,
+  DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT,
+  normalizeCodxEditorLineNumberFontWeight,
   MISSING_KEY_ERROR,
 };

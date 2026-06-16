@@ -6,6 +6,14 @@
  */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+:root {
+  --scrollbar-track: #242424;
+  --scrollbar-thumb: #484848;
+  --scrollbar-thumb-hover: #606060;
+  --scrollbar-w: 10px;
+  --scrollbar-h: 8px;
+}
+
 html, body {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', sans-serif;
@@ -18,6 +26,8 @@ html, body {
   display: grid;
   grid-template-columns: 180px 1fr;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -27,6 +37,8 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar-title {
@@ -65,7 +77,9 @@ html, body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
 
 .detail-header {
@@ -104,10 +118,13 @@ html, body {
 }
 
 .detail-body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
-  padding: 20px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 20px 24px 28px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
 }
 
 .panel { display: none; }
@@ -233,3 +250,38 @@ button.action {
 }
 
 .status.error { color: #e08d8d; }
+
+/* 滚动条：与 main / pecado 一致 */
+.sidebar,
+.detail-body {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.sidebar::-webkit-scrollbar,
+.detail-body::-webkit-scrollbar {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--scrollbar-w);
+}
+
+.sidebar::-webkit-scrollbar-track,
+.detail-body::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+  margin: 6px 0;
+}
+
+.sidebar::-webkit-scrollbar-thumb,
+.detail-body::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover,
+.detail-body::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}

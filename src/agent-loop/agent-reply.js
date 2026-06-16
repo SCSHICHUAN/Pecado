@@ -3,10 +3,16 @@
  * 【功能】写代码后拼装 Agent 回复。
  */
 
-const CODE_WRITE_TOOLS = new Set(['write_file', 'edit_file']);
+const CODE_WRITE_TOOLS = new Set(['write_file', 'edit_file', 'codx_edit']);
+const DISK_WRITE_TOOLS = new Set(['write_file', 'edit_file']);
 
 function isCodeWriteTool(name) {
   return CODE_WRITE_TOOLS.has(String(name || ''));
+}
+
+/** 直接写磁盘（write-guard 仅约束此类；codx_edit 只流式进编辑器） */
+function isDiskWriteTool(name) {
+  return DISK_WRITE_TOOLS.has(String(name || ''));
 }
 
 /**
@@ -50,6 +56,7 @@ function composeAgentReply(parts) {
 
 module.exports = {
   isCodeWriteTool,
+  isDiskWriteTool,
   summarizeWriteTasks,
   composeAgentReply,
 };

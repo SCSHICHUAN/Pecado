@@ -2,20 +2,32 @@
  * @file write-guard.js
  * 【功能】已有文件写入前须先 read_file；同轮 read+write 的 write 延后到下一轮（避免用过期 tool args）
  */
-const xcodeProject = require('../xcode/project');
-const { isCodeWriteTool } = require('./agent-reply');
+const projectIo = require('../mcp-filesystem');
+const { isDiskWriteTool } = require('./agent-reply');
+
+function pathKey(projectRoot, filePath) {
+  const raw = String(filePath || '').trim();
+  if (!raw || !projectRoot) return raw.replace(/\\/g, '/');
+  try {
+    return projectIo.toProjectRelPath(projectRoot, raw);
+  } catch {
+    return raw.replace(/\\/g, '/').replace(/^\.\//, '');
+  }
+}
 
 function pathExistsInProject(projectRoot, relPath) {
-  if (!relPath || !projectRoot) return false;
+  const key = pathKey(projectRoot, relPath);
+  if (!key || !projectRoot) return false;
   try {
-    return xcodeProject.pathExistsUnderRoot(projectRoot, String(relPath));
+    const xcodeProject = require('../xcode/project');
+    return xcodeProject.pathExistsUnderRoot(projectRoot, key);
   } catch {
     return false;
   }
 }
 
 function isExistingPathWrite(task, projectRoot) {
-  if (!isCodeWriteTool(task?.name)) return false;
+  if (!isDiskWriteTool(task?.name)) return false;
   const relPath = task?.args?.path != null ? String(task.args.path).trim() : '';
   return Boolean(relPath && pathExistsInProject(projectRoot, relPath));
 }
@@ -26,7 +38,7 @@ function createSyntheticReadTask(relPath, index = 9000) {
     id: `call_preread_${safe}_${index}`,
     index,
     type: 'mcp_tool',
-    name: 'read_file',
+    name: 'read_text_file',
     args: { path: String(relPath || '').trim() },
     synthetic: true,
   };
@@ -64,18 +76,20 @@ function attachSyntheticToolCallsToConv(conv, tasks) {
 /**
  * @param {Array<object>} tasks
  * @param {string} projectRoot
- * @param {Set<string>} diskFreshReadPaths 本轮对话中已成功 read_file 的路径
+ * @param {Set<string>} diskFreshReadPaths 本轮对话中已成功 read_file 的路径（工程相对路径）
  */
 function planTasksWithWriteGuard(tasks, projectRoot, diskFreshReadPaths) {
   const list = Array.isArray(tasks) ? [...tasks] : [];
   const existingWrites = list.filter((t) => isExistingPathWrite(t, projectRoot));
   if (!existingWrites.length) return { tasks: list, deferredWrites: [] };
 
-  const writePaths = [...new Set(existingWrites.map((t) => String(t.args.path).trim()))];
+  const writePaths = [
+    ...new Set(existingWrites.map((t) => pathKey(projectRoot, String(t.args.path).trim()))),
+  ];
   const readPathsInBatch = new Set(
     list
-      .filter((t) => t.name === 'read_file')
-      .map((t) => String(t.args?.path || '').trim())
+      .filter((t) => t.name === 'read_text_file' || t.name === 'read_file')
+      .map((t) => pathKey(projectRoot, String(t.args?.path || '').trim()))
       .filter(Boolean)
   );
 
@@ -87,19 +101,27 @@ function planTasksWithWriteGuard(tasks, projectRoot, diskFreshReadPaths) {
 
   if (!deferPaths.size) return { tasks: list, deferredWrites: [] };
 
-  const deferredWrites = existingWrites.filter((t) => deferPaths.has(String(t.args.path).trim()));
+  const deferredWrites = existingWrites.filter((t) =>
+    deferPaths.has(pathKey(projectRoot, String(t.args.path).trim()))
+  );
   let planned = list.filter((t) => !deferredWrites.includes(t));
 
   for (const p of writePaths) {
     if (!deferPaths.has(p)) continue;
-    if (planned.some((t) => t.name === 'read_file' && String(t.args?.path || '').trim() === p)) {
+    if (
+      planned.some(
+        (t) =>
+          (t.name === 'read_text_file' || t.name === 'read_file') &&
+          pathKey(projectRoot, String(t.args?.path || '').trim()) === p
+      )
+    ) {
       continue;
     }
     planned.unshift(createSyntheticReadTask(p, 9000 + planned.length));
   }
 
-  const reads = planned.filter((t) => t.name === 'read_file');
-  const rest = planned.filter((t) => t.name !== 'read_file');
+  const reads = planned.filter((t) => t.name === 'read_text_file' || t.name === 'read_file');
+  const rest = planned.filter((t) => t.name !== 'read_text_file' && t.name !== 'read_file');
   return { tasks: [...reads, ...rest], deferredWrites };
 }
 
@@ -108,4 +130,5 @@ module.exports = {
   attachSyntheticToolCallsToConv,
   pathExistsInProject,
   isExistingPathWrite,
+  pathKey,
 };

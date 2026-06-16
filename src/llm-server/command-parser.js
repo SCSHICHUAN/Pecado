@@ -8,6 +8,7 @@
  */
 const { isXcodeToolName } = require('../xcode/agent/tools');
 const { isDevDocToolName } = require('../workflow/skill/agent/tools');
+const { isCodxToolName } = require('../codX/agent/tools');
 
 function tryExtractJsonStringField(argsAcc, field) {
   const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
@@ -124,6 +125,74 @@ function createWriteFileArgsStreamer(hooks) {
   };
 }
 
+function tryExtractJsonIntField(argsAcc, field) {
+  const m = argsAcc.match(new RegExp(`"${field}"\\s*:\\s*(-?\\d+)`));
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** codx_edit 第二轮：仅 path + text */
+function createCodxEditArgsStreamer(hooks) {
+  let argsAcc = '';
+  let relPath = null;
+  let contentStart = -1;
+  let emittedLen = 0;
+  let pathEmitted = false;
+
+  function push(fragment) {
+    if (!fragment) return;
+    argsAcc += fragment;
+
+    if (!relPath) {
+      const p = tryExtractJsonStringField(argsAcc, 'path');
+      if (p) {
+        relPath = p;
+        if (!pathEmitted) {
+          pathEmitted = true;
+          hooks.onPath?.(relPath);
+        }
+      }
+    }
+
+    if (contentStart < 0) {
+      const m = argsAcc.match(/"text"\s*:\s*"/);
+      if (m) contentStart = m.index + m[0].length;
+    }
+
+    if (contentStart >= 0 && relPath) {
+      const decoded = decodePartialJsonString(argsAcc.slice(contentStart));
+      if (decoded.length > emittedLen) {
+        const delta = decoded.slice(emittedLen);
+        emittedLen = decoded.length;
+        hooks.onTextDelta?.(delta, relPath);
+      }
+    }
+  }
+
+  function getFinalArgs() {
+    try {
+      return JSON.parse(argsAcc);
+    } catch {
+      return {
+        path: relPath,
+        text: decodePartialJsonString(argsAcc.slice(contentStart)),
+      };
+    }
+  }
+
+  return {
+    push,
+    getFinalArgs,
+    get relPath() {
+      return relPath;
+    },
+    get streamedContentLen() {
+      return emittedLen;
+    },
+  };
+}
+
 function parseToolArguments(name, rawArguments, streamParser) {
   let args = {};
   try {
@@ -144,7 +213,7 @@ function EXECUTE_parse_command(inferRound) {
   if (inferRound.error) return { error: inferRound.error };
 
   const { finishReason, content, toolCalls, parseContext = {} } = inferRound;
-  const { writeParsers = new Map() } = parseContext;
+  const { writeParsers = new Map(), codxEditParsers = new Map() } = parseContext;
 
   if (finishReason !== 'tool_calls' || !toolCalls?.length) {
     return {
@@ -163,7 +232,7 @@ function EXECUTE_parse_command(inferRound) {
     const name = tc.function?.name;
     if (!name) continue;
 
-    const streamParser = writeParsers.get(idx);
+    const streamParser = writeParsers.get(idx) || codxEditParsers.get(idx);
     const args = parseToolArguments(name, tc.function?.arguments, streamParser);
 
     tasks.push({
@@ -173,7 +242,9 @@ function EXECUTE_parse_command(inferRound) {
         ? 'xcode_tool'
         : isDevDocToolName(name)
           ? 'dev_docs_tool'
-          : 'mcp_tool',
+          : isCodxToolName(name)
+            ? 'codx_tool'
+            : 'mcp_tool',
       name,
       args,
     });
@@ -218,6 +289,7 @@ const CommandParser = {
   EXECUTE_parse_command,
   FEED_parsed_command,
   createWriteFileArgsStreamer,
+  createCodxEditArgsStreamer,
 };
 
 module.exports = {
@@ -225,4 +297,5 @@ module.exports = {
   EXECUTE_parse_command,
   FEED_parsed_command,
   createWriteFileArgsStreamer,
+  createCodxEditArgsStreamer,
 };

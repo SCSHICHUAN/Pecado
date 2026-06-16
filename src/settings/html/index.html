@@ -65,6 +65,78 @@
             <p class="hint">打开 Git 面板时加载的 commit 数量。</p>
           </div>
           <div class="field-group">
+            <label for="codx-editor-theme">CodX 编辑器配色</label>
+            <select id="codx-editor-theme">
+              <option value="pecado-dark">Pecado 深色（默认）</option>
+              <option value="cursor-dark">Cursor Dark</option>
+              <option value="xcode-dark">Xcode Classic (Dark)</option>
+              <option value="xcode-light">Xcode 浅色</option>
+              <option value="vs-dark">Visual Studio 深色</option>
+              <option value="vs">Visual Studio 浅色</option>
+            </select>
+            <p class="hint">编程视图 Monaco 编辑器的语法高亮与背景配色；保存后立即生效。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-font-size">CodX 字号（px）</label>
+            <input type="number" id="codx-editor-font-size" min="0" max="32" step="1" value="0">
+            <p class="hint">0 为跟随配色主题默认字号；编程视图中可用 ⌘+ / ⌘-（Windows：Ctrl+）缩放。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-line-height">CodX 行距（px）</label>
+            <input type="number" id="codx-editor-line-height" min="0" max="48" step="1" value="0">
+            <p class="hint">0 为随字号自动；数值越大行与行之间越疏。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-letter-spacing">CodX 字间距（px）</label>
+            <input type="number" id="codx-editor-letter-spacing" min="-2" max="10" step="0.5" value="0">
+            <p class="hint">每个字符左右的间距，与下方空格宽度独立。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-space-width">CodX 空格宽度（px）</label>
+            <input type="number" id="codx-editor-space-width" min="0" max="24" step="0.5" value="0">
+            <p class="hint">仅加宽单词之间的空格，不影响字符本身间距。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-line-numbers">CodX 行号</label>
+            <select id="codx-editor-line-numbers">
+              <option value="on" selected>显示</option>
+              <option value="off">隐藏</option>
+              <option value="relative">相对行号</option>
+            </select>
+            <p class="hint">相对行号：当前行为 0，上下为与光标的距离。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-line-number-min-chars">CodX 行号栏宽度（字符数）</label>
+            <input type="number" id="codx-editor-line-number-min-chars" min="2" max="6" step="1" value="3">
+            <p class="hint">行号区域预留的最小字符宽度，2 最窄、6 最宽。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-line-number-font-size">CodX 行号字号（px）</label>
+            <input type="number" id="codx-editor-line-number-font-size" min="0" max="24" step="1" value="0">
+            <p class="hint">0 为与代码字号相同；可单独调小行号以节省左侧空间。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-line-number-font-weight">CodX 行号粗细</label>
+            <select id="codx-editor-line-number-font-weight">
+              <option value="0" selected>默认</option>
+              <option value="300">较细 (300)</option>
+              <option value="400">常规 (400)</option>
+              <option value="500">中等 (500)</option>
+              <option value="600">较粗 (600)</option>
+              <option value="700">粗体 (700)</option>
+            </select>
+            <p class="hint">0 为跟随编辑器主题；数值越大行号越粗。</p>
+          </div>
+          <div class="field-group">
+            <label for="codx-editor-tab-size">CodX 缩进空格数</label>
+            <select id="codx-editor-tab-size">
+              <option value="2" selected>2</option>
+              <option value="4">4</option>
+              <option value="8">8</option>
+            </select>
+            <p class="hint">按 Tab 或缩进时使用的空格数量。</p>
+          </div>
+          <div class="field-group">
             <label for="language">界面语言</label>
             <select id="language" disabled>
               <option>简体中文</option>

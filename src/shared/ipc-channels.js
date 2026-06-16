@@ -50,6 +50,16 @@ module.exports = {
     READ_TEXT_FILE: 'mcp-fs-read-text-file',
     /** main → renderer：工程路径变更；showTree 为 true 时仅 Open Folder 会读并展示目录树 */
     PROJECT_CHANGED: 'mcp-fs-project-changed',
+    /** invoke：{ path, content } → 写入 Open Folder 内文本文件（CodX Cmd+S） */
+    WRITE_TEXT_FILE: 'mcp-fs-write-text-file',
+    /** invoke：{ path } → 图片/PDF 等预览 { fileUrl, mime, kind } */
+    PREVIEW_FILE: 'mcp-fs-preview-file',
+  },
+  CODX: {
+    /** main → renderer：CodX 流式编辑 { absPath, relPath, delta, fullText, done } */
+    STREAM_UPDATE: 'codx-stream-update',
+    /** invoke：{ relPath, content? } → { ok, issues[], error? } */
+    CHECK_SYNTAX: 'codx-check-syntax',
   },
   WORKFLOW: {
     GET_PANEL_HTML: 'workflow-get-panel-html',

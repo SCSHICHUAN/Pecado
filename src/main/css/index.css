@@ -191,7 +191,8 @@ body {
 
 .content-area > .main-panel,
 .content-area > .workflow-panel-mount,
-.content-area > .git-panel-mount {
+.content-area > .git-panel-mount,
+.content-area > #panel-codx {
     grid-row: 1;
     grid-column: 1;
     height: 100%;
@@ -200,7 +201,8 @@ body {
 
 .content-area .main-panel.hidden,
 .content-area .workflow-panel-mount.hidden,
-.content-area .git-panel-mount.hidden {
+.content-area .git-panel-mount.hidden,
+.content-area #panel-codx.hidden {
     display: none;
 }
 
@@ -234,7 +236,8 @@ body {
 }
 
 body.app-view-chat #app-bottom-tools-chat,
-body.app-view-git #app-bottom-tools-git {
+body.app-view-git #app-bottom-tools-git,
+body.app-view-codx #app-bottom-tools-chat {
     display: flex;
 }
 

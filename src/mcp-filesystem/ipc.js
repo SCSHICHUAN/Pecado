@@ -20,6 +20,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { pathToFileURL } = require('url');
 const { app, dialog, shell } = require('electron');
 const { MCP_FS } = require('../shared/ipc-channels');
 const projectIo = require('./index');
@@ -179,8 +180,13 @@ async function openProjectFolder(getMainWindowFn) {
 function registerIpcHandlers(ipcMain) {
   ipcMain.handle(MCP_FS.DIRECTORY_TREE, async (_event, payload) => {
     try {
+      const status = projectIo.getStatus();
       const tree = await projectIo.readDirectoryTree(payload || {});
-      return { ok: true, tree };
+      return {
+        ok: true,
+        tree,
+        projectRoot: status.connected ? status.projectRoot : '',
+      };
     } catch (e) {
       return { error: e.message || String(e) };
     }
@@ -227,17 +233,125 @@ function registerIpcHandlers(ipcMain) {
     }
   });
 
+  ipcMain.handle(MCP_FS.WRITE_TEXT_FILE, async (_event, payload) => {
+    try {
+      const status = projectIo.getStatus();
+      if (!status.connected || !status.projectRoot) {
+        return { ok: false, error: '未打开工程目录' };
+      }
+      const filePath = String(payload?.path || '').trim();
+      const content = payload?.content == null ? '' : String(payload.content);
+      if (!filePath) return { ok: false, error: '缺少 path' };
+      let absPath;
+      try {
+        absPath = projectIo.resolveUnderProject(status.projectRoot, filePath);
+      } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+      }
+      fs.mkdirSync(path.dirname(absPath), { recursive: true });
+      fs.writeFileSync(absPath, content, 'utf8');
+      return { ok: true, path: absPath };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
   ipcMain.handle(MCP_FS.READ_TEXT_FILE, async (_event, payload) => {
     try {
-      const filePath = String(payload?.path || '').trim();
-      if (!filePath) return { ok: false, error: '缺少 path' };
+      const status = projectIo.getStatus();
+      const rawPath = String(payload?.path || '').trim();
+      if (!rawPath) return { ok: false, error: '缺少 path' };
+      let filePath = rawPath;
+      if (!path.isAbsolute(rawPath)) {
+        if (!status.connected || !status.projectRoot) {
+          return { ok: false, error: '未打开工程目录' };
+        }
+        try {
+          filePath = projectIo.resolveUnderProject(status.projectRoot, rawPath);
+        } catch (e) {
+          return { ok: false, error: e.message || String(e) };
+        }
+      }
       if (!fs.existsSync(filePath)) return { ok: false, error: `文件不存在：${filePath}` };
       const stat = fs.statSync(filePath);
       if (!stat.isFile()) return { ok: false, error: '不是文件' };
+      const ext = path.extname(filePath).toLowerCase();
+      const binaryExts = new Set([
+        '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.ico', '.bmp',
+        '.pdf', '.mp4', '.webm', '.mov', '.mp3', '.wav', '.m4a', '.aac', '.ogg',
+        '.zip', '.gz', '.dmg', '.app', '.exe', '.dll', '.so', '.dylib',
+      ]);
+      if (binaryExts.has(ext)) {
+        return { ok: false, error: '该文件为二进制格式，请使用预览打开' };
+      }
       if (stat.size > 512000) return { ok: false, error: '文件过大，无法在面板内预览' };
       let body = fs.readFileSync(filePath, 'utf8');
+      if (body.includes('\u0000')) {
+        return { ok: false, error: '该文件不是文本格式' };
+      }
       if (body.length > 48000) body = `${body.slice(0, 48000)}\n…(已截断)`;
       return { ok: true, path: filePath, body, title: path.basename(filePath) };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  const PREVIEW_MIME = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.svg': 'image/svg+xml',
+    '.ico': 'image/x-icon',
+    '.bmp': 'image/bmp',
+    '.pdf': 'application/pdf',
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.m4a': 'audio/mp4',
+    '.aac': 'audio/aac',
+    '.ogg': 'audio/ogg',
+  };
+
+  ipcMain.handle(MCP_FS.PREVIEW_FILE, async (_event, payload) => {
+    try {
+      const status = projectIo.getStatus();
+      const rawPath = String(payload?.path || '').trim();
+      if (!rawPath) return { ok: false, error: '缺少 path' };
+      if (!status.connected || !status.projectRoot) {
+        return { ok: false, error: '未打开工程目录' };
+      }
+      let filePath;
+      try {
+        filePath = projectIo.resolveUnderProject(status.projectRoot, rawPath);
+      } catch (e) {
+        return { ok: false, error: e.message || String(e) };
+      }
+      if (!fs.existsSync(filePath)) return { ok: false, error: `文件不存在：${filePath}` };
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) return { ok: false, error: '不是文件' };
+      const ext = path.extname(filePath).toLowerCase();
+      const mime = PREVIEW_MIME[ext];
+      if (!mime) return { ok: false, error: '不支持预览该文件类型' };
+      if (stat.size > 50 * 1024 * 1024) return { ok: false, error: '文件过大，无法在编辑器内预览' };
+
+      let kind = 'embed';
+      if (mime.startsWith('image/')) kind = 'image';
+      else if (mime === 'application/pdf') kind = 'pdf';
+      else if (mime.startsWith('video/')) kind = 'video';
+      else if (mime.startsWith('audio/')) kind = 'audio';
+
+      return {
+        ok: true,
+        path: filePath,
+        fileUrl: pathToFileURL(filePath).href,
+        mime,
+        kind,
+        title: path.basename(filePath),
+      };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

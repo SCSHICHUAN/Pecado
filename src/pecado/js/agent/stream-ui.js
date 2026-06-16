@@ -39,8 +39,17 @@ function createUiStreamSink(sender, streamId) {
     onTextDelta(text) {
       send({ phase: 'delta', text });
     },
-    onToolStream({ name, path, text }) {
-      send({ phase: 'tool_stream', name, path, text });
+    onToolStream({ name, path, text, index }) {
+      send({ phase: 'tool_stream', name, path, text, index });
+    },
+    onWriteFileBegin({ path, xcodeLiveStream, codxDeferred }) {
+      send({ phase: 'write_file_begin', name: 'write_file', path, xcodeLiveStream, codxDeferred });
+    },
+    onCodxEditBegin({ index, path }) {
+      send({ phase: 'codx_edit_begin', name: 'codx_edit', index, path });
+    },
+    onCodxEditPlan({ path, edits }) {
+      send({ phase: 'codx_edit_plan', path, edits });
     },
     onTool(payload) {
       send({ phase: 'tool', ...payload });
