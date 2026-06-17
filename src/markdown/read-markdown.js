@@ -46,7 +46,7 @@ function stripMarkdownToPlain(md) {
     .replace(/^#+\s+/gm, '')
     .replace(/[*_`>#]/g, '')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim(); 
 }
 
 /**

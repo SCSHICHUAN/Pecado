@@ -14,7 +14,7 @@
  *
  * 1. 节点图层 `.git-timeline-graph-scroll`（z-index 1）
  *    - 可滚 inner 宽 = 3 × 窗宽（左/右各 1 窗留白 + 中间 SVG）
- *    - 默认 scroll：最新节点圆心对齐屏幕 x = 窗宽 × 1/4
+ *    - 默认 scroll：最新节点圆心对齐屏幕 x = 窗宽 × 1/3
  *    - 横向滚轮统一滚图区（commit 文字层 pointer-events: none 穿透）
  *
  * 2. 轨道层 `.git-timeline-track-layer`（固定视口，不随 commit 文字滚）
@@ -43,7 +43,6 @@
   let currentProjectRoot = '';
   let panelReady = false;
   let selectedCommitHash = '';
-  let gitTabInitialScrollDone = false;
   let paneHscrollSyncing = false;
   let graphHscrollSyncing = false;
   let cachedPanelLayoutWidth = 0;
@@ -62,8 +61,8 @@
   const COMMIT_SCROLL_PAD_LEFT_RATIO = 1;
   /** commit 文字区宽度 = 文字 + 1 × 窗宽 */
   const COMMIT_TEXT_VIEWPORT_RATIO = 1;
-  /** 节点圆心目标屏幕 x = 窗宽 × 此比例（1/4） */
-  const GRAPH_INITIAL_NODE_X_RATIO = 0.25;
+  /** 节点圆心目标屏幕 x = 窗宽 × 此比例（1/3） */
+  const GRAPH_INITIAL_NODE_X_RATIO = 1 / 3;
   /** 节点菜单相对视口边缘留白（px） */
   const NODE_MENU_VIEWPORT_PAD = 8;
 
@@ -74,7 +73,12 @@
   let activeGitBottomTab = 'status';
   let gitPanelOpen = false;
   let chatPanelOpen = true;
-  let gitBottomDockOpen = true;
+  let gitFocusActive = false;
+  let gitLogProgrammaticScroll = false;
+  let gitLogUserDetached = false;
+  let gitLogPendingScroll = false;
+  let gitLogTouchLastY = null;
+  let gitLogLastWheelUpAt = 0;
   /** @type {object | null} */
   let cachedGitState = null;
   let gitMetaBusy = false;
@@ -102,7 +106,11 @@
     });
   }
 
-  const PANEL_HTML_VERSION = '12';
+  const PANEL_HTML_VERSION = '17';
+  const GIT_SPLIT_RIGHT_KEY = 'git.splitRightWidth';
+  const GIT_SPLIT_RIGHT_MIN = 280;
+  const GIT_SPLIT_LEFT_MIN = 280;
+  const GIT_SPLIT_RIGHT_MAX_RATIO = 0.52;
 
   function showPanelLoadError(message) {
     const mount = $('panel-git');
@@ -129,9 +137,11 @@
       mount.dataset.loaded !== '1' ||
       !mount.querySelector('.git-main') ||
       !mount.querySelector('#git-bottom-dock') ||
+      !mount.querySelector('.git-body') ||
       !mount.querySelector('#git-graph-pane-hscroll') ||
       !mount.querySelector('#git-log-output') ||
-      !mount.querySelector('#git-meta-branch');
+      !mount.querySelector('#git-meta-branch') ||
+      !mount.querySelector('#git-split-resizer');
     if (needsHtml) {
     const res = await api.gitGetPanelHtml();
     if (!res.ok) throw new Error(res.error || '加载 Git 面板失败');
@@ -141,15 +151,51 @@
       mount.dataset.toolbarBound = '';
       mount.dataset.tabsBound = '';
       mount.dataset.chatBound = '';
+      mount.dataset.splitResizerBound = '';
     }
     panelReady = true;
     setupToolbar();
+    setupGitSplitResizer();
     setupGitBottomTabs();
     setupGitChatPanel();
     if (currentProjectRoot && window.GitChatPanel?.resetForProject) {
       window.GitChatPanel.resetForProject(currentProjectRoot);
     }
     return mount;
+  }
+
+  function syncGitFocusCloseBtn() {
+    const btn = $('git-focus-close-btn');
+    if (btn) btn.hidden = !gitFocusActive;
+  }
+
+  async function enterGitFocusFromCodx() {
+    if (!window.CodX?.isActive?.()) return;
+    gitFocusActive = true;
+    document.body.classList.add('git-focus-mode');
+    $('panel-codx')?.classList.add('hidden');
+    $('panel-git')?.classList.remove('hidden');
+    document.querySelector('.sidebar')?.classList.add('hidden');
+    document.querySelector('.main-column')?.classList.add('codx-full-width');
+    syncGitFocusCloseBtn();
+    try {
+      await loadPanelHtml();
+      await refreshGitView({ initialScroll: true });
+    } catch (e) {
+      console.error('[git-ui] enterGitFocusFromCodx', e);
+      exitGitFocusFromCodx();
+      alert(`Git 面板打开失败：${e?.message || e}`);
+    }
+  }
+
+  function exitGitFocusFromCodx() {
+    if (!gitFocusActive) return;
+    gitFocusActive = false;
+    document.body.classList.remove('git-focus-mode');
+    $('panel-git')?.classList.add('hidden');
+    $('panel-codx')?.classList.remove('hidden');
+    document.querySelector('.sidebar')?.classList.add('hidden');
+    syncGitFocusCloseBtn();
   }
 
   function setMainPanelVisible(view) {
@@ -183,26 +229,34 @@
     const onWorkflow = !onGit && !onChat && !onCodx;
     let pressed = false;
     if (onCodx) pressed = Boolean(window.__codxDockOpen?.());
-    else if (onGit) pressed = gitBottomDockOpen;
     else if (onChat) pressed = Boolean(window.SkillLogPanel?.isOpen?.());
 
-    appToggle.hidden = onWorkflow;
-    appToggle.setAttribute('aria-hidden', onWorkflow ? 'true' : 'false');
+    appToggle.hidden = onWorkflow || onGit;
+    appToggle.setAttribute('aria-hidden', onWorkflow || onGit ? 'true' : 'false');
+    if (onCodx && window.__codxDockSideLayout?.()) {
+      appToggle.hidden = true;
+      appToggle.setAttribute('aria-hidden', 'true');
+      appToggle.disabled = true;
+      appToggle.classList.add('is-disabled');
+      if (bottomBar) {
+        bottomBar.hidden = false;
+        bottomBar.removeAttribute('hidden');
+        bottomBar.setAttribute('aria-hidden', 'false');
+      }
+      return;
+    }
     if (bottomBar) {
-      bottomBar.hidden = onWorkflow;
-      bottomBar.setAttribute('aria-hidden', onWorkflow ? 'true' : 'false');
+      bottomBar.hidden = onWorkflow || onGit;
+      bottomBar.setAttribute('aria-hidden', onWorkflow || onGit ? 'true' : 'false');
     }
 
     appToggle.setAttribute('aria-pressed', pressed ? 'true' : 'false');
-    appToggle.disabled = onWorkflow;
-    appToggle.classList.toggle('is-disabled', onWorkflow);
+    appToggle.disabled = onWorkflow || onGit;
+    appToggle.classList.toggle('is-disabled', onWorkflow || onGit);
 
     if (onCodx) {
       appToggle.setAttribute('aria-label', '展开或收起 Pecado / log 面板');
       appToggle.title = 'Pecado / log';
-    } else if (onGit) {
-      appToggle.setAttribute('aria-label', '展开或收起 Git 详情面板');
-      appToggle.title = 'Git 详情面板（status / log / pecado）';
     } else if (onChat) {
       appToggle.setAttribute('aria-label', '展开或收起 log 面板');
       appToggle.title = 'log（tool call / 命令 / 文件）';
@@ -215,27 +269,11 @@
   window.__syncAppBottomDockToggle = syncBottomDockToggleUi;
   window.__setMainPanelVisible = setMainPanelVisible;
 
-  function setGitBottomDockOpen(open) {
-    const mount = $('panel-git');
-    gitBottomDockOpen = Boolean(open);
-    mount?.classList.toggle('is-bottom-collapsed', !gitBottomDockOpen);
-    syncBottomDockToggleUi();
-  }
-
-  function toggleGitBottomDock() {
-    if (!gitPanelOpen) return;
-    setGitBottomDockOpen(!gitBottomDockOpen);
-  }
-
-  /** 窗口最底栏：Pecado 页 → log；Git 页 → status | log | pecado */
+  /** 窗口最底栏：CodX → Pecado/log；Pecado → log */
   function toggleAppBottomDock() {
     if (document.body.classList.contains('app-view-codx')) {
       window.__codxToggleDock?.();
       syncBottomDockToggleUi();
-      return;
-    }
-    if (gitPanelOpen) {
-      toggleGitBottomDock();
       return;
     }
     if (chatPanelOpen) {
@@ -258,6 +296,14 @@
       panel.classList.toggle('is-active', active);
       panel.setAttribute('aria-hidden', active ? 'false' : 'true');
     });
+    if (tab === 'log') {
+      requestAnimationFrame(() => scrollGitLogToBottom({ force: true }));
+    } else if (tab === 'chat') {
+      requestAnimationFrame(() => {
+        const box = $('git-chat-messages');
+        if (box) box.scrollTop = box.scrollHeight;
+      });
+    }
   }
 
   function setupGitBottomTabs() {
@@ -340,6 +386,9 @@
   }
 
   async function showView(view) {
+    if (gitFocusActive && view !== 'git') {
+      exitGitFocusFromCodx();
+    }
     const target = view === 'git' || view === 'workflow' ? view : 'chat';
     setActiveNav(target);
     setMainPanelVisible(target);
@@ -352,10 +401,7 @@
     if (target === 'git') {
         try {
           await loadPanelHtml();
-        setGitBottomDockOpen(gitBottomDockOpen);
-        const initialScroll = !gitTabInitialScrollDone;
-        await refreshGitView({ initialScroll });
-        gitTabInitialScrollDone = true;
+        await refreshGitView({ initialScroll: true });
         } catch (e) {
         console.error('[git-ui] showView git', e);
         showPanelLoadError(e.message || 'Git 面板加载失败');
@@ -398,7 +444,6 @@
     setStatusPanelLabel('commit');
     statusEl.textContent = detail;
     appendGitLog(detail, { command: short ? `select ${short}` : 'select commit' });
-    setGitBottomDockOpen(true);
     switchGitBottomTab('status');
   }
 
@@ -582,14 +627,12 @@
   async function handleProjectRootChanged(projectRoot) {
     if (!projectRoot) return;
     currentProjectRoot = projectRoot;
-    gitTabInitialScrollDone = false;
     resetGitPanelsForProject();
 
     if (!panelReady) return;
 
     try {
       await refreshGitView({ initialScroll: true, keepMetaBusy: false });
-      gitTabInitialScrollDone = true;
     } catch (e) {
       console.error('[git-ui] handleProjectRootChanged', e);
       gitMetaBusy = false;
@@ -687,7 +730,117 @@
     }
   }
 
+  function gitLogScrollGap() {
+    const logEl = $('git-log-output');
+    if (!logEl) return 0;
+    return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight;
+  }
+
+  function isGitLogPanelVisible() {
+    if (activeGitBottomTab !== 'log') return false;
+    const panel = document.querySelector('[data-git-bottom-panel="log"]');
+    return Boolean(panel?.classList.contains('is-active'));
+  }
+
+  function shouldAutoScrollGitLog() {
+    if (gitLogUserDetached) return false;
+    const now = performance.now();
+    if (gitLogLastWheelUpAt > 0 && now - gitLogLastWheelUpAt < 900) return false;
+    if (!isGitLogPanelVisible()) return true;
+    return gitLogScrollGap() <= 20;
+  }
+
+  function syncGitLogDetachFromScroll() {
+    if (gitLogProgrammaticScroll) return;
+    const gap = gitLogScrollGap();
+    if (gap > 40) gitLogUserDetached = true;
+    else if (gap <= 8) gitLogUserDetached = false;
+  }
+
+  function scrollGitLogToBottom(opts = {}) {
+    const logEl = $('git-log-output');
+    if (!logEl) return;
+    if (opts.force) gitLogUserDetached = false;
+    gitLogProgrammaticScroll = true;
+    const flush = () => {
+      logEl.scrollTop = Math.max(0, logEl.scrollHeight - logEl.clientHeight);
+    };
+    flush();
+    let passes = 0;
+    const settle = () => {
+      passes += 1;
+      flush();
+      if (gitLogScrollGap() > 2 && passes < 12) {
+        requestAnimationFrame(settle);
+        return;
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          gitLogProgrammaticScroll = false;
+          gitLogPendingScroll = false;
+          if (gitLogScrollGap() <= 80) gitLogUserDetached = false;
+        });
+      });
+    };
+    requestAnimationFrame(settle);
+  }
+
+  function setupGitLogScrollFollow() {
+    const logEl = $('git-log-output');
+    if (!logEl || logEl.dataset.scrollBound === '1') return;
+    logEl.dataset.scrollBound = '1';
+    logEl.addEventListener('scroll', syncGitLogDetachFromScroll, { passive: true });
+    logEl.addEventListener(
+      'wheel',
+      (e) => {
+        if (e.ctrlKey) return;
+        if (e.deltaY < 0) {
+          gitLogLastWheelUpAt = performance.now();
+          gitLogUserDetached = true;
+          return;
+        }
+        if (!gitLogProgrammaticScroll && e.deltaY > 0 && gitLogScrollGap() <= 80) {
+          gitLogUserDetached = false;
+        }
+      },
+      { passive: true, capture: true }
+    );
+    logEl.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length === 1) gitLogTouchLastY = e.touches[0].clientY;
+      },
+      { passive: true }
+    );
+    logEl.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches.length !== 1) return;
+        const y = e.touches[0].clientY;
+        if (gitLogTouchLastY == null) return;
+        const dy = y - gitLogTouchLastY;
+        if (dy > 2) {
+          gitLogLastWheelUpAt = performance.now();
+          gitLogUserDetached = true;
+        }
+        if (!gitLogProgrammaticScroll && dy < -2 && gitLogScrollGap() <= 80) {
+          gitLogUserDetached = false;
+        }
+        gitLogTouchLastY = y;
+      },
+      { passive: true }
+    );
+    logEl.addEventListener(
+      'touchend',
+      () => {
+        gitLogTouchLastY = null;
+      },
+      { passive: true }
+    );
+  }
+
   function appendGitLog(text, opts = {}) {
+    setupGitLogScrollFollow();
     const logEl = $('git-log-output');
     if (!logEl) return;
     const msg = String(text || '').trim();
@@ -708,8 +861,13 @@
 
     entry.appendChild(head);
     entry.appendChild(body);
-    logEl.prepend(entry);
-    logEl.scrollTop = 0;
+    logEl.appendChild(entry);
+
+    const stick = shouldAutoScrollGitLog();
+    if (stick) {
+      if (isGitLogPanelVisible()) scrollGitLogToBottom();
+      else gitLogPendingScroll = true;
+    }
   }
 
   function showOperationInStatus(text, label) {
@@ -717,7 +875,6 @@
     if (!statusEl) return;
     setStatusPanelLabel(label || 'operation');
     statusEl.textContent = String(text || '').trim();
-    setGitBottomDockOpen(true);
   }
 
   function isGitChatTabActive() {
@@ -744,7 +901,6 @@
       (isError || stayInChat);
 
     if (shouldAnalyze) {
-      setGitBottomDockOpen(true);
       switchGitBottomTab('chat');
       window.GitChatPanel.analyzeGitOperation(
         {
@@ -1322,12 +1478,13 @@
 
   function getLayoutWidth(timeline) {
     const wrap = document.querySelector('.git-graph-wrap');
+    const splitLeft = document.querySelector('.git-split-left');
     const candidates = [
       wrap?.clientWidth,
       $('git-graph')?.clientWidth,
+      splitLeft?.clientWidth,
       timeline?.clientWidth,
       timeline?.getBoundingClientRect().width,
-      $('panel-git')?.clientWidth,
     ];
     for (const w of candidates) {
       if (typeof w === 'number' && w > 0) return w;
@@ -1335,7 +1492,7 @@
     return 0;
   }
 
-  /** 写入图区 / commit 各自的屏幕 offset（相对窗宽） */
+  /** 写入图区 / commit 各自的屏幕 offset（相对图区窗宽） */
   function applyTimelineScreenOffsets(timeline, layoutWidth) {
     if (!timeline || layoutWidth <= 0) return;
     timeline.style.setProperty('--git-layout-width', `${layoutWidth}px`);
@@ -1486,6 +1643,27 @@
     refreshCommitScrollWidth(timeline);
     invalidateCommitBoundsCache();
     getCommitStartBounds(timeline, { force: true });
+  }
+
+  function ensureGraphInitialPosition(timeline, doInitialScroll, attempt = 0) {
+    const w = getLayoutWidth(timeline);
+    if (w <= 0) {
+      if (attempt < 16) {
+        requestAnimationFrame(() => ensureGraphInitialPosition(timeline, doInitialScroll, attempt + 1));
+      }
+      return;
+    }
+    applyGraphScrollLayout(timeline, w);
+    updateCommitContentMetrics(timeline);
+    const commitStart = getDefaultCommitStart(timeline);
+    applyCommitStart(timeline, commitStart);
+    ensurePaneHscrollSynced(timeline, commitStart);
+    if (doInitialScroll) {
+      scrollGraphToInitialPosition(timeline);
+    } else {
+      syncTrackBarPositions(timeline);
+      syncGraphHscroll(timeline);
+    }
   }
 
   function applyGraphScrollLayout(timeline, layoutWidth) {
@@ -1858,23 +2036,16 @@
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const w = getLayoutWidth(timeline);
-        if (w > 0) applyGraphScrollLayout(timeline, w);
-        updateCommitContentMetrics(timeline);
-        applyCommitStart(timeline, getDefaultCommitStart(timeline));
-        ensurePaneHscrollSynced(timeline, getDefaultCommitStart(timeline));
-        if (options.initialScroll) {
-          scrollGraphToInitialPosition(timeline);
-        } else {
-          syncTrackBarPositions(timeline);
-          syncGraphHscroll(timeline);
-        }
+        ensureGraphInitialPosition(timeline, Boolean(options.initialScroll));
       });
     });
 
     bindTimelineBarSync(timeline);
     if (typeof ResizeObserver !== 'undefined') {
-      const panel = $('panel-git');
+      const roTarget =
+        document.querySelector('.git-split-left') ||
+        document.querySelector('.git-graph-wrap') ||
+        $('panel-git');
       let lastPanelWidth = 0;
       const layoutRo = new ResizeObserver((entries) => {
         const w = Math.round(entries[0]?.contentRect?.width ?? 0);
@@ -1887,7 +2058,7 @@
         scrollGraphToInitialPosition(timeline);
         ensurePaneHscrollSynced(timeline, Math.round(w * COMMIT_START_RATIO));
       });
-      if (panel) layoutRo.observe(panel);
+      if (roTarget) layoutRo.observe(roTarget);
       timeline._layoutRo = layoutRo;
     }
   }
@@ -2112,6 +2283,81 @@
       });
     });
   }
+  function setupGitSplitResizer() {
+    const mount = $('panel-git');
+    if (!mount || mount.dataset.splitResizerBound === '1') return;
+    const handle = $('git-split-resizer');
+    const body = mount.querySelector('.git-body');
+    if (!handle || !body) return;
+    mount.dataset.splitResizerBound = '1';
+
+    function readSplitRightWidth() {
+      try {
+        const n = Number(localStorage.getItem(GIT_SPLIT_RIGHT_KEY));
+        if (Number.isFinite(n) && n >= GIT_SPLIT_RIGHT_MIN) return n;
+      } catch (_) {
+        /* ignore */
+      }
+      return 380;
+    }
+
+    function clampSplitRightWidth(px) {
+      const bodyW = body.clientWidth || mount.clientWidth || 0;
+      const resizerW = handle.offsetWidth || 6;
+      const maxByRatio = Math.floor(bodyW * GIT_SPLIT_RIGHT_MAX_RATIO);
+      const maxByLeft = bodyW - resizerW - GIT_SPLIT_LEFT_MIN;
+      const maxW = Math.max(GIT_SPLIT_RIGHT_MIN, Math.min(maxByRatio, maxByLeft));
+      return Math.min(maxW, Math.max(GIT_SPLIT_RIGHT_MIN, px));
+    }
+
+    function applySplitRightWidth(px) {
+      const w = clampSplitRightWidth(px);
+      mount.style.setProperty('--git-split-right-width', `${w}px`);
+      try {
+        localStorage.setItem(GIT_SPLIT_RIGHT_KEY, String(Math.round(w)));
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    applySplitRightWidth(readSplitRightWidth());
+
+    let startX = 0;
+    let startW = 0;
+
+    const onMove = (e) => {
+      applySplitRightWidth(startW + (startX - e.clientX));
+    };
+
+    const onUp = () => {
+      handle.classList.remove('is-dragging');
+      document.body.classList.remove('git-split-resizing');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    handle.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const right = mount.querySelector('.git-split-right');
+      startX = e.clientX;
+      startW = right?.getBoundingClientRect().width ?? readSplitRightWidth();
+      handle.classList.add('is-dragging');
+      document.body.classList.add('git-split-resizing');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        const right = mount.querySelector('.git-split-right');
+        const current = right?.getBoundingClientRect().width ?? readSplitRightWidth();
+        applySplitRightWidth(current);
+      });
+      ro.observe(body);
+    }
+  }
+
   function setupToolbar() {
     const mount = $('panel-git');
     if (!mount || mount.dataset.toolbarBound === '1') {
@@ -2125,6 +2371,7 @@
     $('git-btn-pull')?.addEventListener('click', () => runGitAction('pull'));
     $('git-btn-push')?.addEventListener('click', () => runGitAction('push'));
     $('git-btn-commit')?.addEventListener('click', () => runGitAction('commit'));
+    $('git-focus-close-btn')?.addEventListener('click', () => exitGitFocusFromCodx());
     setupPaneHscroll();
     setupNodeContextMenu();
     setupGitBottomTabs();
@@ -2165,4 +2412,7 @@
   } else {
     init();
   }
+
+  window.__enterGitFocusFromCodx = enterGitFocusFromCodx;
+  window.__exitGitFocusFromCodx = exitGitFocusFromCodx;
 })();

@@ -511,12 +511,6 @@
     }
   }
 
-  function looksLikeMarkdown(text) {
-    return /(\*\*|__|```|^#{1,6}\s|^[-*+]\s|^\d+\.\s|`[^`\n]+`|\[[^\]]+\]\([^)]+\))/m.test(
-      String(text || '')
-    );
-  }
-
   function renderPlainAssistantBody(body, text) {
     body.classList.remove('markdown-body');
     body.innerHTML = linkifyGitCommands(String(text || ''));
@@ -543,24 +537,15 @@
     if (opts.isError) {
       wrap?.classList.add('git-chat-msg-error');
       body.classList.add('git-chat-error-text');
+    } else {
+      wrap?.classList.remove('git-chat-msg-error');
+      body.classList.remove('git-chat-error-text');
     }
-    const useMarkdown =
-      !opts.plain &&
-      (Boolean(opts.markdown) ||
-        Boolean(opts.streaming) ||
-        (looksLikeMarkdown(raw) && !opts.isError) ||
-        (opts.isError && looksLikeMarkdown(raw)));
-
-    if (opts.isError && !useMarkdown) {
-      body.classList.remove('markdown-body');
-      body.textContent = raw;
+    if (opts.plain) {
+      renderPlainAssistantBody(body, raw);
       return;
     }
-    if (useMarkdown) {
-      renderMarkdownAssistantBody(body, raw);
-      return;
-    }
-    renderPlainAssistantBody(body, raw);
+    renderMarkdownAssistantBody(body, raw);
   }
 
   function renderUserBody(body, text) {

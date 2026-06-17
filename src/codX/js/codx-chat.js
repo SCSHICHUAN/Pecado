@@ -118,17 +118,35 @@
     }
   }
 
+  const INPUT_MAX_LINES = 5;
+
+  function syncInputHeight(input) {
+    if (!input) return;
+    input.style.height = 'auto';
+    const style = window.getComputedStyle(input);
+    const lineHeight = parseFloat(style.lineHeight) || 20;
+    const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const maxH = Math.round(lineHeight * INPUT_MAX_LINES + padY);
+    const next = Math.min(input.scrollHeight, maxH);
+    input.style.height = `${next}px`;
+    input.style.overflowY = input.scrollHeight > maxH ? 'auto' : 'hidden';
+  }
+
   async function sendMessage() {
     const input = $('codx-chat-input');
     const btn = $('codx-chat-send');
     const text = String(input?.value || '').trim();
     if (!text) return;
     const api = window.electronAPI;
-    if (!api?.volcArkBotsChatStream) return;
+    if (!api?.volcArkBotsChatStream) {
+      alert('对话 API 不可用');
+      return;
+    }
 
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     input.value = '';
+    syncInputHeight(input);
     if (btn) btn.disabled = true;
 
     const prior = [...history.slice(0, -1)];
@@ -223,13 +241,20 @@
   }
 
   function bind() {
-    $('codx-chat-send')?.addEventListener('click', () => sendMessage());
-    $('codx-chat-input')?.addEventListener('keydown', (e) => {
+    const input = $('codx-chat-input');
+    const btn = $('codx-chat-send');
+    btn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      sendMessage();
+    });
+    input?.addEventListener('input', () => syncInputHeight(input));
+    input?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
       }
     });
+    syncInputHeight(input);
     const scroll = $('codx-chat-scroll');
     if (scroll && !scroll.dataset.inited) {
       scroll.dataset.inited = '1';

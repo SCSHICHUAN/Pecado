@@ -16,6 +16,7 @@
   let logUserDetached = false;
   let lastWheelUpIntentAt = 0;
   let logTouchLastY = null;
+  let pendingScrollToBottom = false;
   /** @type {HTMLElement | null} */
   let logScrollEl = null;
   const outputPreviewCache = new Map();
@@ -31,10 +32,20 @@
     }
   }
 
+  function isLogPanelVisible() {
+    return skillLogDockOpen;
+  }
+
   function setSkillLogDockOpen(open) {
+    const wasOpen = skillLogDockOpen;
     skillLogDockOpen = Boolean(open);
     $('panel-chat')?.classList.toggle('is-skill-log-collapsed', !skillLogDockOpen);
     syncAppBottomDockToggle();
+    if (skillLogDockOpen && !wasOpen) {
+      requestAnimationFrame(() => {
+        scrollLogToBottom({ force: true });
+      });
+    }
   }
 
   function toggleSkillLogDock() {
@@ -826,6 +837,7 @@
     if (lastWheelUpIntentAt > 0 && now - lastWheelUpIntentAt < WHEEL_UP_BLOCK_STREAM_MS) {
       return false;
     }
+    if (!isLogPanelVisible()) return true;
     return logScrollGapFromBottom() <= STREAM_FOLLOW_MAX_GAP_PX;
   }
 
@@ -839,9 +851,11 @@
     }
   }
 
-  function scrollLogToBottom() {
+  function scrollLogToBottom(opts = {}) {
     const el = logScrollEl;
     if (!el) return;
+
+    if (opts.force) logUserDetached = false;
 
     logProgrammaticScrollActive = true;
     const flush = () => {
@@ -860,6 +874,8 @@
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           logProgrammaticScrollActive = false;
+          pendingScrollToBottom = false;
+          if (isLogPinnedToBottom()) logUserDetached = false;
         });
       });
     };
@@ -955,7 +971,13 @@
     const stick = shouldAutoScrollLog();
     logEl.appendChild(buildLogEntry(entry));
     if (window.CodX?.isActive?.()) window.CodXLog?.append?.(entry);
-    if (stick) scrollLogToBottom();
+    if (stick) {
+      if (isLogPanelVisible()) {
+        scrollLogToBottom();
+      } else {
+        pendingScrollToBottom = true;
+      }
+    }
     notifyTurnExec(entry);
   }
 

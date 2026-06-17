@@ -29,15 +29,15 @@ body.app-view-codx .main-column > .app-bottom-bar {
   display: none !important;
 }
 
-/* 三格网格：左树 | 右上编辑区 | 右下 Pecado 底栏 */
+/* 两格网格：左树 | 右栏（编辑区 + Pecado/log） */
 .codx-shell {
   --codx-sidebar-width: 240px;
+  --codx-dock-side-width: 380px;
+  position: relative;
   display: grid;
   grid-template-columns: var(--codx-sidebar-width) minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) auto;
-  grid-template-areas:
-    'tree workspace'
-    'tree bottombar';
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: 'tree center';
   height: 100%;
   min-height: 0;
   width: 100%;
@@ -55,8 +55,17 @@ body.app-view-codx .main-column > .app-bottom-bar {
   overflow: hidden;
 }
 
+.codx-center-column {
+  grid-area: center;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .codx-workspace {
-  grid-area: workspace;
+  flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
   display: flex;
@@ -66,13 +75,94 @@ body.app-view-codx .main-column > .app-bottom-bar {
 }
 
 .codx-bottom-bar-anchor {
-  grid-area: bottombar;
+  flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
   background: #1e1e20;
   --codx-dock-height: 220px;
+}
+
+/* 右侧分屏：编辑区 | Pecado/log */
+.codx-shell.is-dock-side .codx-center-column {
+  flex-direction: row;
+  align-items: stretch;
+}
+
+.codx-shell.is-dock-side .codx-workspace {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.codx-shell.is-dock-side .codx-bottom-bar-anchor {
+  flex: 0 0 var(--codx-dock-side-width);
+  width: var(--codx-dock-side-width);
+  max-width: min(60vw, 720px);
+  min-width: 280px;
+  border-left: 1px solid #2c2c2e;
+  border-top: none;
+}
+
+.codx-shell.is-dock-side .codx-bottom-bar-anchor .codx-dock {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  max-height: none;
+}
+
+.codx-shell.is-dock-side .codx-bottom-bar-anchor .codx-resizer-h {
+  display: none;
+}
+
+.codx-shell.is-dock-side .codx-bottom-bar-anchor.is-dock-maximized .codx-dock {
+  flex-basis: auto;
+}
+
+.codx-shell.is-dock-side .codx-bottom-bar-anchor > .app-bottom-bar {
+  flex-shrink: 0;
+  border-top: 1px solid #2c2c2e;
+}
+
+.codx-resizer-dock-side {
+  display: none;
+}
+
+.codx-shell.is-dock-side .codx-resizer-dock-side {
+  display: block;
+  top: 0;
+  left: -4px;
+  right: auto;
+  bottom: 0;
+  width: 8px;
+  height: auto;
+  cursor: col-resize;
+}
+
+.codx-dock-side-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  border: 1px solid #3a3a3e;
+  border-radius: 6px;
+  background: #2a2a2e;
+  color: #c8c8cc;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.codx-dock-side-toggle:hover {
+  background: #3a3a40;
+  color: #fff;
+  border-color: #5a8dee;
+}
+
+.codx-dock-side-toggle.is-on {
+  color: #7eb8ff;
+  border-color: #5a8dee;
+  background: #1e2a3a;
 }
 
 .codx-bottom-bar-anchor > .app-bottom-bar {
@@ -138,13 +228,25 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-resizer-h {
 }
 
 .codx-sidebar-head {
+  display: block;
+  width: 100%;
+  margin: 0;
   padding: 8px 10px;
+  border: none;
+  border-bottom: 1px solid #2c2c2e;
+  background: transparent;
+  text-align: left;
   font-size: 11px;
   font-weight: 600;
   color: #9a9a9e;
-  border-bottom: 1px solid #2c2c2e;
   letter-spacing: 0.02em;
   flex-shrink: 0;
+  cursor: pointer;
+}
+
+.codx-sidebar-head:hover {
+  color: #d0d0d4;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .codx-file-tree {
@@ -846,15 +948,16 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
   }
 }
 
-.codx-chat-msg-assistant.codx-chat-status {
-  margin-top: 12px;
-  margin-bottom: 4px;
-}
 
 .codx-chat-scroll ::selection,
 .codx-chat-msg-body ::selection {
   background: rgba(120, 140, 180, 0.28);
   color: inherit;
+}
+
+.codx-chat-msg-assistant.codx-chat-status {
+  margin-top: 12px;
+  margin-bottom: 4px;
 }
 
 .codx-chat-input-row {
@@ -863,19 +966,24 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
   padding: 8px 12px;
   border-top: 1px solid #2c2c2e;
   flex-shrink: 0;
+  align-items: flex-end;
 }
 
 #codx-chat-input {
   flex: 1;
+  min-width: 0;
   background: #2c2c2e;
   border: 1px solid #3a3a3e;
   border-radius: 8px;
   color: #fff;
   padding: 8px 10px;
   font-size: 13px;
+  line-height: 1.45;
   resize: none;
   min-height: 36px;
-  max-height: 100px;
+  max-height: none;
+  overflow-y: hidden;
+  box-sizing: border-box;
 }
 
 #codx-chat-input:focus,
@@ -886,6 +994,9 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
 }
 
 #codx-chat-send {
+  flex-shrink: 0;
+  align-self: flex-end;
+  min-height: 36px;
   border: none;
   background: #007aff;
   color: #fff;
@@ -893,6 +1004,11 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
   padding: 0 14px;
   cursor: pointer;
   font-size: 13px;
+}
+
+#codx-chat-send:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 #codx-log-output {
@@ -1006,6 +1122,14 @@ body.app-view-codx #pecado-codx-btn.is-active {
   background: #3a3a42;
   border-color: #007aff;
   color: #fff;
+}
+
+body.app-view-codx #pecado-codx-git-btn {
+  display: inline-flex;
+}
+
+#pecado-codx-git-btn {
+  display: none;
 }
 
 /* 滚动条：与 Pecado 工程 skill-log / workspace 胶囊样式一致 */

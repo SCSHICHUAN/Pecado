@@ -102,7 +102,12 @@
     <div id="panel-codx" class="hidden" aria-label="CodX 编程">
       <div class="codx-shell" id="codx-shell">
         <aside class="codx-sidebar">
-          <div class="codx-sidebar-head">PROJECT</div>
+          <button
+            type="button"
+            id="codx-project-head"
+            class="codx-sidebar-head"
+            title="在 Finder 中打开工程目录"
+          >未打开工程</button>
           <div class="codx-file-tree" id="codx-file-tree"></div>
           <div
             class="codx-resizer codx-resizer-v"
@@ -113,10 +118,21 @@
             tabindex="-1"
           ></div>
         </aside>
+        <div class="codx-center-column" id="codx-center-column">
         <div class="codx-workspace" id="codx-workspace">
           <div class="codx-editor-pane" id="codx-editor-area">
             <div class="codx-editor-head">
               <div class="codx-editor-tabs" id="codx-editor-tabs" role="tablist" aria-label="已打开文件"></div>
+              <button
+                type="button"
+                id="codx-dock-side-toggle"
+                class="codx-dock-side-toggle"
+                aria-label="右侧分屏"
+                aria-pressed="false"
+                title="Pecado/log 显示在编辑区右侧"
+              >
+                ⫽
+              </button>
               <button
                 type="button"
                 id="codx-sync-xcode-btn"
@@ -156,6 +172,14 @@
               aria-label="调整 Pecado/log 区高度"
               tabindex="-1"
             ></div>
+            <div
+              class="codx-resizer codx-resizer-v codx-resizer-dock-side"
+              id="codx-resizer-dock-side"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整 Pecado/log 区宽度"
+              tabindex="-1"
+            ></div>
             <nav class="codx-dock-tabs" role="tablist">
               <div class="codx-dock-tab-list">
                 <button type="button" class="codx-dock-tab is-active" data-codx-dock-tab="pecado" role="tab">Pecado</button>
@@ -175,6 +199,7 @@
             </div>
           </div>
         </div>
+        </div>
       </div>
     </div>
     </div>
@@ -186,14 +211,9 @@
         <div class="app-bottom-tools app-bottom-tools-chat" id="app-bottom-tools-chat" data-app-view="chat">
           <button type="button" class="skill-button skill-button-run" id="pecado-xcode-run-btn" aria-label="运行项目" title="xcode_run">▶</button>
           <button type="button" class="skill-button skill-button-codx" id="pecado-codx-btn" aria-label="打开编程" title="CodX 代码编辑器">打开编程</button>
+          <button type="button" class="skill-button skill-button-git-focus" id="pecado-codx-git-btn" aria-label="Git 面板" title="全屏 Git 面板" hidden>Git</button>
           <button type="button" class="skill-button skill-button-open-xcode" id="pecado-open-xcode-btn" aria-label="打开项目" title="在 Xcode 中打开工程" disabled hidden>打开项目</button>
-          <button type="button" class="skill-button">🎨图像生成</button>
-          <button type="button" class="skill-button">📝帮我写作</button>
-          <button type="button" class="skill-button">📚翻译</button>
-          <button type="button" class="skill-button">🎬视频生成</button>
-          <button type="button" class="skill-button">⚙️更多</button>
         </div>
-        <div class="app-bottom-tools app-bottom-tools-git" id="app-bottom-tools-git" data-app-view="git" hidden aria-hidden="true"></div>
         <!-- Workflow 底部快捷区：有内容时由 workflow 模块注入 #app-bottom-tools-workflow -->
       </div>
     </footer>

@@ -54,6 +54,7 @@ try {
     mcpFsOpenXcodeProject: (payload) =>
       ipcRenderer.invoke(MCP_FS.OPEN_XCODE_PROJECT, payload || {}),
     mcpFsOpenPath: (payload) => ipcRenderer.invoke(MCP_FS.OPEN_PATH, payload || {}),
+    mcpFsCopyFiles: (payload) => ipcRenderer.invoke(MCP_FS.COPY_FILES, payload || {}),
     mcpFsReadTextFile: (payload) => ipcRenderer.invoke(MCP_FS.READ_TEXT_FILE, payload || {}),
     mcpFsPreviewFile: (payload) => ipcRenderer.invoke(MCP_FS.PREVIEW_FILE, payload || {}),
     onMcpFsProjectChanged: (callback) => {

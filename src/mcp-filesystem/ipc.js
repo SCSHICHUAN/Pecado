@@ -30,6 +30,7 @@ const {
   warmProjectTreeCache,
   getCachedTreeAscii,
 } = require('./project-context');
+const { writeFilesToClipboard } = require('./clipboard-files');
 
 /** @type {() => import('electron').BrowserWindow | null} */
 let getMainWindowRef = () => null;
@@ -228,6 +229,25 @@ function registerIpcHandlers(ipcMain) {
         if (err) return { ok: false, error: err };
       }
       return { ok: true, path: filePath };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(MCP_FS.COPY_FILES, async (_event, payload) => {
+    try {
+      /** @type {string[]} */
+      const paths = [];
+      if (Array.isArray(payload?.paths)) {
+        for (const p of payload.paths) {
+          const s = String(p || '').trim();
+          if (s) paths.push(s);
+        }
+      } else {
+        const single = String(payload?.path || '').trim();
+        if (single) paths.push(single);
+      }
+      return writeFilesToClipboard(paths);
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

@@ -3,8 +3,151 @@
  * CodX log：扁平分层行，详情格式化展示
  */
 (function () {
+  /** 与 Pecado skill-log 一致的贴底滚动策略 */
+  const SCROLL_PIN_THRESHOLD_PX = 80;
+  const STREAM_FOLLOW_MAX_GAP_PX = 20;
+  const STREAM_DETACH_SCROLL_GAP_PX = 40;
+  const WHEEL_UP_BLOCK_STREAM_MS = 900;
+
+  let logProgrammaticScrollActive = false;
+  let logUserDetached = false;
+  let lastWheelUpIntentAt = 0;
+  let logTouchLastY = null;
+  let pendingScrollToBottom = false;
+
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function logOutputEl() {
+    return $('codx-log-output');
+  }
+
+  function isLogPanelVisible() {
+    const panel = $('codx-dock-log');
+    return Boolean(panel && !panel.classList.contains('hidden'));
+  }
+
+  function logScrollGapFromBottom(el) {
+    if (!el) return 0;
+    return el.scrollHeight - el.scrollTop - el.clientHeight;
+  }
+
+  function isLogPinnedToBottom(el) {
+    return logScrollGapFromBottom(el) <= SCROLL_PIN_THRESHOLD_PX;
+  }
+
+  function shouldAutoScrollLog(el) {
+    if (logUserDetached) return false;
+    const now = performance.now();
+    if (lastWheelUpIntentAt > 0 && now - lastWheelUpIntentAt < WHEEL_UP_BLOCK_STREAM_MS) {
+      return false;
+    }
+    if (!isLogPanelVisible()) return true;
+    return logScrollGapFromBottom(el) <= STREAM_FOLLOW_MAX_GAP_PX;
+  }
+
+  function syncDetachFromLogScroll() {
+    const el = logOutputEl();
+    if (!el || logProgrammaticScrollActive) return;
+    const gap = logScrollGapFromBottom(el);
+    if (gap > STREAM_DETACH_SCROLL_GAP_PX) {
+      logUserDetached = true;
+    } else if (gap <= 8) {
+      logUserDetached = false;
+    }
+  }
+
+  function scrollToBottom(opts = {}) {
+    const el = logOutputEl();
+    if (!el) return;
+
+    if (opts.force) logUserDetached = false;
+
+    logProgrammaticScrollActive = true;
+    const flush = () => {
+      el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    };
+
+    flush();
+    let passes = 0;
+    const settle = () => {
+      passes += 1;
+      flush();
+      if (logScrollGapFromBottom(el) > 2 && passes < 12) {
+        requestAnimationFrame(settle);
+        return;
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          logProgrammaticScrollActive = false;
+          pendingScrollToBottom = false;
+          if (isLogPinnedToBottom(el)) logUserDetached = false;
+        });
+      });
+    };
+    requestAnimationFrame(settle);
+  }
+
+  function setupLogScrollFollow() {
+    const el = logOutputEl();
+    if (!el || el.dataset.scrollBound === '1') return;
+    el.dataset.scrollBound = '1';
+
+    el.addEventListener('scroll', syncDetachFromLogScroll, { passive: true });
+
+    el.addEventListener(
+      'wheel',
+      (e) => {
+        if (e.ctrlKey) return;
+        if (e.deltaY < 0) {
+          lastWheelUpIntentAt = performance.now();
+          logUserDetached = true;
+          return;
+        }
+        if (!logProgrammaticScrollActive && e.deltaY > 0 && isLogPinnedToBottom(el)) {
+          logUserDetached = false;
+        }
+      },
+      { passive: true, capture: true }
+    );
+
+    el.addEventListener(
+      'touchstart',
+      (e) => {
+        if (e.touches.length === 1) logTouchLastY = e.touches[0].clientY;
+      },
+      { passive: true }
+    );
+    el.addEventListener(
+      'touchmove',
+      (e) => {
+        if (e.touches.length !== 1) return;
+        const y = e.touches[0].clientY;
+        if (logTouchLastY == null) return;
+        const dy = y - logTouchLastY;
+        if (dy > 2) {
+          lastWheelUpIntentAt = performance.now();
+          logUserDetached = true;
+        }
+        if (!logProgrammaticScrollActive && dy < -2 && isLogPinnedToBottom(el)) {
+          logUserDetached = false;
+        }
+        logTouchLastY = y;
+      },
+      { passive: true }
+    );
+    el.addEventListener(
+      'touchend',
+      () => {
+        logTouchLastY = null;
+      },
+      { passive: true }
+    );
+  }
+
+  function onLogTabShown() {
+    scrollToBottom({ force: true });
   }
 
   function formatTime(ts) {
@@ -335,16 +478,33 @@
   }
 
   function append(entry) {
-    const logEl = $('codx-log-output');
+    setupLogScrollFollow();
+    const logEl = logOutputEl();
     if (!logEl || !entry) return;
+    const stick = shouldAutoScrollLog(logEl);
     logEl.appendChild(buildCodxLogEntry(typeof entry === 'object' ? entry : { output: entry }));
-    logEl.scrollTop = logEl.scrollHeight;
+    if (stick) {
+      if (isLogPanelVisible()) {
+        scrollToBottom();
+      } else {
+        pendingScrollToBottom = true;
+      }
+    }
   }
 
   function clear() {
-    const logEl = $('codx-log-output');
+    const logEl = logOutputEl();
     if (logEl) logEl.replaceChildren();
+    logUserDetached = false;
+    pendingScrollToBottom = false;
   }
 
-  window.CodXLog = { append, clear, buildCodxLogEntry, formatLogFirstLine };
+  window.CodXLog = {
+    append,
+    clear,
+    scrollToBottom,
+    onLogTabShown,
+    buildCodxLogEntry,
+    formatLogFirstLine,
+  };
 })();

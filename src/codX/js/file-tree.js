@@ -165,6 +165,117 @@
   let currentProjectRoot = '';
   /** @type {Set<string>} */
   let expandedPathsSet = new Set();
+  /** @type {{ relPath: string } | null} */
+  let fileMenuContext = null;
+  let fileMenuBound = false;
+
+  function absPathForRel(relPath) {
+    const root = String(currentProjectRoot || '').replace(/\/+$/, '');
+    const rel = String(relPath || '').replace(/^\/+/, '');
+    if (!root) return rel;
+    return `${root}/${rel}`;
+  }
+
+  function hideFileContextMenu() {
+    const menu = document.getElementById('codx-file-menu');
+    if (menu) {
+      menu.hidden = true;
+      menu.style.visibility = '';
+    }
+    fileMenuContext = null;
+  }
+
+  function positionFileContextMenu(menu, clientX, clientY) {
+    const pad = 8;
+    menu.hidden = false;
+    menu.style.visibility = 'hidden';
+    menu.style.left = `${clientX}px`;
+    menu.style.top = `${clientY}px`;
+
+    requestAnimationFrame(() => {
+      const menuW = menu.offsetWidth;
+      const menuH = menu.offsetHeight;
+      let left = clientX;
+      let top = clientY;
+      if (left + menuW + pad > window.innerWidth) {
+        left = Math.max(pad, window.innerWidth - menuW - pad);
+      }
+      if (top + menuH + pad > window.innerHeight) {
+        top = Math.max(pad, window.innerHeight - menuH - pad);
+      }
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
+      menu.style.visibility = '';
+    });
+  }
+
+  function ensureFileContextMenu() {
+    let menu = document.getElementById('codx-file-menu');
+    if (menu) return menu;
+
+    menu = document.createElement('div');
+    menu.id = 'codx-file-menu';
+    menu.className = 'codx-file-menu';
+    menu.hidden = true;
+    menu.innerHTML =
+      '<div class="codx-file-menu-item"><button type="button" data-action="finder">Show in Finder</button></div>' +
+      '<div class="codx-file-menu-item"><button type="button" data-action="copy">Copy</button></div>';
+    document.body.appendChild(menu);
+
+    menu.querySelector('[data-action="finder"]')?.addEventListener('click', () => {
+      const ctx = fileMenuContext;
+      hideFileContextMenu();
+      if (!ctx?.relPath) return;
+      const abs = absPathForRel(ctx.relPath);
+      window.electronAPI?.mcpFsOpenPath?.({ path: abs })?.catch?.((e) => {
+        console.warn('[CodX] show in Finder failed', e);
+      });
+    });
+
+    menu.querySelector('[data-action="copy"]')?.addEventListener('click', () => {
+      const ctx = fileMenuContext;
+      hideFileContextMenu();
+      if (!ctx?.relPath) return;
+      const abs = absPathForRel(ctx.relPath);
+      window.electronAPI?.mcpFsCopyFiles?.({ path: abs })?.then?.((res) => {
+        if (!res?.ok) console.warn('[CodX] copy file failed', res?.error);
+      })?.catch?.((e) => {
+        console.warn('[CodX] copy file failed', e);
+      });
+    });
+
+    return menu;
+  }
+
+  function bindFileContextMenuDismiss() {
+    if (fileMenuBound) return;
+    fileMenuBound = true;
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('codx-file-menu');
+      if (!menu || menu.hidden) return;
+      if (menu.contains(e.target)) return;
+      hideFileContextMenu();
+    });
+    document.addEventListener('contextmenu', (e) => {
+      const menu = document.getElementById('codx-file-menu');
+      if (!menu || menu.hidden) return;
+      if (menu.contains(e.target)) return;
+      hideFileContextMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') hideFileContextMenu();
+    });
+    window.addEventListener('scroll', hideFileContextMenu, true);
+  }
+
+  function showFileContextMenu(event, relPath) {
+    event.preventDefault();
+    event.stopPropagation();
+    bindFileContextMenuDismiss();
+    const menu = ensureFileContextMenu();
+    fileMenuContext = { relPath: String(relPath || '') };
+    positionFileContextMenu(menu, event.clientX, event.clientY);
+  }
 
   function expandDirRow(row, persist = true) {
     const group = row?.nextElementSibling;
@@ -227,8 +338,12 @@
       row.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
+        hideFileContextMenu();
         setActivePath(item.relPath);
         onSelect?.(item.relPath);
+      });
+      row.addEventListener('contextmenu', (e) => {
+        showFileContextMenu(e, item.relPath);
       });
     } else {
       row.addEventListener('click', (e) => {
@@ -285,6 +400,7 @@
       if (!row || !container.contains(row)) return;
       e.preventDefault();
       e.stopPropagation();
+      hideFileContextMenu();
       const relPath = row.dataset.relPath;
       if (!relPath) return;
       setActivePath(relPath);
@@ -315,10 +431,31 @@
     return loadSelectedPath(projectRoot);
   }
 
+  function revealPath(relPath, projectRoot) {
+    const norm = String(relPath || '')
+      .replace(/\\/g, '/')
+      .replace(/^\.\//, '')
+      .replace(/^\/+/, '');
+    if (!norm) return;
+    if (projectRoot) currentProjectRoot = projectRoot;
+    for (const dir of ancestorDirPaths(norm)) {
+      expandedPathsSet.add(dir);
+    }
+    schedulePersistTreeState();
+    if (!treeContainer) return;
+    applyExpandedPaths(treeContainer);
+    setActivePath(norm);
+    const row = treeContainer.querySelector(
+      `.codx-tree-row[data-rel-path="${CSS.escape(norm)}"]`
+    );
+    row?.scrollIntoView({ block: 'nearest' });
+  }
+
   window.CodXFileTree = {
     renderFileTree,
     setActivePath,
     clearActivePath,
     getSavedSelectedPath,
+    revealPath,
   };
 })();

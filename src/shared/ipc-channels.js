@@ -46,6 +46,8 @@ module.exports = {
     OPEN_XCODE_PROJECT: 'mcp-fs-open-xcode-project',
     /** invoke：{ path } → 在 Finder/资源管理器中定位文件 */
     OPEN_PATH: 'mcp-fs-open-path',
+    /** invoke：{ path | paths[] } → 复制文件到系统剪贴板（Finder 粘贴） */
+    COPY_FILES: 'mcp-fs-copy-files',
     /** invoke：{ path } → 读取文本文件（log 浮层预览） */
     READ_TEXT_FILE: 'mcp-fs-read-text-file',
     /** main → renderer：工程路径变更；showTree 为 true 时仅 Open Folder 会读并展示目录树 */

@@ -8,6 +8,15 @@
   let lastCodxProjectRoot = '';
   let dockOpen = false;
   let dockTab = 'pecado';
+  let dockSideLayout = false;
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let treeRefreshTimer = null;
+  const DOCK_SIDE_LAYOUT_KEY = 'codx.dockSideLayout';
+  const DOCK_OPEN_KEY = 'codx.dockOpen';
+  const DOCK_TAB_KEY = 'codx.dockTab';
+  const PANEL_OPEN_KEY = 'codx.panelOpen';
+  const PREV_VIEW_KEY = 'codx.prevView';
+  let restoringSession = false;
   /** @type {Map<string, string>} relPath → stream buffer for deferred disk write */
   const deferredDisk = new Map();
   /** @type {Promise<void> | null} */
@@ -181,7 +190,35 @@
     }
   }
 
-  async function refreshTree() {
+  function projectNameFromRoot(root) {
+    if (!root) return '未打开工程';
+    const name = String(root).split(/[/\\]/).filter(Boolean).pop();
+    return name || String(root);
+  }
+
+  function syncProjectHead() {
+    const head = $('codx-project-head');
+    if (!head) return;
+    head.textContent = projectNameFromRoot(projectRoot);
+    head.title = projectRoot
+      ? `${projectRoot}\n点击在 Finder 中打开`
+      : '未打开工程';
+  }
+
+  async function openProjectInFinder() {
+    const api = getApi();
+    if (!api?.mcpFsOpenProjectRoot) return;
+    try {
+      const res = await api.mcpFsOpenProjectRoot(
+        projectRoot ? { projectRoot } : {}
+      );
+      if (!res?.ok && res?.error) console.warn('[CodX] open project root:', res.error);
+    } catch (e) {
+      console.error('[CodX] open project root failed', e);
+    }
+  }
+
+  async function refreshTree(opts = {}) {
     const api = getApi();
     const treeEl = $('codx-file-tree');
     if (!api?.mcpFsDirectoryTree || !treeEl) return;
@@ -191,14 +228,163 @@
       return;
     }
     await syncProjectRootFromTree(res);
+    syncProjectHead();
     window.CodXFileTree?.renderFileTree?.(treeEl, res.tree, (relPath) => {
       openFileByRelPath(relPath).catch(console.error);
     }, projectRoot);
 
-    const savedPath = window.CodXFileTree?.getSavedSelectedPath?.(projectRoot);
-    if (savedPath) {
-      await openFileByRelPath(savedPath);
+    if (opts.revealPath) {
+      window.CodXFileTree?.revealPath?.(opts.revealPath, projectRoot);
     }
+
+    if (!opts.skipReopen) {
+      const savedPath = window.CodXFileTree?.getSavedSelectedPath?.(projectRoot);
+      if (savedPath) {
+        await openFileByRelPath(savedPath);
+      }
+    }
+  }
+
+  function scheduleTreeRefresh(opts = {}) {
+    if (!active) return;
+    if (treeRefreshTimer) clearTimeout(treeRefreshTimer);
+    treeRefreshTimer = setTimeout(() => {
+      treeRefreshTimer = null;
+      refreshTree({ skipReopen: true, ...opts }).catch(console.error);
+    }, 280);
+  }
+
+  function readDockSidePref() {
+    try {
+      return localStorage.getItem(DOCK_SIDE_LAYOUT_KEY) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function writeDockSidePref(on) {
+    try {
+      localStorage.setItem(DOCK_SIDE_LAYOUT_KEY, on ? '1' : '0');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readDockOpenPref() {
+    try {
+      const v = localStorage.getItem(DOCK_OPEN_KEY);
+      if (v === null) return false;
+      return v !== '0';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function writeDockOpenPref(open) {
+    try {
+      localStorage.setItem(DOCK_OPEN_KEY, open ? '1' : '0');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readDockTabPref() {
+    try {
+      const tab = String(localStorage.getItem(DOCK_TAB_KEY) || '').trim();
+      return tab === 'log' ? 'log' : 'pecado';
+    } catch (_) {
+      return 'pecado';
+    }
+  }
+
+  function writeDockTabPref(tab) {
+    try {
+      localStorage.setItem(DOCK_TAB_KEY, tab === 'log' ? 'log' : 'pecado');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readPanelOpenPref() {
+    try {
+      return localStorage.getItem(PANEL_OPEN_KEY) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function writePanelOpenPref(open) {
+    try {
+      localStorage.setItem(PANEL_OPEN_KEY, open ? '1' : '0');
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function readPrevViewPref() {
+    try {
+      const view = String(localStorage.getItem(PREV_VIEW_KEY) || '').trim();
+      if (view === 'git' || view === 'workflow' || view === 'chat') return view;
+    } catch (_) {
+      /* ignore */
+    }
+    return 'chat';
+  }
+
+  function writePrevViewPref(view) {
+    try {
+      const v = view === 'git' || view === 'workflow' ? view : 'chat';
+      localStorage.setItem(PREV_VIEW_KEY, v);
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  function resolvePrevView() {
+    if (document.body.classList.contains('app-view-git')) return 'git';
+    if (document.body.classList.contains('app-view-workflow')) return 'workflow';
+    return 'chat';
+  }
+
+  function persistCodxSessionPrefs() {
+    writeDockSidePref(dockSideLayout);
+    writeDockOpenPref(dockSideLayout ? true : dockOpen);
+    writeDockTabPref(dockTab);
+  }
+
+  function syncDockSideUi() {
+    const shell = $('codx-shell');
+    shell?.classList.toggle('is-dock-side', dockSideLayout);
+    document.body.classList.toggle('codx-dock-side-layout', dockSideLayout && active);
+    const btn = $('codx-dock-side-toggle');
+    if (btn) {
+      btn.classList.toggle('is-on', dockSideLayout);
+      btn.title = dockSideLayout ? '还原底栏布局' : 'Pecado/log 显示在编辑区右侧';
+      btn.setAttribute('aria-label', dockSideLayout ? '还原底栏布局' : '右侧分屏');
+      btn.setAttribute('aria-pressed', dockSideLayout ? 'true' : 'false');
+    }
+    const maxBtn = $('codx-dock-maximize');
+    if (maxBtn) {
+      maxBtn.hidden = dockSideLayout;
+      maxBtn.style.display = dockSideLayout ? 'none' : '';
+    }
+    if (dockSideLayout && active && !dockOpen) {
+      dockOpen = true;
+      $('codx-bottom-bar-anchor')?.classList.remove('is-dock-collapsed');
+    }
+    syncDockToggle();
+    scheduleEditorLayout();
+  }
+
+  function toggleDockSideLayout() {
+    dockSideLayout = !dockSideLayout;
+    if (dockSideLayout) {
+      setDockOpen(true, { skipPersist: true });
+      $('codx-bottom-bar-anchor')?.classList.remove('is-dock-maximized');
+      window.CodXResizer?.syncMaximizeButton?.();
+    }
+    syncDockSideUi();
+    persistCodxSessionPrefs();
   }
 
   function scheduleEditorLayout() {
@@ -277,12 +463,14 @@
       window.CodXEditor?.markSaved?.(relPath);
       deferredDisk.delete(relPath);
       window.CodXLog?.append?.({ method: 'save', output: `已保存 ${relPath}` });
+      scheduleTreeRefresh({ revealPath: relPath });
     } else {
       window.CodXLog?.append?.({ method: 'save', output: res?.error || '保存失败', isError: true });
     }
   }
 
-  function setDockOpen(open) {
+  function setDockOpen(open, opts = {}) {
+    if (dockSideLayout && active && !open) return;
     const wasCollapsed = !dockOpen;
     dockOpen = Boolean(open);
     $('codx-bottom-bar-anchor')?.classList.toggle('is-dock-collapsed', !dockOpen);
@@ -294,6 +482,9 @@
     }
     syncDockToggle();
     scheduleEditorLayout();
+    if (!opts.skipPersist && active && !restoringSession) {
+      persistCodxSessionPrefs();
+    }
   }
 
   function syncDockToggle() {
@@ -302,7 +493,7 @@
     }
   }
 
-  function setDockTab(tab) {
+  function setDockTab(tab, opts = {}) {
     dockTab = tab === 'log' ? 'log' : 'pecado';
     document.querySelectorAll('.codx-dock-tab').forEach((el) => {
       const on = el.dataset.codxDockTab === dockTab;
@@ -311,6 +502,14 @@
     });
     $('codx-dock-pecado')?.classList.toggle('hidden', dockTab !== 'pecado');
     $('codx-dock-log')?.classList.toggle('hidden', dockTab !== 'log');
+    if (dockTab === 'log') {
+      requestAnimationFrame(() => {
+        window.CodXLog?.onLogTabShown?.();
+      });
+    }
+    if (!opts.skipPersist && active && !restoringSession) {
+      persistCodxSessionPrefs();
+    }
   }
 
   function revealDock(tab) {
@@ -320,6 +519,8 @@
 
   async function enter(prevView = 'chat') {
     await ensureReady();
+    writePanelOpenPref(true);
+    writePrevViewPref(prevView);
     document.body.dataset.codxPrevView = prevView;
     active = true;
     document.body.classList.add('app-view-codx');
@@ -331,8 +532,14 @@
     document.querySelector('.sidebar')?.classList.add('hidden');
     document.querySelector('.main-column')?.classList.add('codx-full-width');
     mountCodxBottomBar();
+    restoringSession = true;
+    dockSideLayout = readDockSidePref();
+    dockTab = readDockTabPref();
+    syncDockSideUi();
+    setDockTab(dockTab, { skipPersist: true });
+    setDockOpen(dockSideLayout || readDockOpenPref(), { skipPersist: true });
+    restoringSession = false;
     syncDockToggle();
-    setDockOpen(false);
     await ensureEditor();
     refreshTree().catch(console.error);
     scheduleEditorLayout();
@@ -344,6 +551,9 @@
   }
 
   function exit() {
+    persistCodxSessionPrefs();
+    writePanelOpenPref(false);
+    document.body.classList.remove('codx-dock-side-layout');
     active = false;
     const prev = document.body.dataset.codxPrevView || 'chat';
     document.body.classList.remove('app-view-codx');
@@ -364,6 +574,36 @@
     syncCodxBtnUi();
   }
 
+  async function tryOpenCodx(opts = {}) {
+    const { prevView, silent = false } = opts;
+    if (active) return true;
+    await ensureReady();
+    const api = getApi();
+    const tree = await api?.mcpFsDirectoryTree?.({ directoriesOnly: false });
+    if (tree?.error) {
+      if (!silent) alert('请先 File → Open Folder 打开工程');
+      return false;
+    }
+    await syncProjectRootFromTree(tree);
+    syncProjectHead();
+    if (lastCodxProjectRoot && lastCodxProjectRoot !== projectRoot) {
+      resetCodxSession();
+    }
+    lastCodxProjectRoot = projectRoot;
+    const prev = prevView || resolvePrevView();
+    await enter(prev);
+    return true;
+  }
+
+  async function maybeRestoreCodxPanel() {
+    if (!readPanelOpenPref()) return;
+    try {
+      await tryOpenCodx({ prevView: readPrevViewPref(), silent: true });
+    } catch (e) {
+      console.error('[CodX] restore panel failed', e);
+    }
+  }
+
   async function writeFileToXcode(relPath, content) {
     const api = getApi();
     if (!relPath || !api?.mcpFsWriteTextFile) return false;
@@ -372,6 +612,7 @@
       window.CodXEditor?.markAcceptedWrite?.(relPath);
       deferredDisk.delete(relPath);
       window.CodXLog?.append?.({ method: 'sync', output: `已写入 Xcode：${relPath}` });
+      scheduleTreeRefresh({ revealPath: relPath });
       return true;
     }
     window.CodXLog?.append?.({
@@ -405,6 +646,14 @@
       window.CodXResizer?.toggleDockMaximize?.();
     });
 
+    $('codx-dock-side-toggle')?.addEventListener('click', () => {
+      toggleDockSideLayout();
+    });
+
+    $('codx-project-head')?.addEventListener('click', () => {
+      openProjectInFinder().catch(console.error);
+    });
+
     document.addEventListener('keydown', (e) => {
       if (!active) return;
       const zoom = codxFontZoomDelta(e);
@@ -427,10 +676,15 @@
       if (root) {
         const prev = projectRoot;
         projectRoot = root;
+        syncProjectHead();
         if (active && prev && prev !== root) {
           resetCodxSession();
         }
-        if (active) refreshTree().catch(console.error);
+        if (active) {
+          refreshTree().catch(console.error);
+        } else if (readPanelOpenPref()) {
+          tryOpenCodx({ prevView: readPrevViewPref(), silent: true }).catch(console.error);
+        }
       }
     });
 
@@ -471,34 +725,26 @@
 
     $('pecado-codx-btn')?.addEventListener('click', async () => {
       try {
-        await ensureReady();
         if (active) {
           exit();
           return;
         }
-        const api = getApi();
-        const tree = await api?.mcpFsDirectoryTree?.({ directoriesOnly: false });
-        if (tree?.error) {
-          alert('请先 File → Open Folder 打开工程');
-          return;
-        }
-        await syncProjectRootFromTree(tree);
-        if (lastCodxProjectRoot && lastCodxProjectRoot !== projectRoot) {
-          resetCodxSession();
-        }
-        lastCodxProjectRoot = projectRoot;
-        const prev = document.body.classList.contains('app-view-git')
-          ? 'git'
-          : document.body.classList.contains('app-view-workflow')
-            ? 'workflow'
-            : 'chat';
-        await enter(prev);
+        await tryOpenCodx({ prevView: resolvePrevView() });
       } catch (e) {
         console.error('[CodX] enter failed', e);
         alert(`编程视图打开失败：${e?.message || e}`);
       }
     });
+
+    $('pecado-codx-git-btn')?.addEventListener('click', () => {
+      if (!active) return;
+      window.__enterGitFocusFromCodx?.()?.catch?.((e) => {
+        console.error('[CodX] git focus failed', e);
+      });
+    });
+
     syncCodxBtnUi();
+    maybeRestoreCodxPanel().catch(console.error);
   }
 
   window.CodX = {
@@ -512,12 +758,15 @@
     toggleDock: () => setDockOpen(!dockOpen),
     setDockOpen,
     refreshTree,
+    scheduleTreeRefresh,
     saveActiveFile,
     syncAllToXcode,
   };
 
   window.__codxDockOpen = () => dockOpen && active;
+  window.__codxDockSideLayout = () => dockSideLayout && active;
   window.__codxToggleDock = () => {
+    if (active && dockSideLayout) return;
     if (active) setDockOpen(!dockOpen);
   };
 

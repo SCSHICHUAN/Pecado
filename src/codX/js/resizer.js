@@ -5,9 +5,12 @@
 (function () {
   const SIDEBAR_KEY = 'codx.sidebarWidth';
   const DOCK_KEY = 'codx.dockHeight';
+  const DOCK_SIDE_WIDTH_KEY = 'codx.dockSideWidth';
   const SIDEBAR_MIN = 160;
   const SIDEBAR_MAX = 520;
   const DOCK_MIN = 120;
+  const DOCK_SIDE_MIN = 280;
+  const DOCK_SIDE_MAX = 720;
   const EDITOR_MIN = 72;
   let dockRestoreHeight = null;
 
@@ -47,6 +50,60 @@
     const raw = getComputedStyle(shell).getPropertyValue('--codx-sidebar-width').trim();
     const n = parseFloat(raw);
     return Number.isFinite(n) ? n : 240;
+  }
+
+  function shellEl() {
+    return $('codx-shell');
+  }
+
+  function isDockSideLayout() {
+    return shellEl()?.classList.contains('is-dock-side') ?? false;
+  }
+
+  function setDockSideWidth(px) {
+    const shell = shellEl();
+    if (!shell) return;
+    const w = Math.min(DOCK_SIDE_MAX, Math.max(DOCK_SIDE_MIN, px));
+    shell.style.setProperty('--codx-dock-side-width', `${w}px`);
+    writeNumber(DOCK_SIDE_WIDTH_KEY, w);
+    window.CodXEditor?.layout?.();
+  }
+
+  function getDockSideWidth() {
+    const shell = shellEl();
+    if (!shell) return 380;
+    const raw = getComputedStyle(shell).getPropertyValue('--codx-dock-side-width').trim();
+    const n = parseFloat(raw);
+    return Number.isFinite(n) ? n : 380;
+  }
+
+  function bindDockSideResizer(handle) {
+    if (!handle) return;
+    let startX = 0;
+    let startVal = 0;
+
+    const onMove = (e) => {
+      setDockSideWidth(startVal - (e.clientX - startX));
+    };
+
+    const onUp = () => {
+      handle.classList.remove('is-dragging');
+      document.body.classList.remove('codx-resizing-v');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      window.CodXEditor?.layout?.();
+    };
+
+    handle.addEventListener('mousedown', (e) => {
+      if (e.button !== 0 || !isDockSideLayout()) return;
+      e.preventDefault();
+      startX = e.clientX;
+      startVal = getDockSideWidth();
+      handle.classList.add('is-dragging');
+      document.body.classList.add('codx-resizing-v');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
   }
 
   function dockAnchor() {
@@ -214,6 +271,7 @@
 
   function applyStoredSizes() {
     setSidebarWidth(readNumber(SIDEBAR_KEY, getSidebarWidth()));
+    setDockSideWidth(readNumber(DOCK_SIDE_WIDTH_KEY, getDockSideWidth()));
     const dockFallback = hasStoredDockHeight() ? getDockHeight() : getDefaultDockHeight();
     setDockHeight(readNumber(DOCK_KEY, dockFallback));
   }
@@ -222,6 +280,7 @@
     applyStoredSizes();
     bindColResizer($('codx-resizer-sidebar'), setSidebarWidth);
     bindRowResizer($('codx-resizer-dock'), setDockHeight);
+    bindDockSideResizer($('codx-resizer-dock-side'));
     window.addEventListener('resize', () => {
       if (isDockMaximized()) {
         setDockHeight(getDockMaxHeight());
@@ -237,10 +296,13 @@
     bind,
     setSidebarWidth,
     setDockHeight,
+    setDockSideWidth,
+    getDockSideWidth,
     ensureDefaultDockHeight,
     applyPopupDockHeight,
     toggleDockMaximize,
     syncMaximizeButton,
     isDockMaximized,
+    isDockSideLayout,
   };
 })();

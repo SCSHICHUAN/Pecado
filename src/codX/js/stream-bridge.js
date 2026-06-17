@@ -87,6 +87,12 @@
     window.CodXEditor?.appendStreamDelta?.(relPath, delta, full);
   }
 
+  /** LLM / 磁盘写入后刷新左侧目录 */
+  function scheduleTreeRefreshForPath(relPath) {
+    const norm = normalizeRelPath(relPath);
+    window.CodX?.scheduleTreeRefresh?.(norm ? { revealPath: norm } : {});
+  }
+
   function onToolDone(payload) {
     if (!window.CodX?.isActive?.()) return;
     if (payload?.phase !== 'tool') return;
@@ -103,6 +109,12 @@
       return;
     }
 
+    if (name === 'create_directory') {
+      const relPath = normalizeRelPath(payload.arguments?.path || payload.path || '');
+      scheduleTreeRefreshForPath(relPath);
+      return;
+    }
+
     if (name !== 'write_file') return;
     const relPath = window.CodXEditor?.resolveRelPath?.(
       normalizeRelPath(payload.arguments?.path || payload.path || lastStreamRelPath || '')
@@ -111,6 +123,7 @@
     window.CodXEditor?.finishAiStream?.(relPath);
     streamBuffers.delete(relPath);
     lastStreamRelPath = '';
+    scheduleTreeRefreshForPath(relPath);
   }
 
   function reset() {
