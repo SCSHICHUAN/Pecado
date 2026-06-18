@@ -20,7 +20,7 @@ function existingFiles(filePaths) {
     const abs = path.resolve(String(raw || '').trim());
     if (!abs) continue;
     try {
-      if (fs.existsSync(abs) && fs.statSync(abs).isFile()) out.push(abs);
+      if (fs.existsSync(abs) && (fs.statSync(abs).isFile() || fs.statSync(abs).isDirectory())) out.push(abs);
     } catch (_) {
       /* ignore */
     }

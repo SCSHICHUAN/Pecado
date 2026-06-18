@@ -355,6 +355,9 @@
           else collapseDirRow(row);
         }
       });
+      row.addEventListener('contextmenu', (e) => {
+        showFileContextMenu(e, item.relPath);
+      });
     }
     return row;
   }

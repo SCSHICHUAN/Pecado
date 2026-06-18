@@ -359,18 +359,14 @@
     const btn = $('codx-dock-side-toggle');
     if (btn) {
       btn.classList.toggle('is-on', dockSideLayout);
-      btn.title = dockSideLayout ? '还原底栏布局' : 'Pecado/log 显示在编辑区右侧';
-      btn.setAttribute('aria-label', dockSideLayout ? '还原底栏布局' : '右侧分屏');
+      btn.title = dockSideLayout ? '关闭右侧分区' : '打开右侧分区';
+      btn.setAttribute('aria-label', dockSideLayout ? '关闭右侧分区' : '打开右侧分区');
       btn.setAttribute('aria-pressed', dockSideLayout ? 'true' : 'false');
     }
     const maxBtn = $('codx-dock-maximize');
     if (maxBtn) {
       maxBtn.hidden = dockSideLayout;
       maxBtn.style.display = dockSideLayout ? 'none' : '';
-    }
-    if (dockSideLayout && active && !dockOpen) {
-      dockOpen = true;
-      $('codx-bottom-bar-anchor')?.classList.remove('is-dock-collapsed');
     }
     syncDockToggle();
     scheduleEditorLayout();
@@ -382,6 +378,8 @@
       setDockOpen(true, { skipPersist: true });
       $('codx-bottom-bar-anchor')?.classList.remove('is-dock-maximized');
       window.CodXResizer?.syncMaximizeButton?.();
+    } else {
+      setDockOpen(false, { skipPersist: true });
     }
     syncDockSideUi();
     persistCodxSessionPrefs();
@@ -470,7 +468,6 @@
   }
 
   function setDockOpen(open, opts = {}) {
-    if (dockSideLayout && active && !open) return;
     const wasCollapsed = !dockOpen;
     dockOpen = Boolean(open);
     $('codx-bottom-bar-anchor')?.classList.toggle('is-dock-collapsed', !dockOpen);
