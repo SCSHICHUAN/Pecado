@@ -600,6 +600,17 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     const message = (overrideText != null ? String(overrideText) : chatInput.value).trim();
     if (!message) return;
 
+    // 运行/编译/测试前自动同步所有未保存的Monaco修改到磁盘，无需手动按⌘S
+    if (/^(xcode_run|xcode_build|xcode_test)/i.test(message)) {
+      if (window.CodX?.syncAllToXcode) {
+        try {
+          await window.CodX.syncAllToXcode();
+        } catch (e) {
+          console.error('[Pecado] sync unsaved changes failed', e);
+        }
+      }
+    }
+
     chatUserDetachedFromStream = false;
     lastWheelUpIntentAt = 0;
 

@@ -14,6 +14,8 @@
   const openFiles = new Map();
   /** deferred 且未打开时，流式阶段在后台缓冲，完成后再进入 openFiles */
   const backgroundStreams = new Map();
+  /** 已关闭但有未保存修改的文件，重新打开时从这里恢复 */
+  const closedDirtyFiles = new Map();
   /** @type {Map<string, string[]>} AI 改动行装饰 id */
   const aiDecorationIds = new Map();
   let activeRelPath = '';
@@ -54,6 +56,8 @@
   function promoteBackgroundStream(incomingPath) {
     const bg = backgroundStreams.get(incomingPath);
     if (!bg) return null;
+
+    // 先检查打开的文件
     for (const [key] of openFiles.entries()) {
       if (!pathsReferToSameFile(key, incomingPath)) continue;
       backgroundStreams.delete(incomingPath);
@@ -67,6 +71,18 @@
       delete existing.preview;
       return key;
     }
+
+    // 检查已关闭但有未保存修改的文件
+    for (const [key, dirtyState] of closedDirtyFiles.entries()) {
+      if (!pathsReferToSameFile(key, incomingPath)) continue;
+      backgroundStreams.delete(incomingPath);
+      closedDirtyFiles.delete(key);
+      const merged = { ...dirtyState, ...bg, relPath: key, aiPending: false, mode: 'text' };
+      openFiles.set(key, merged);
+      delete merged.preview;
+      return key;
+    }
+
     backgroundStreams.delete(incomingPath);
     openFiles.set(incomingPath, { ...bg, relPath: incomingPath });
     return incomingPath;
@@ -87,16 +103,20 @@
     return a.endsWith(`/${b}`) || b.endsWith(`/${a}`);
   }
 
-  /** 与 openFiles / backgroundStreams 的 key 对齐（避免 Agent 路径与树路径不一致） */
+  /** 与 openFiles / backgroundStreams / closedDirtyFiles 的 key 对齐（避免 Agent 路径与树路径不一致） */
   function resolveRelPath(pathStr) {
     const norm = normalizeRelPath(pathStr);
     if (!norm) return '';
     if (openFiles.has(norm)) return norm;
     if (backgroundStreams.has(norm)) return norm;
+    if (closedDirtyFiles.has(norm)) return norm;
     for (const key of openFiles.keys()) {
       if (pathsReferToSameFile(key, norm)) return key;
     }
     for (const key of backgroundStreams.keys()) {
+      if (pathsReferToSameFile(key, norm)) return key;
+    }
+    for (const key of closedDirtyFiles.keys()) {
       if (pathsReferToSameFile(key, norm)) return key;
     }
     if (activeRelPath && pathsReferToSameFile(activeRelPath, norm)) {
@@ -729,8 +749,17 @@
   function closeFile(relPath) {
     persistActiveEditorContent();
     if (!openFiles.has(relPath)) return;
+    const state = openFiles.get(relPath);
     disposeModel(relPath);
     openFiles.delete(relPath);
+
+    // 如果文件有未保存修改，保存到closedDirtyFiles，重新打开时恢复
+    if (isFileEdited(state)) {
+      closedDirtyFiles.set(relPath, state);
+    } else {
+      closedDirtyFiles.delete(relPath);
+    }
+
     if (activeRelPath === relPath) {
       const remaining = [...openFiles.keys()];
       if (remaining.length) {
@@ -752,6 +781,7 @@
     for (const relPath of [...models.keys()]) disposeModel(relPath);
     openFiles.clear();
     backgroundStreams.clear();
+    closedDirtyFiles.clear();
     aiDecorationIds.clear();
     activeRelPath = '';
     hidePreview();
@@ -912,6 +942,86 @@
     return openFiles.get(relPath);
   }
 
+  function getFileState(relPath) {
+    const resolved = resolveRelPath(relPath);
+    return openFiles.get(resolved) || backgroundStreams.get(resolved) || closedDirtyFiles.get(resolved);
+  }
+
+  /** 文件是否被 Monaco 编辑过（人 或 AI coding） */
+  function isFileEdited(state) {
+    if (!state) return false;
+    if (state.dirty) return true;
+    if (state.aiPending) return true;
+    if (state.original !== state.content) return true;
+    if (state.codxEdits?.length) return true;
+    return false;
+  }
+
+  /**
+   * 获取 Monaco 缓存中某文件的编辑内容。
+   * @returns {null|{ content: string, isEdited: boolean, isBackground: boolean, isClosedDirty: boolean }}
+   */
+  function getCachedContent(relPath) {
+    const resolved = resolveRelPath(relPath);
+    if (!resolved) return null;
+    const state = openFiles.get(resolved) || backgroundStreams.get(resolved) || closedDirtyFiles.get(resolved);
+    if (!state) return null;
+    return {
+      content: state.content ?? '',
+      isEdited: isFileEdited(state),
+      isBackground: backgroundStreams.has(resolved) && !openFiles.has(resolved),
+      isClosedDirty: closedDirtyFiles.has(resolved) && !openFiles.has(resolved)
+    };
+  }
+
+  /**
+   * 打开缓存中的文件（包括后台AI编辑中的文件、已关闭但有未保存修改的文件），保留所有编辑状态
+   */
+  function openCachedFile(relPath) {
+    const resolved = resolveRelPath(relPath);
+    if (!resolved) return false;
+
+    const bgState = backgroundStreams.get(resolved);
+    if (bgState) {
+      // 从后台流移动到打开文件列表，保留所有AI编辑状态
+      backgroundStreams.delete(resolved);
+      openFiles.set(resolved, bgState);
+    }
+
+    const closedDirtyState = closedDirtyFiles.get(resolved);
+    if (closedDirtyState) {
+      // 从已关闭脏文件列表恢复，保留所有未保存修改
+      closedDirtyFiles.delete(resolved);
+      openFiles.set(resolved, closedDirtyState);
+    }
+
+    const state = openFiles.get(resolved);
+    if (!state) return false;
+
+    persistActiveEditorContent();
+    activeRelPath = resolved;
+    state.mode = 'text';
+    delete state.preview;
+
+    focusEditorPane(resolved);
+    const codxStreaming = state.codxPlanReady && state.codxEdits?.some((ed) => !ed.complete);
+    const codxLiveIdx = codxStreaming ? getSerialLiveEditIndex(state) : -1;
+    if (codxStreaming && codxLiveIdx >= 0 && !useFallback) {
+      applyEditorContent(resolved, state.content || '');
+      applyCodxLiveToMonaco(resolved, state, codxLiveIdx);
+    } else {
+      applyEditorContent(resolved, state.content || '');
+    }
+
+    renderTabs();
+    window.CodXFileTree?.setActivePath?.(resolved);
+    syncMinimapToggleUi();
+    syncToolbarUi();
+    updateEmptyState();
+    layout();
+    return true;
+  }
+
   async function loadDiskOriginal(relPath) {
     const api = window.electronAPI;
     if (!api?.mcpFsReadTextFile) return '';
@@ -922,11 +1032,6 @@
       /* ignore */
     }
     return '';
-  }
-
-  function getFileState(relPath) {
-    const resolved = resolveRelPath(relPath);
-    return openFiles.get(resolved) || backgroundStreams.get(resolved);
   }
 
   function codxOps() {
@@ -1783,8 +1888,15 @@
 
   function getPendingWrites() {
     const items = [];
+    // 收集所有打开的已编辑文件
     for (const [relPath, state] of openFiles.entries()) {
-      if (!state?.pendingDiff) continue;
+      if (!isFileEdited(state)) continue;
+      if (state.original === state.content) continue;
+      items.push({ relPath, content: state.content || '' });
+    }
+    // 收集已关闭但有未保存修改的文件
+    for (const [relPath, state] of closedDirtyFiles.entries()) {
+      if (!isFileEdited(state)) continue;
       if (state.original === state.content) continue;
       items.push({ relPath, content: state.content || '' });
     }
@@ -1792,16 +1904,20 @@
   }
 
   function markAcceptedWrite(relPath) {
-    const state = openFiles.get(relPath);
-    if (!state) return;
-    clearAiChangeMarkers(relPath);
-    state.pendingDiff = false;
-    state.pendingDisk = false;
-    state.original = state.content;
-    state.dirty = false;
-    state.aiPending = false;
-    updateTabDirty(relPath);
-    if (activeRelPath === relPath) focusEditorPane(relPath);
+    const resolved = resolveRelPath(relPath);
+    const state = openFiles.get(resolved);
+    if (state) {
+      clearAiChangeMarkers(resolved);
+      state.pendingDiff = false;
+      state.pendingDisk = false;
+      state.original = state.content;
+      state.dirty = false;
+      state.aiPending = false;
+      updateTabDirty(resolved);
+      if (activeRelPath === resolved) focusEditorPane(resolved);
+    }
+    // 写入成功后从已关闭脏文件列表移除
+    closedDirtyFiles.delete(resolved);
     syncToolbarUi();
     renderTabs();
   }
@@ -1852,11 +1968,15 @@
   }
 
   function markSaved(relPath) {
-    const state = openFiles.get(relPath);
-    if (!state) return;
-    state.dirty = false;
-    state.original = state.content;
-    updateTabDirty(relPath);
+    const resolved = resolveRelPath(relPath);
+    const state = openFiles.get(resolved);
+    if (state) {
+      state.dirty = false;
+      state.original = state.content;
+      updateTabDirty(resolved);
+    }
+    // 保存后从已关闭脏文件列表中移除
+    closedDirtyFiles.delete(resolved);
   }
 
   function layout() {
@@ -1909,6 +2029,9 @@
     setEditorLineNumbers,
     getEditorLineNumbers,
     getOpenFiles: () => openFiles,
+    getCachedContent,
+    openCachedFile,
+    persistActiveEditorContent,
     resolveRelPath,
     findCodxEditRoute,
     updateEmptyState,

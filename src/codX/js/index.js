@@ -419,6 +419,20 @@
       return;
     }
 
+    // 文件已被 Monaco 编辑过（人 或 AI coding），直接用缓存内容，不走磁盘
+    const cached = window.CodXEditor?.getCachedContent?.(rel);
+    if (cached?.isEdited) {
+      if (cached.isBackground || cached.isClosedDirty) {
+        // 后台AI编辑中的文件 / 已关闭但有未保存修改的文件，用专门方法打开保留所有编辑状态
+        window.CodXEditor?.openCachedFile?.(rel);
+      } else {
+        window.CodXFileTree?.setActivePath?.(rel);
+        window.CodXEditor?.openFile?.(rel, cached.content);
+      }
+      scheduleEditorLayout();
+      return;
+    }
+
     if (window.CodXPreview?.isPreviewPath?.(rel)) {
       if (!api?.mcpFsPreviewFile) {
         alert('预览 API 不可用，请重启应用');
@@ -460,10 +474,10 @@
     if (res?.ok) {
       window.CodXEditor?.markSaved?.(relPath);
       deferredDisk.delete(relPath);
-      window.CodXLog?.append?.({ method: 'save', output: `已保存 ${relPath}` });
+      window.CodXLog?.append?.({ method: 'save', output: `💾 手动保存：${relPath}` });
       scheduleTreeRefresh({ revealPath: relPath });
     } else {
-      window.CodXLog?.append?.({ method: 'save', output: res?.error || '保存失败', isError: true });
+      window.CodXLog?.append?.({ method: 'save', output: res?.error || `保存失败：${relPath}`, isError: true });
     }
   }
 
@@ -601,14 +615,15 @@
     }
   }
 
-  async function writeFileToXcode(relPath, content) {
+  async function writeFileToXcode(relPath, content, isAutoSync = false) {
     const api = getApi();
     if (!relPath || !api?.mcpFsWriteTextFile) return false;
     const res = await api.mcpFsWriteTextFile({ path: relPath, content });
     if (res?.ok) {
       window.CodXEditor?.markAcceptedWrite?.(relPath);
       deferredDisk.delete(relPath);
-      window.CodXLog?.append?.({ method: 'sync', output: `已写入 Xcode：${relPath}` });
+      const prefix = isAutoSync ? '[自动保存] ' : '';
+      window.CodXLog?.append?.({ method: isAutoSync ? 'auto-save' : 'save', output: `${prefix}已写入磁盘：${relPath}` });
       scheduleTreeRefresh({ revealPath: relPath });
       return true;
     }
@@ -621,14 +636,17 @@
   }
 
   async function syncAllToXcode() {
+    // 先同步当前活动编辑器的最新内容到state
+    window.CodXEditor?.persistActiveEditorContent?.();
     const items = window.CodXEditor?.getPendingWrites?.() || [];
     if (!items.length) return;
+    window.CodXLog?.append?.({ method: 'auto-save', output: `🔄 运行前自动同步 ${items.length} 个未保存文件...` });
     let ok = 0;
     for (const item of items) {
-      if (await writeFileToXcode(item.relPath, item.content)) ok += 1;
+      if (await writeFileToXcode(item.relPath, item.content, true)) ok += 1;
     }
     if (ok > 0) {
-      window.CodXLog?.append?.({ method: 'sync', output: `已同步 ${ok} 个文件到 Xcode` });
+      window.CodXLog?.append?.({ method: 'auto-save', output: `✅ 自动同步完成，共 ${ok} 个文件已写入磁盘，开始编译...` });
     }
     window.CodXEditor?.syncToolbarUi?.();
   }
