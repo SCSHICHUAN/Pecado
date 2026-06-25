@@ -86,11 +86,6 @@ function getCodxTools() {
   return [{ ...CODX_EDIT_PLAN_TOOL }, { ...CODX_EDIT_TOOL }];
 }
 
-/** @deprecated 使用 applyCodxEditOp */
-function applyLineRangeEdit(content, startLine, endLine, text) {
-  return applyCodxEditOp(content, { startLine, endLine, text });
-}
-
 /**
  * @param {import('../../agent-loop/task-dispatcher').RoutedTask} routedTask
  * @param {{ streamContext?: { codxEditTargets?: Map } }} [execOpts]
@@ -182,7 +177,6 @@ module.exports = {
   normalizeCodxRelPath,
   isCodxToolName,
   getCodxTools,
-  applyLineRangeEdit,
   applyCodxEditOp,
   inferCodxOp,
   computeCodxEditDelta,

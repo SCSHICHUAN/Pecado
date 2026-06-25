@@ -14,9 +14,7 @@ src/xcode/
   paths.js          用户输入 @path、流式写目标解析
   prompt.js         新建文件/目录时「加入 Xcode 工程」对话框
   agent/
-    guide.js        注入 Agent system 的 Xcode 说明
     tools.js        xcode_* 工具定义 + 执行
-  index.js          对外门面
 ```
 
 ## Agent 工具
