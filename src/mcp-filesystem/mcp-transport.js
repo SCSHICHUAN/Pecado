@@ -101,6 +101,8 @@ async function connect(root) {
     transport = new StdioClientTransport({
       command: getMcpSpawnCommand(),
       args: [serverEntry, absRoot],
+      // MCP server-filesystem 相对 path 用 process.cwd() 解析，须设为工程根
+      cwd: absRoot,
       env: getMcpSpawnEnv(),
       stderr: 'pipe',
     });

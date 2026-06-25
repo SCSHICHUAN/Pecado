@@ -9,6 +9,7 @@
 const { isXcodeToolName } = require('../xcode/agent/tools');
 const { isDevDocToolName } = require('../workflow/skill/agent/tools');
 const { isCodxToolName } = require('../codX/agent/tools');
+const { isFinishTaskName } = require('../agent-loop/finish-tool');
 
 function tryExtractJsonStringField(argsAcc, field) {
   const re = new RegExp(`"${field}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`);
@@ -238,7 +239,9 @@ function EXECUTE_parse_command(inferRound) {
     tasks.push({
       id: tc.id,
       index: idx,
-      type: isXcodeToolName(name)
+      type: isFinishTaskName(name)
+        ? 'finish_task'
+        : isXcodeToolName(name)
         ? 'xcode_tool'
         : isDevDocToolName(name)
           ? 'dev_docs_tool'

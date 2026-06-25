@@ -85,9 +85,9 @@ function buildDevDocsContextForAi() {
   if (!metas.length) return '';
 
   const lines = [
-    '【Workflow 开发文档 / Skill】以下为已启用文档。按任务匹配 Skill；跑脚本用 run_skill_resource_script（path 按 Skill 正文 Quick Start）。',
-    'system 已含 Instructions 与 Layer 树；资源脚本不在 system。Skill 多步流程须逐步 run_skill_resource_script，勿执行一步就结束。',
-    'iOS 模拟器 + Open Folder 为 Xcode 工程时：Skill 管 sim/UI/日志；编译并在模拟器看最新代码用 xcode_build、xcode_run（非 Skill 脚本）。',
+    '【Workflow 开发文档 / Skill】已启用文档如下。按用户意图匹配 Skill；细节用 read_skill_section，脚本用 run_skill_resource_script。',
+    'system 已含 Instructions 与 Layer 树时勿重复 read_skill_layer。多步任务须做完为止，勿执行一步就结束。',
+    'iOS 模拟器 + Open Folder 为 Xcode 工程时：Skill 管脚本与文档；编译/模拟器预览用 xcode_build、xcode_run。',
     '',
     '### 已启用文档',
     ...metas.map(

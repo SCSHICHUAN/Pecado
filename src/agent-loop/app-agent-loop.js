@@ -1,8 +1,6 @@
 /**
  * @file app-agent-loop.js
- * @module agent-loop / AppAgentLoop
- *
- * 【编排】串联 llm-server / mcp-filesystem；UI+xcode 流副作用在 stream-hooks。
+ * 薄循环：LLM 自选 tools 编排；本地仅 EXEC/FEED、硬约束、finish_task 结束。
  */
 const projectIo = require('../mcp-filesystem');
 const { EXECUTE_call_llm, FEED_infer_round } = require('../llm-server/llm-infer-service');
@@ -14,7 +12,6 @@ const {
   FEED_tool_result: FEED_xcode_tool_result,
   getXcodeTools,
   tryParseDirectXcodeTool,
-  isXcodeSoloToolName,
 } = require('../xcode/agent/tools');
 const {
   getDevDocTools,
@@ -26,56 +23,32 @@ const {
   EXECUTE_codx_tool,
   FEED_codx_tool_result,
   CODX_EDIT_TOOL_NAME,
-  CODX_EDIT_PLAN_TOOL_NAME,
 } = require('../codX/agent/tools');
 const { PECADO_LLM_LINE_END } = require('../shared/codx-edit-plan');
+const {
+  getFinishTaskTool,
+  isFinishTaskName,
+  extractFinishSummary,
+  FINISH_NUDGE,
+} = require('./finish-tool');
 const { feed_observation, feed_assistant_tool_calls } = require('./context-feeder');
 const { createAgentStreamHooks } = require('./stream-hooks');
 const { planTasksWithWriteGuard, attachSyntheticToolCallsToConv, pathKey } = require('./write-guard');
 const { resolveAbsInProject } = require('../xcode/stream');
-const {
-  isCodeWriteTool,
-  summarizeWriteTasks,
-  composeAgentReply,
-} = require('./agent-reply');
+const { isCodeWriteTool, composeAgentReply } = require('./agent-reply');
 const { publishToolLog, buildAgentPhaseEntry, emitAgentLog, publishXcodeProgress, publishSkillProgress } = require('../shared/agent-log');
+const codxDiskSync = require('./codx-disk-sync');
 
 const MAX_TOOL_ROUNDS = 12;
 
 async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
   uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
-
-  logAgentPhase(uiSink, 'DISPATCH', {
-    round: roundNo,
-    status: 'start',
-    method: parsedTask.name,
-  });
+  logAgentPhase(uiSink, 'DISPATCH', { round: roundNo, status: 'start', method: parsedTask.name });
   const routed = route_task(parsedTask);
   if (routed.error) {
-    logAgentPhase(uiSink, 'DISPATCH', {
-      round: roundNo,
-      status: 'error',
-      method: parsedTask.name,
-      note: routed.error,
-      isError: true,
-    });
     uiSink.onError?.(routed.error);
     return { error: routed.error };
   }
-
-  logAgentPhase(uiSink, 'DISPATCH', {
-    round: roundNo,
-    status: 'done',
-    method: parsedTask.name,
-    module: routed.module,
-  });
-  logAgentPhase(uiSink, 'EXEC', {
-    round: roundNo,
-    status: 'start',
-    method: parsedTask.name,
-    module: routed.module,
-  });
-
   let execRaw;
   try {
     execRaw = await EXECUTE_xcode_tool(routed, {
@@ -84,44 +57,19 @@ async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
       },
     });
   } catch (e) {
-    execRaw = {
-      isError: true,
-      content: [{ type: 'text', text: e.message || String(e) }],
-    };
+    execRaw = { isError: true, content: [{ type: 'text', text: e.message || String(e) }] };
   }
-
-  logAgentPhase(uiSink, 'EXEC', {
-    round: roundNo,
-    status: execRaw?.isError ? 'error' : 'done',
-    method: parsedTask.name,
-    module: routed.module,
-    isError: Boolean(execRaw?.isError),
-  });
-
   const toolFeed = FEED_xcode_tool_result(execRaw);
   publishToolLog(parsedTask, routed, execRaw, toolFeed);
-  return {
-    content: composeAgentReply({ toolObservations: [toolFeed.observation] }),
-  };
+  return { content: composeAgentReply({ toolObservations: [toolFeed.observation] }) };
 }
 
 function logAgentPhase(uiSink, phase, opts = {}) {
   const entry = { ...buildAgentPhaseEntry(phase, opts), ts: Date.now() };
-  if (typeof uiSink?.onAgentLog === 'function') {
-    uiSink.onAgentLog(entry);
-  } else {
-    emitAgentLog(entry);
-  }
+  if (typeof uiSink?.onAgentLog === 'function') uiSink.onAgentLog(entry);
+  else emitAgentLog(entry);
 }
 
-/**
- * @param {{
- *   onTextDelta?: (text: string) => void,
- *   onTool?: (info: object) => void,
- *   onToolStream?: (info: object) => void,
- *   onError?: (error: string) => void,
- * }} uiSink
- */
 async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   const { apiKey, model, apiMode, endpoint } = llmOpts || {};
   if (!projectIo.getStatus().connected) {
@@ -134,18 +82,18 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   } catch (e) {
     return { error: `读取 MCP tools 失败：${e.message || String(e)}` };
   }
-  if (!mcpTools.length) {
-    return { error: 'MCP 未返回可用 tools' };
-  }
+  if (!mcpTools.length) return { error: 'MCP 未返回可用 tools' };
 
-  const xcodeTools = getXcodeTools();
-  const devDocTools = getDevDocTools();
-  const codxTools = getCodxTools();
-  const allTools = [...mcpTools, ...devDocTools, ...xcodeTools, ...codxTools];
+  const allTools = [
+    getFinishTaskTool(),
+    ...mcpTools,
+    ...getDevDocTools(),
+    ...getXcodeTools(),
+    ...getCodxTools(),
+  ];
 
   const projectRoot = projectIo.getStatus().projectRoot;
   const conv = messages.map((m) => ({ ...m }));
-
   let xcodeAbsPath = null;
   if (loopOpts.xcodeStreamPath) {
     xcodeAbsPath = resolveAbsInProject(projectRoot, loopOpts.xcodeStreamPath);
@@ -153,72 +101,34 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
   const chatOpts = { apiKey, model, apiMode, endpoint, messages: conv, mcpTools: allTools };
   const diskFreshReadPaths = new Set();
-  /** @type {string | null} plan 已登记、待 codx_edit 的工程相对路径 */
   let pendingCodxEditPath = null;
 
   try {
     const directXcode = tryParseDirectXcodeTool(loopOpts.userText);
     if (directXcode) {
-      logAgentPhase(uiSink, 'FEED', { round: 1, status: 'done', note: '直达 xcode 工具' });
-      logAgentPhase(uiSink, 'INFER', { round: 1, status: 'done', note: '跳过 LLM' });
-      logAgentPhase(uiSink, 'PARSE', { round: 1, status: 'done', note: directXcode.name });
       return await executeSoloXcodeTask(uiSink, directXcode, 1);
     }
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const roundNo = round + 1;
-      logAgentPhase(uiSink, 'FEED', {
-        round: roundNo,
-        status: 'start',
-        note: '喂入上下文',
-      });
-      logAgentPhase(uiSink, 'FEED', {
-        round: roundNo,
-        status: 'done',
-        note: `${conv.length} 条消息`,
-      });
+      logAgentPhase(uiSink, 'FEED', { round: roundNo, status: 'done', note: `${conv.length} 条消息` });
       logAgentPhase(uiSink, 'INFER', { round: roundNo, status: 'start' });
 
-      const { hooks, streamContext } = createAgentStreamHooks({
-        uiSink,
-        projectRoot,
-        xcodeAbsPath,
-      });
-
-      const inferRaw = await EXECUTE_call_llm(chatOpts, hooks);
-      const inferFeed = FEED_infer_round(inferRaw, streamContext);
+      const { hooks, streamContext } = createAgentStreamHooks({ uiSink, projectRoot, xcodeAbsPath });
+      const inferFeed = FEED_infer_round(await EXECUTE_call_llm(chatOpts, hooks), streamContext);
       if (!inferFeed.ok) {
-        logAgentPhase(uiSink,'INFER', {
-          round: roundNo,
-          status: 'error',
-          note: inferFeed.error,
-          isError: true,
-        });
         uiSink.onError?.(inferFeed.error);
         return { error: inferFeed.error };
       }
-      logAgentPhase(uiSink,'INFER', { round: roundNo, status: 'done' });
+      logAgentPhase(uiSink, 'INFER', { round: roundNo, status: 'done' });
 
-      logAgentPhase(uiSink,'PARSE', { round: roundNo, status: 'start' });
-      const parseRaw = EXECUTE_parse_command(inferFeed.data);
-      const parseFeed = FEED_parsed_command(parseRaw);
+      const parseFeed = FEED_parsed_command(EXECUTE_parse_command(inferFeed.data));
       if (!parseFeed.ok) {
-        logAgentPhase(uiSink,'PARSE', {
-          round: roundNo,
-          status: 'error',
-          note: parseFeed.error,
-          isError: true,
-        });
         uiSink.onError?.(parseFeed.error);
         return { error: parseFeed.error };
       }
 
       const parsed = parseFeed.data;
-      logAgentPhase(uiSink,'PARSE', {
-        round: roundNo,
-        status: 'done',
-        note: parsed.finishReason || '',
-      });
 
       if (parsed.finishReason !== 'tool_calls' || !parsed.tasks?.length) {
         if (pendingCodxEditPath) {
@@ -226,92 +136,76 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
             role: 'user',
             content:
               `【系统】${pendingCodxEditPath} 的 codx_edit_plan 尚未完成 codx_edit。` +
-              `你必须调用 codx_edit（path="${pendingCodxEditPath}"），text 流式写入，段末 ${PECADO_LLM_LINE_END}。禁止文字结束。`,
+              `须调用 codx_edit path="${pendingCodxEditPath}"，段末 ${PECADO_LLM_LINE_END}。`,
           });
           chatOpts.messages = conv;
           continue;
         }
-        if (parsed.content && String(parsed.content).trim()) {
-          return { content: String(parsed.content) };
-        }
-        return { error: '模型未返回 tool_calls 且无文本内容' };
+        const text = String(parsed.content || '').trim();
+        if (text) conv.push({ role: 'assistant', content: text });
+        conv.push({ role: 'user', content: FINISH_NUDGE });
+        chatOpts.messages = conv;
+        continue;
       }
 
       feed_assistant_tool_calls(conv, parsed.assistantMessage);
       chatOpts.messages = conv;
 
       const execStreamContext = inferFeed.data.parseContext;
-      const roundObservations = [];
-      let hadCodeWrite = false;
-      let hadCodxEditStream = false;
-      const { tasks: tasksToRun, deferredWrites } = planTasksWithWriteGuard(
+      const { tasks: plannedTasks, deferredWrites } = planTasksWithWriteGuard(
         parsed.tasks,
         projectRoot,
         diskFreshReadPaths
       );
-      attachSyntheticToolCallsToConv(conv, tasksToRun);
+      attachSyntheticToolCallsToConv(conv, plannedTasks);
 
-      for (const parsedTask of tasksToRun) {
+      const finishTasks = plannedTasks.filter((t) => isFinishTaskName(t.name));
+      const workTasks = plannedTasks.filter((t) => !isFinishTaskName(t.name));
+
+      let hadCodxEditStream = false;
+
+      for (const parsedTask of workTasks) {
         uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
-
-        logAgentPhase(uiSink,'DISPATCH', {
-          round: roundNo,
-          status: 'start',
-          method: parsedTask.name,
-        });
-
         const routed = route_task(parsedTask);
         if (routed.error) {
-          logAgentPhase(uiSink,'DISPATCH', {
-            round: roundNo,
-            status: 'error',
-            method: parsedTask.name,
-            note: routed.error,
-            isError: true,
-          });
           uiSink.onError?.(routed.error);
           return { error: routed.error };
         }
 
-        logAgentPhase(uiSink,'DISPATCH', {
-          round: roundNo,
-          status: 'done',
-          method: parsedTask.name,
-          module: routed.module,
-        });
-
-        logAgentPhase(uiSink,'EXEC', {
-          round: roundNo,
-          status: 'start',
-          method: parsedTask.name,
-          module: routed.module,
-        });
-
         let execRaw;
         try {
-          const xcodeExecOpts = {
-            onProgress: ({ method, line, isError, elapsedMs }) => {
-              publishXcodeProgress(method, line, { isError, elapsedMs });
-            },
-          };
+          if (
+            routed.module === 'xcode' &&
+            (parsedTask.name === 'xcode_run' || parsedTask.name === 'xcode_build') &&
+            codxDiskSync.hasPending()
+          ) {
+            for (const t of workTasks) {
+              if (t.name !== CODX_EDIT_TOOL_NAME) continue;
+              const parser = execStreamContext?.codxEditParsers?.get(t.index ?? 0);
+              const relPath =
+                parser?.getFinalArgs?.()?.path || (t.args?.path != null ? String(t.args.path).trim() : '');
+              if (relPath) await codxDiskSync.flushFromParser(relPath, parser, t.args);
+            }
+          }
+
           if (routed.module === 'xcode') {
-            execRaw = await EXECUTE_xcode_tool(routed, xcodeExecOpts);
+            execRaw = await EXECUTE_xcode_tool(routed, {
+              onProgress: ({ method, line, isError, elapsedMs }) => {
+                publishXcodeProgress(method, line, { isError, elapsedMs });
+              },
+            });
           } else if (routed.module === 'skill') {
             execRaw = await EXECUTE_dev_doc_tool(routed, {
-              onProgress: (payload) => {
-                if (payload.skill || payload.module === 'skill') {
-                  publishSkillProgress(payload);
-                }
+              onProgress: (p) => {
+                if (p.skill || p.module === 'skill') publishSkillProgress(p);
               },
             });
           } else if (routed.module === 'codx') {
             execRaw = await EXECUTE_codx_tool(routed, { streamContext: execStreamContext });
             if (execRaw?.codxPlan?.path && execRaw.codxPlan.edits) {
               pendingCodxEditPath = String(execRaw.codxPlan.path).trim();
-              uiSink.onCodxEditPlan?.({
-                path: execRaw.codxPlan.path,
-                edits: execRaw.codxPlan.edits,
-              });
+              codxDiskSync.registerPlan(execRaw.codxPlan.path, execRaw.codxPlan.edits);
+              uiSink.onCodxEditPlan?.({ path: execRaw.codxPlan.path, edits: execRaw.codxPlan.edits });
             }
             if (parsedTask.name === CODX_EDIT_TOOL_NAME) {
               const target = execStreamContext?.codxEditTargets?.get(parsedTask.index ?? 0);
@@ -320,27 +214,14 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
                 pendingCodxEditPath = null;
               }
             }
-            if (isCodeWriteTool(parsedTask.name)) hadCodeWrite = true;
           } else {
             execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
-            if (isCodeWriteTool(parsedTask.name)) hadCodeWrite = true;
           }
         } catch (e) {
-          execRaw = {
-            isError: true,
-            content: [{ type: 'text', text: e.message || String(e) }],
-          };
+          execRaw = { isError: true, content: [{ type: 'text', text: e.message || String(e) }] };
         }
 
-        logAgentPhase(uiSink,'EXEC', {
-          round: roundNo,
-          status: execRaw?.isError ? 'error' : 'done',
-          method: parsedTask.name,
-          module: routed.module,
-          isError: Boolean(execRaw?.isError),
-        });
-
-        const toolFeed =
+        let toolFeed =
           routed.module === 'xcode'
             ? FEED_xcode_tool_result(execRaw)
             : routed.module === 'skill'
@@ -349,30 +230,33 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
                 ? FEED_codx_tool_result(execRaw)
                 : FEED_tool_result(execRaw);
 
-        logAgentPhase(uiSink, 'FEED', {
-          round: roundNo,
-          status: 'start',
-          method: parsedTask.name,
-          module: routed.module,
-          note: '喂回 tool 结果',
-        });
+        if (
+          routed.module === 'codx' &&
+          parsedTask.name === CODX_EDIT_TOOL_NAME &&
+          !execRaw?.isError
+        ) {
+          const parser = execStreamContext?.codxEditParsers?.get(parsedTask.index ?? 0);
+          const relPath =
+            parser?.getFinalArgs?.()?.path ||
+            (parsedTask.args?.path != null ? String(parsedTask.args.path).trim() : '');
+          const flush = relPath
+            ? await codxDiskSync.flushFromParser(relPath, parser, parsedTask.args)
+            : null;
+          if (flush?.ok) {
+            toolFeed = {
+              ...toolFeed,
+              observation: `${toolFeed.observation}\n（已同步到磁盘：${relPath}）`,
+            };
+          } else if (flush && flush.reason !== 'no-plan') {
+            toolFeed = {
+              ...toolFeed,
+              observation: `${toolFeed.observation}\n（磁盘同步失败：${flush.reason}）`,
+            };
+          }
+        }
 
         feed_observation(conv, parsedTask, toolFeed);
-        roundObservations.push(toolFeed.observation);
-
-        const observation = String(toolFeed?.observation || '').trim();
-        logAgentPhase(uiSink, 'FEED', {
-          round: roundNo,
-          status: 'done',
-          method: parsedTask.name,
-          module: routed.module,
-          note: observation ? '' : 'observation 已写入',
-          observation,
-        });
-
-        if (routed.module !== 'skill') {
-          publishToolLog(parsedTask, routed, execRaw, toolFeed);
-        }
+        if (routed.module !== 'skill') publishToolLog(parsedTask, routed, execRaw, toolFeed);
 
         if (
           (parsedTask.name === 'read_text_file' || parsedTask.name === 'read_file') &&
@@ -383,48 +267,34 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
         }
       }
 
+      for (const ft of finishTasks) {
+        uiSink.onTool?.({ name: ft.name, arguments: ft.args, index: ft.index });
+        feed_observation(conv, ft, { observation: '已记录任务完成。' });
+      }
+
       chatOpts.messages = conv;
 
-      const calledCodxEdit = tasksToRun.some((t) => t.name === CODX_EDIT_TOOL_NAME);
+      if (finishTasks.length) {
+        return { content: extractFinishSummary(finishTasks, parsed.content) };
+      }
+
+      const calledCodxEdit = workTasks.some((t) => t.name === CODX_EDIT_TOOL_NAME);
       if (pendingCodxEditPath && !hadCodxEditStream && !calledCodxEdit) {
         conv.push({
           role: 'user',
           content:
-            `【系统】已对 ${pendingCodxEditPath} 完成 codx_edit_plan。你必须在本轮立即调用 codx_edit，` +
-            `path 为「${pendingCodxEditPath}」，text 从大行号到小行号流式写入，每段末尾 ${PECADO_LLM_LINE_END}。` +
-            '禁止仅用文字回复、禁止再次 plan。',
+            `【系统】${pendingCodxEditPath} 已完成 plan，须在本轮调用 codx_edit，` +
+            `path="${pendingCodxEditPath}"，段末 ${PECADO_LLM_LINE_END}。`,
         });
         chatOpts.messages = conv;
       }
 
-      if (deferredWrites.length) {
-        continue;
-      }
-
-      const soloXcodeRound =
-        tasksToRun.length > 0 && tasksToRun.every((t) => isXcodeSoloToolName(t.name));
-      if (soloXcodeRound) {
-        return {
-          content: composeAgentReply({
-            leadText: parsed.content,
-            toolObservations: roundObservations,
-          }),
-        };
-      }
-
-      if (hadCodeWrite) {
-        return {
-          content: composeAgentReply({
-            leadText: parsed.content,
-            writeSummary: summarizeWriteTasks(parsed.tasks),
-            toolObservations: roundObservations,
-          }),
-        };
-      }
+      if (deferredWrites.length) continue;
     }
 
-    return { error: `工具调用超过 ${MAX_TOOL_ROUNDS} 轮上限` };
+    return { error: `工具调用超过 ${MAX_TOOL_ROUNDS} 轮上限（未收到 finish_task）` };
   } finally {
+    codxDiskSync.clear();
     await projectIo.closeAllWriteFiles();
   }
 }
