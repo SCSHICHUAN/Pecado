@@ -1095,6 +1095,28 @@ body {
     }
 }
 
+.message-bubble.streaming {
+    border: 1px solid rgba(74, 144, 217, 0.4);
+    min-height: 1.5em;
+}
+
+.message-bubble .chat-bubble-reply.is-stream-live,
+.codx-chat-msg-body.is-stream-live {
+    animation: streamLiveSoftIn 0.16s ease-out;
+}
+
+@keyframes streamLiveSoftIn {
+    from { opacity: 0.94; }
+    to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-bubble .chat-bubble-reply.is-stream-live,
+    .codx-chat-msg-body.is-stream-live {
+        animation: none;
+    }
+}
+
 .message-bubble .chat-exec-tool-line {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 11px;
@@ -1291,11 +1313,6 @@ body {
     color: #fff;
     border-bottom-left-radius: 6px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.message-bubble.streaming {
-    border: 1px solid rgba(74, 144, 217, 0.4);
-    min-height: 1.5em;
 }
 
 /* 助手气泡内 Markdown（markdown-it 输出） */

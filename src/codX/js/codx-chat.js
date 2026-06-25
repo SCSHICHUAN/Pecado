@@ -162,25 +162,34 @@
     return { row, body };
   }
 
-  function scheduleStreamMarkdownRender(ctx) {
-    if (ctx.getRaf()) return;
-    ctx.setRaf(
-      requestAnimationFrame(() => {
-        ctx.setRaf(0);
-        const raw = ctx.getRaw();
-        const { body } = ctx;
-        if (!body) return;
-        body.innerHTML = raw ? renderMarkdown(raw) : '…';
+  function createCodxStreamReveal(ctx) {
+    return window.StreamTextReveal?.create?.({
+      getTarget: () => ctx.body,
+      getRaw: () => ctx.getRaw(),
+      renderMarkdown: (raw) => renderMarkdown(raw),
+      onEmpty: (target) => {
+        target.classList.remove('markdown-body');
+        target.textContent = '…';
+      },
+      onAfterRender: (target) => {
+        target?.classList.add('markdown-body');
         scrollBottom();
-      })
-    );
+      },
+    });
   }
 
-  function cancelStreamMarkdownRender(rafRef) {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = 0;
-    }
+  function scheduleStreamMarkdownRender(ctx) {
+    if (!ctx.streamReveal) ctx.streamReveal = createCodxStreamReveal(ctx);
+    ctx.streamReveal.schedule();
+  }
+
+  function flushStreamMarkdownRender(ctx) {
+    ctx.streamReveal?.flush?.();
+  }
+
+  function cancelStreamMarkdownRender(ctx) {
+    ctx.streamReveal?.cancel?.();
+    ctx.streamReveal = null;
   }
 
   const INPUT_MAX_LINES = 5;
@@ -221,16 +230,12 @@
     let unsub = () => {};
     let streamRow = null;
     let streamBody = null;
-    const streamRafRef = { current: 0 };
     const streamCtx = {
       get body() {
         return streamBody;
       },
       getRaw: () => raw,
-      getRaf: () => streamRafRef.current,
-      setRaf: (n) => {
-        streamRafRef.current = n;
-      },
+      streamReveal: null,
     };
 
     const thinking = createThinkingRow();
@@ -292,11 +297,14 @@
         history: prior,
         codxActiveFile: activeRelPath || undefined,
       });
-      cancelStreamMarkdownRender(streamRafRef);
+      flushStreamMarkdownRender(streamCtx);
+      cancelStreamMarkdownRender(streamCtx);
       const reply = res?.content || raw || (res?.error ? `错误：${res.error}` : '');
 
       if (streamBody) {
-        streamBody.innerHTML = renderMarkdown(reply);
+        if (reply && reply !== raw) {
+          streamBody.innerHTML = renderMarkdown(reply);
+        }
         streamRow?.classList.remove('codx-chat-streaming');
         thinking.remove();
       } else if (reply) {
@@ -307,7 +315,7 @@
       }
       history.push({ role: 'assistant', content: reply });
     } catch (e) {
-      cancelStreamMarkdownRender(streamRafRef);
+      cancelStreamMarkdownRender(streamCtx);
       thinking.remove();
       if (streamRow) streamRow.remove();
       addMessage('assistant', `异常：${e.message || String(e)}`);

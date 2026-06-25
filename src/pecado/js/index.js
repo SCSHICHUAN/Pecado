@@ -458,45 +458,42 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     bubble.classList.remove('markdown-body');
   }
 
-  /**
-   * 流式输出：用 Markdown 渲染当前累积文本（每帧最多刷新一次，减轻主线程压力）
-   * @param {{ bubble: HTMLDivElement, getRaw: () => string, setRaf: (n: number) => void, getRaf: () => number }} ctx
-   */
-  function scheduleStreamMarkdownRender(ctx) {
-    if (ctx.getRaf()) return;
-    ctx.setRaf(
-      requestAnimationFrame(() => {
-        ctx.setRaf(0);
-        const raw = ctx.getRaw();
-        const { bubble } = ctx;
-        const target = getBubbleReplyEl(bubble);
+  function createBubbleStreamReveal(ctx) {
+    return window.StreamTextReveal?.create?.({
+      getTarget: () => getBubbleReplyEl(ctx.bubble),
+      getRaw: () => ctx.getRaw(),
+      renderMarkdown: (raw) => {
         const api = window.electronAPI;
-        if (!raw) {
-          clearAssistantMarkdownClass(bubble);
-          target.textContent = '…';
-          if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
-          return;
-        }
-        bubble.classList.add('markdown-body');
-        bubble.classList.add('streaming');
-        if (api && typeof api.renderMarkdown === 'function') {
-          target.innerHTML = api.renderMarkdown(raw);
-          enhanceAssistantCodeBlocks(bubble);
-        } else {
-          clearAssistantMarkdownClass(bubble);
-          target.textContent = raw;
-        }
-
+        if (api?.renderMarkdown) return api.renderMarkdown(raw);
+        return String(raw || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      },
+      onEmpty: (target) => {
+        clearAssistantMarkdownClass(ctx.bubble);
+        target.textContent = '…';
+      },
+      onAfterRender: () => {
+        ctx.bubble.classList.add('streaming', 'markdown-body');
+        enhanceAssistantCodeBlocks(ctx.bubble);
         if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
-      })
-    );
+      },
+    });
   }
 
-  function cancelStreamMarkdownRender(rafIdRef) {
-    if (rafIdRef.current) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = 0;
-    }
+  function scheduleStreamMarkdownRender(ctx) {
+    if (!ctx.streamReveal) ctx.streamReveal = createBubbleStreamReveal(ctx);
+    ctx.streamReveal.schedule();
+  }
+
+  function flushStreamMarkdownRender(ctx) {
+    ctx.streamReveal?.flush?.();
+  }
+
+  function cancelStreamMarkdownRender(ctx) {
+    ctx.streamReveal?.cancel?.();
+    ctx.streamReveal = null;
   }
 
   chatInput.addEventListener('input', function () {
@@ -669,14 +666,10 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       },
     };
     let rawAccum = '';
-    const streamRafRef = { current: 0 };
     const streamCtx = {
       bubble,
       getRaw: () => rawAccum,
-      getRaf: () => streamRafRef.current,
-      setRaf: (n) => {
-        streamRafRef.current = n;
-      },
+      streamReveal: null,
     };
 
     let turnHadError = false;
@@ -693,7 +686,8 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
         }
       );
 
-      cancelStreamMarkdownRender(streamRafRef);
+      flushStreamMarkdownRender(streamCtx);
+      cancelStreamMarkdownRender(streamCtx);
       bubble.classList.remove('streaming');
 
       if (result.error) {
@@ -714,12 +708,16 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
         displayText = r?.displayText ?? reply;
       }
       const stickEnd = shouldAutoScrollAfterTurn();
-      setAssistantBubbleMarkdown(bubble, displayText);
+      if (displayText !== reply || !rawAccum.trim()) {
+        setAssistantBubbleMarkdown(bubble, displayText);
+      } else {
+        enhanceAssistantCodeBlocks(bubble);
+      }
       chatHistory.push({ role: 'assistant', content: displayText });
       if (stickEnd) scrollChatToBottomForced({ streamFollow: true });
     } catch (err) {
       turnHadError = true;
-      cancelStreamMarkdownRender(streamRafRef);
+      cancelStreamMarkdownRender(streamCtx);
       bubble.classList.remove('streaming');
       const stickEx = shouldAutoScrollAfterTurn();
       clearAssistantMarkdownClass(bubble);
