@@ -509,11 +509,18 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     if (sendButton.disabled) return;
     sendMessage('xcode_run');
   });
-  chatInput.addEventListener('keypress', function (e) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+  let chatImeComposing = false;
+  chatInput.addEventListener('compositionstart', () => {
+    chatImeComposing = true;
+  });
+  chatInput.addEventListener('compositionend', () => {
+    chatImeComposing = false;
+  });
+  chatInput.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    if (chatImeComposing || e.isComposing || e.keyCode === 229) return;
+    e.preventDefault();
+    sendMessage();
   });
 
   /**
@@ -576,9 +583,15 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
           }
           return;
         }
+        if (payload.phase === 'reasoning_delta' && payload.text) {
+          window.__pecadoTurnExec?.onReasoningDelta?.(payload.text);
+          if (window.CodXLiveStatus?.isTurnActive?.()) {
+            window.CodXLiveStatus?.onInferTextDelta?.(payload.text);
+          }
+          return;
+        }
         if (!onDelta) return;
         if (payload.phase === 'delta' && payload.text) onDelta(payload.text);
-        if (payload.phase === 'tool_stream' && payload.text) onDelta(payload.text);
       });
     }
 
@@ -633,12 +646,24 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     window.__pecadoTurnExec = {
       bubble,
       startedAt: turnStartedAt,
+      inferAcc: '',
       update(entry) {
         updateTurnExecBlock(bubble, entry);
         const kind = entry?.logKind;
         const scrollOnProgress =
           kind === 'xcode-progress' || kind === 'skill-progress';
         if (!scrollOnProgress && shouldFollowChatOutput()) {
+          scrollChatToBottomForced({ streamFollow: true });
+        }
+      },
+      onReasoningDelta(piece) {
+        if (!piece) return;
+        ensureStreamingBubbleShell(this.bubble);
+        this.inferAcc += String(piece);
+        window.LogPanel?.updateBubbleInferDetail?.(this.bubble, this.inferAcc, {
+          streaming: true,
+        });
+        if (shouldFollowChatOutput()) {
           scrollChatToBottomForced({ streamFollow: true });
         }
       },

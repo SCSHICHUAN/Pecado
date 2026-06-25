@@ -881,11 +881,31 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
 }
 
 .codx-chat-thinking {
+  display: block;
+  min-height: 1.4em;
+  padding: 2px 0;
+}
+
+.codx-chat-live-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.codx-chat-live-main {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 1.4em;
-  padding: 2px 0;
+  min-width: 0;
+}
+
+.codx-chat-live-main .codx-chat-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-top: 0;
 }
 
 .codx-chat-thinking-dots {
@@ -926,16 +946,88 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
 }
 
 .codx-chat-status .codx-chat-log-line {
-  flex: 1;
+  display: block;
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 11px;
   line-height: 1.45;
-  color: #909098;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 第一行：上一步历史（无流光，淡色） */
+.codx-chat-status .codx-chat-log-history {
+  color: #5a5a62;
+  opacity: 0.82;
+  padding-left: 0;
+}
+
+.codx-chat-status .codx-chat-log-history[hidden] {
+  display: none;
+}
+
+/* 第二行：三点 + 阶段/模块名（脉冲） */
+.codx-chat-status .codx-chat-log-phase {
+  flex: 1;
+  min-width: 0;
+  color: #909098;
   animation: codx-log-line-pulse 1.6s ease-in-out infinite;
+}
+
+/* 第三行：当前详情（与上行文字左对齐，流光） */
+.codx-chat-status .codx-chat-log-detail {
+  color: #909098;
+  padding-left: 33px;
+}
+
+.codx-chat-status .codx-chat-log-detail.is-infer-stream {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.5;
+}
+
+.codx-chat-status .codx-chat-log-detail.is-live-shimmer {
+  background: linear-gradient(
+    90deg,
+    #6a6a72 0%,
+    #6a6a72 38%,
+    #eeeef2 50%,
+    #6a6a72 62%,
+    #6a6a72 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: codxLogLineShimmer 2.2s ease-in-out infinite;
+}
+
+.codx-chat-status .codx-chat-log-detail[hidden] {
+  display: none;
+}
+
+@keyframes codxLogLineShimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codx-chat-status .codx-chat-log-detail.is-live-shimmer {
+    animation: codx-log-line-pulse 1.6s ease-in-out infinite;
+    -webkit-text-fill-color: #b0b0b8;
+    background: none;
+    color: #b0b0b8;
+  }
+  .codx-chat-status .codx-chat-log-phase {
+    animation: codx-log-line-pulse 1.6s ease-in-out infinite;
+  }
 }
 
 @keyframes codx-log-line-pulse {

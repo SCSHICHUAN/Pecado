@@ -12,6 +12,7 @@ const { createWriteFileArgsStreamer, createCodxEditArgsStreamer } = require('./c
 /**
  * @typedef {object} LlmStreamHooks
  * @property {(text: string) => void} [onTextDelta]
+ * @property {(text: string) => void} [onReasoningDelta]
  * @property {(info: { name: string, streaming?: boolean }) => void} [onTool]
  * @property {(index: number, relPath: string) => void} [onWriteFilePath]
  * @property {(index: number, relPath: string) => void} [onCodxEditPath]
@@ -57,6 +58,10 @@ async function EXECUTE_call_llm(chatOpts, streamHooks = {}) {
   for await (const ev of streamChat(chatOpts)) {
     if (ev.type === 'error') {
       return { error: ev.message };
+    }
+
+    if (ev.type === 'reasoning_delta') {
+      streamHooks.onReasoningDelta?.(ev.text);
     }
 
     if (ev.type === 'text_delta') {

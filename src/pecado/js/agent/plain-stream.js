@@ -38,6 +38,9 @@ async function runPlainSession(opts) {
         uiSink.onTextDelta(piece);
         xcodeWriter.writeDelta(piece);
       },
+      onReasoningDelta(piece) {
+        uiSink.onReasoningDelta?.(piece);
+      },
     }
   );
 

@@ -41,6 +41,25 @@ const codxDiskSync = require('./codx-disk-sync');
 
 const MAX_TOOL_ROUNDS = 12;
 
+/** 用户消息是否像需要调 tool 的任务（闲聊如「你好」不算） */
+function messageImpliesToolWork(text) {
+  const t = String(text || '').trim();
+  if (!t) return false;
+  return /运行|编译|测试|读取|修改|改成|改为|背景|颜色|xcode|编辑|写入|build|run|edit|fix|bug|implement|viewcontroller/i.test(
+    t
+  );
+}
+
+/**
+ * 无 tool_calls 的纯文本回复是否应直接结束（避免 FINISH_NUDGE 空转）
+ */
+function shouldReturnPlainTextReply({ round, text, userText, textOnlyNudges }) {
+  if (!text) return false;
+  if (round > 0) return true;
+  if (!messageImpliesToolWork(userText)) return true;
+  return textOnlyNudges >= 1;
+}
+
 async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
   uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
   logAgentPhase(uiSink, 'DISPATCH', { round: roundNo, status: 'start', method: parsedTask.name });
@@ -67,7 +86,7 @@ async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
 function logAgentPhase(uiSink, phase, opts = {}) {
   const entry = { ...buildAgentPhaseEntry(phase, opts), ts: Date.now() };
   if (typeof uiSink?.onAgentLog === 'function') uiSink.onAgentLog(entry);
-  else emitAgentLog(entry);
+  emitAgentLog(entry);
 }
 
 async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
@@ -102,6 +121,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   const chatOpts = { apiKey, model, apiMode, endpoint, messages: conv, mcpTools: allTools };
   const diskFreshReadPaths = new Set();
   let pendingCodxEditPath = null;
+  let textOnlyNudges = 0;
 
   try {
     const directXcode = tryParseDirectXcodeTool(loopOpts.userText);
@@ -111,7 +131,16 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const roundNo = round + 1;
-      logAgentPhase(uiSink, 'FEED', { round: roundNo, status: 'done', note: `${conv.length} 条消息` });
+      logAgentPhase(uiSink, 'FEED', {
+        round: roundNo,
+        status: 'start',
+        note: `合并 ${conv.length} 条对话上下文`,
+      });
+      logAgentPhase(uiSink, 'FEED', {
+        round: roundNo,
+        status: 'done',
+        note: `已合并 ${conv.length} 条上下文`,
+      });
       logAgentPhase(uiSink, 'INFER', { round: roundNo, status: 'start' });
 
       const { hooks, streamContext } = createAgentStreamHooks({ uiSink, projectRoot, xcodeAbsPath });
@@ -122,7 +151,9 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       }
       logAgentPhase(uiSink, 'INFER', { round: roundNo, status: 'done' });
 
+      logAgentPhase(uiSink, 'PARSE', { round: roundNo, status: 'start' });
       const parseFeed = FEED_parsed_command(EXECUTE_parse_command(inferFeed.data));
+      logAgentPhase(uiSink, 'PARSE', { round: roundNo, status: 'done' });
       if (!parseFeed.ok) {
         uiSink.onError?.(parseFeed.error);
         return { error: parseFeed.error };
@@ -142,8 +173,19 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
           continue;
         }
         const text = String(parsed.content || '').trim();
+        if (
+          shouldReturnPlainTextReply({
+            round,
+            text,
+            userText: loopOpts.userText,
+            textOnlyNudges,
+          })
+        ) {
+          return { content: text };
+        }
         if (text) conv.push({ role: 'assistant', content: text });
         conv.push({ role: 'user', content: FINISH_NUDGE });
+        textOnlyNudges += 1;
         chatOpts.messages = conv;
         continue;
       }
@@ -164,7 +206,17 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
       let hadCodxEditStream = false;
 
+      if (workTasks.length) {
+        logAgentPhase(uiSink, 'EXEC', { round: roundNo, status: 'start', note: `${workTasks.length} 个 tool` });
+      }
+
       for (const parsedTask of workTasks) {
+        logAgentPhase(uiSink, 'DISPATCH', {
+          round: roundNo,
+          status: 'start',
+          method: parsedTask.name,
+          methodLabel: parsedTask.name,
+        });
         uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
         const routed = route_task(parsedTask);
         if (routed.error) {
@@ -265,9 +317,22 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
           const readPath = parsedTask.args?.path != null ? String(parsedTask.args.path).trim() : '';
           if (readPath) diskFreshReadPaths.add(pathKey(projectRoot, readPath));
         }
+
+        logAgentPhase(uiSink, 'DISPATCH', {
+          round: roundNo,
+          status: 'done',
+          method: parsedTask.name,
+          methodLabel: parsedTask.name,
+          isError: Boolean(execRaw?.isError),
+        });
+      }
+
+      if (workTasks.length) {
+        logAgentPhase(uiSink, 'EXEC', { round: roundNo, status: 'done' });
       }
 
       for (const ft of finishTasks) {
+        logAgentPhase(uiSink, 'EXEC', { round: roundNo, status: 'start', method: 'finish_task' });
         uiSink.onTool?.({ name: ft.name, arguments: ft.args, index: ft.index });
         feed_observation(conv, ft, { observation: '已记录任务完成。' });
       }

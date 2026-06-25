@@ -11,12 +11,23 @@
  *
  * 【对外能力】
  *   - streamChat({ apiKey, model, messages, tools?, mcpTools? })
- *     事件：text_delta { text } | tool_call_delta { index, name, argumentsFragment, accumulated }
+ *     事件：reasoning_delta { text } | text_delta { text } | tool_call_delta ...
  *           | round_complete { finishReason, content, toolCalls } | error { message }
  *   - collectPlainChat(opts, { onTextDelta? })：只消费 text_delta，忽略 tool_calls
  */
 const { postChatCompletion, parseApiError } = require('./http');
 const { resolveToolsForApi } = require('./format');
+
+function extractReasoningDeltaText(json) {
+  if (!json || typeof json !== 'object') return '';
+  const c0 = /** @type {{ delta?: object, message?: object }} */ (json).choices?.[0];
+  if (!c0) return '';
+  const d = /** @type {{ reasoning_content?: string }} */ (c0.delta);
+  if (d && typeof d.reasoning_content === 'string') return d.reasoning_content;
+  const msg = /** @type {{ reasoning_content?: string }} */ (c0.message);
+  if (msg && typeof msg.reasoning_content === 'string') return msg.reasoning_content;
+  return '';
+}
 
 /** @param {unknown} json */
 function extractDeltaText(json) {
@@ -169,6 +180,7 @@ async function* streamChat(opts) {
   }
 
   let fullContent = '';
+  let fullReasoning = '';
   let finishReason = null;
   const toolAcc = createToolCallAccumulator();
 
@@ -183,6 +195,12 @@ async function* streamChat(opts) {
       json
     )?.choices?.[0];
     if (c0?.finish_reason) finishReason = c0.finish_reason;
+
+    const reasoning = extractReasoningDeltaText(json);
+    if (reasoning) {
+      fullReasoning += reasoning;
+      yield { type: 'reasoning_delta', text: reasoning };
+    }
 
     const text = extractDeltaText(json);
     if (text) {
@@ -214,18 +232,22 @@ async function* streamChat(opts) {
     type: 'round_complete',
     finishReason,
     content: fullContent,
+    reasoning: fullReasoning,
     toolCalls,
   };
 }
 
 /**
  * @param {Parameters<typeof streamChat>[0]} opts
- * @param {{ onTextDelta?: (piece: string) => void }} [handlers]
+ * @param {{ onTextDelta?: (piece: string) => void, onReasoningDelta?: (piece: string) => void }} [handlers]
  */
 async function collectPlainChat(opts, handlers = {}) {
   let text = '';
   for await (const ev of streamChat(opts)) {
     if (ev.type === 'error') return { error: ev.message };
+    if (ev.type === 'reasoning_delta') {
+      handlers.onReasoningDelta?.(ev.text);
+    }
     if (ev.type === 'text_delta') {
       text += ev.text;
       handlers.onTextDelta?.(ev.text);

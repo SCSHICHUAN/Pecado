@@ -14,6 +14,7 @@
  *   createUiStreamSink(sender, streamId) → {
  *     send(payload),
  *     onTextDelta(text)           → phase: 'delta'
+ *     onReasoningDelta(text)      → phase: 'reasoning_delta'
  *     onToolStream({ name, path, text }) → phase: 'tool_stream'
  *     onTool(payload)             → phase: 'tool'
  *     onError(error)              → phase: 'error'
@@ -38,6 +39,9 @@ function createUiStreamSink(sender, streamId) {
     send,
     onTextDelta(text) {
       send({ phase: 'delta', text });
+    },
+    onReasoningDelta(text) {
+      send({ phase: 'reasoning_delta', text });
     },
     onToolStream({ name, path, text, index }) {
       send({ phase: 'tool_stream', name, path, text, index });

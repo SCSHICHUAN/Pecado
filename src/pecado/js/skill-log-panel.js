@@ -625,9 +625,55 @@
 
     execBlock.appendChild(phaseRow);
     execBlock.appendChild(caption);
+
+    const inferDetail = document.createElement('div');
+    inferDetail.className = 'chat-agent-infer-detail';
+    inferDetail.hidden = true;
+    execBlock.appendChild(inferDetail);
+
     ensureExecSummaryRow(execBlock);
     execBlock.classList.add('has-exec-stopwatch');
     return track;
+  }
+
+  function ensureBubbleInferDetail(execBlock) {
+    if (!execBlock) return null;
+    let el = execBlock.querySelector('.chat-agent-infer-detail');
+    if (el) return el;
+    ensureBubblePhaseTrack(execBlock);
+    el = execBlock.querySelector('.chat-agent-infer-detail');
+    if (el) return el;
+    el = document.createElement('div');
+    el.className = 'chat-agent-infer-detail';
+    el.hidden = true;
+    const caption = execBlock.querySelector('.chat-agent-phase-caption');
+    if (caption) {
+      caption.insertAdjacentElement('afterend', el);
+    } else {
+      execBlock.appendChild(el);
+    }
+    return el;
+  }
+
+  function updateBubbleInferDetail(bubble, text, opts = {}) {
+    if (!bubble) return;
+    const execBlock = bubble.querySelector('.chat-exec-block');
+    if (!execBlock) return;
+    const el = ensureBubbleInferDetail(execBlock);
+    if (!el) return;
+
+    const raw = String(text ?? '');
+    if (!raw.trim()) {
+      el.hidden = true;
+      el.textContent = '';
+      el.classList.remove('is-live');
+      return;
+    }
+
+    execBlock.hidden = false;
+    el.hidden = false;
+    el.textContent = raw;
+    el.classList.toggle('is-live', Boolean(opts.streaming));
   }
 
   function updateBubbleAgentPhases(execBlock, entry, bubble) {
@@ -662,6 +708,14 @@
         parts.push(entry.methodLabel || entry.method);
       }
       caption.textContent = parts.filter(Boolean).join(' · ');
+    }
+
+    if (phase === 'INFER' && status === 'start') {
+      updateBubbleInferDetail(bubble, '', { streaming: false });
+    }
+    if (phase === 'INFER' && status === 'done') {
+      const inferEl = execBlock.querySelector('.chat-agent-infer-detail');
+      inferEl?.classList.remove('is-live');
     }
 
     const toolLine = execBlock.querySelector('.chat-exec-summary-row .chat-exec-tool-line');
@@ -947,6 +1001,14 @@
     }
   }
 
+  function forwardToCodXLive(entry) {
+    if (window.CodXLiveStatus?.isTurnActive?.()) {
+      window.CodXLiveStatus.onExecEntry(entry);
+      return;
+    }
+    if (window.CodX?.isActive?.()) window.CodXLiveStatus?.onExecEntry?.(entry);
+  }
+
   function appendLog(entry) {
     const logEl = $('skill-log-output');
     if (!entry || typeof entry !== 'object') return;
@@ -954,10 +1016,14 @@
     const isPhase = entry.logKind === 'agent-phase';
     if (isPhase) {
       notifyTurnExec(entry);
+      forwardToCodXLive(entry);
       return;
     }
 
-    if (!logEl) return;
+    if (!logEl) {
+      forwardToCodXLive(entry);
+      return;
+    }
     if (
       !entry.method &&
       !entry.skill &&
@@ -971,6 +1037,7 @@
     const stick = shouldAutoScrollLog();
     logEl.appendChild(buildLogEntry(entry));
     if (window.CodX?.isActive?.()) window.CodXLog?.append?.(entry);
+    forwardToCodXLive(entry);
     if (stick) {
       if (isLogPanelVisible()) {
         scrollLogToBottom();
@@ -1037,6 +1104,7 @@
     formatBubbleExecSummary,
     formatBubbleToolLine,
     updateBubbleAgentPhases,
+    updateBubbleInferDetail,
     updateBubbleToolSummary,
     startBubbleStopwatch,
     finishBubbleStopwatch,

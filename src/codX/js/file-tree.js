@@ -385,7 +385,21 @@
   }
 
   function renderFileTree(container, tree, onSelect, projectRoot = '') {
-    if (!container) return;
+    if (!container) return false;
+    const rootItems = buildRootItems(tree, projectRoot);
+    const hadRows = Boolean(container.querySelector('.codx-tree-row'));
+    if (!rootItems.length) {
+      if (hadRows) return false;
+      container.replaceChildren();
+      const empty = document.createElement('div');
+      empty.className = 'codx-tree-empty';
+      empty.textContent = '无文件';
+      container.appendChild(empty);
+      treeContainer = container;
+      currentProjectRoot = String(projectRoot || '');
+      return true;
+    }
+
     treeContainer = container;
     currentProjectRoot = String(projectRoot || '');
     container.replaceChildren();
@@ -410,20 +424,13 @@
       onSelect?.(relPath);
     };
 
-    const rootItems = buildRootItems(tree, projectRoot);
-    if (!rootItems.length) {
-      const empty = document.createElement('div');
-      empty.className = 'codx-tree-empty';
-      empty.textContent = '无文件';
-      container.appendChild(empty);
-      return;
-    }
     renderGroup(container, rootItems, 0, onSelect);
     applyExpandedPaths(container);
 
     if (savedSelected) {
       setActivePath(savedSelected);
     }
+    return true;
   }
 
   function clearActivePath() {

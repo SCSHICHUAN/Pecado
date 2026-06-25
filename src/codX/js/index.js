@@ -224,14 +224,15 @@
     if (!api?.mcpFsDirectoryTree || !treeEl) return;
     const res = await api.mcpFsDirectoryTree({ directoriesOnly: false });
     if (res.error) {
-      treeEl.textContent = `读取目录失败：${res.error}`;
+      console.warn('[CodX] refreshTree:', res.error);
       return;
     }
     await syncProjectRootFromTree(res);
     syncProjectHead();
-    window.CodXFileTree?.renderFileTree?.(treeEl, res.tree, (relPath) => {
+    const rendered = window.CodXFileTree?.renderFileTree?.(treeEl, res.tree, (relPath) => {
       openFileByRelPath(relPath).catch(console.error);
     }, projectRoot);
+    if (rendered === false) return;
 
     if (opts.revealPath) {
       window.CodXFileTree?.revealPath?.(opts.revealPath, projectRoot);

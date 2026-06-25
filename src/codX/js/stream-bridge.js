@@ -53,6 +53,7 @@
     if (!relPath || !payload.edits?.length) return;
     lastStreamRelPath = relPath;
     window.CodXEditor?.applyCodxEditPlan?.(relPath, payload.edits);
+    scheduleTreeRefreshForPath(relPath);
   }
 
   function onToolStream(payload) {

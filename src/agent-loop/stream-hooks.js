@@ -10,6 +10,7 @@ const { registerWriteFileStreamTarget, writeDeltaToTarget } = require('../xcode/
  * @param {{
  *   uiSink?: {
  *     onTextDelta?: Function,
+ *     onReasoningDelta?: Function,
  *     onTool?: Function,
  *     onToolStream?: Function,
  *     onWriteFileBegin?: Function,
@@ -31,6 +32,9 @@ function createAgentStreamHooks(opts = {}) {
     codxEditTargets,
     onTextDelta(text) {
       uiSink?.onTextDelta?.(text);
+    },
+    onReasoningDelta(text) {
+      uiSink?.onReasoningDelta?.(text);
     },
     onTool(info) {
       uiSink?.onTool?.(info);
