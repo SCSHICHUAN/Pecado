@@ -710,9 +710,6 @@
       caption.textContent = parts.filter(Boolean).join(' · ');
     }
 
-    if (phase === 'INFER' && status === 'start') {
-      updateBubbleInferDetail(bubble, '', { streaming: false });
-    }
     if (phase === 'INFER' && status === 'done') {
       const inferEl = execBlock.querySelector('.chat-agent-infer-detail');
       inferEl?.classList.remove('is-live');

@@ -11,7 +11,8 @@
  * 【对外能力】
  *   - getDefaultSearchRoots() → [项目根, src/, cwd]
  *   - loadEnvFromSearchRoots(rootDirs[])
- *   - loadEnvFromProjectRoot(projectRoot)
+ *   - loadEnvFromSearchRoots(searchRoots)
+ *   - getDefaultSearchRoots()
  */
 const fs = require('fs');
 const path = require('path');
@@ -102,8 +103,4 @@ function getDefaultSearchRoots() {
   return [projectRoot, srcRoot, process.cwd()];
 }
 
-function loadEnvFromProjectRoot(projectRoot) {
-  loadEnvFromSearchRoots([projectRoot, process.cwd()]);
-}
-
-module.exports = { loadEnvFromSearchRoots, loadEnvFromProjectRoot, getDefaultSearchRoots };
+module.exports = { loadEnvFromSearchRoots, getDefaultSearchRoots };

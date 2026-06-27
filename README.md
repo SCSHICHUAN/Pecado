@@ -2,6 +2,18 @@
 
 基于 Electron 的桌面 AI 编程助手：对接**火山方舟 Bots** 流式对话，支持本地工程 **MCP 文件系统**、**Function Calling 多轮 Agent**，以及在 macOS 上将生成代码**实时写入磁盘并集成 Xcode 工程**。
 
+```mermaid
+flowchart LR
+  U[用户] --> P[Pecado / CodX / Git UI]
+  P -->|IPC| R[pecado router]
+  R -->|agent| L[agent-loop]
+  R -->|plain| LLM[llm-server]
+  L --> LLM
+  L --> MCP[MCP 文件]
+  L --> XC[Xcode macOS]
+  LLM -->|SSE| P
+```
+
 ---
 
 ## 功能概览
@@ -9,11 +21,11 @@
 | 能力 | 说明 |
 |------|------|
 | **流式对话** | SSE 增量输出，渲染进程 Markdown 实时渲染（markdown-it + highlight.js） |
-| **三种对话模式** | plain（纯聊）/ context（拼工程上下文）/ agent（MCP tools 多轮）— 主进程自动选择 |
-| **Open Folder** | 菜单打开工程目录，拉起 MCP server-filesystem，展示目录树 |
-| **Agent 工具** | Open Folder 后向 LLM 提供 **13 个 MCP** + **4 个 Xcode**（macOS）Function Calling，见下文 |
-| **Skill 注入** | Workflow **开发文档**生成 Skill；勾选「加入 AI」**常驻 Layer 树**（目录导航）+ Instructions（若有）；**正文不进 system**，用 `read_skill_section` 按需读 — 见 [Skill 开发文档](#skill-开发文档分层读-markdown-的设计) |
-| **Token 策略** | 写代码后 **1 轮 LLM** + 自动 `xcode_build`；`xcode_run` 仅用户明确要运行时 — 见 [Token 消耗优化](#token-消耗优化) |
+| **四种对话模式** | plain / context / agent / **git** — 主进程 `selectChatMode` 自动选择 |
+| **Open Folder** | 菜单打开工程目录，拉起 MCP server-filesystem；主 Pecado 展示目录树气泡 |
+| **Agent 工具** | Open Folder 后向 LLM 提供 **26** 个 Function（macOS，含 MCP / Skill / CodX / Xcode / `finish_task`），见下文 |
+| **Skill 注入** | Workflow 侧栏 **Skill** Tab（数据层历史名 `devDocs`）；勾选「加入 AI」**常驻 Layer 树** + Instructions；正文用 `read_skill_section` 按需读 — 见 [Skill 设计](#skill-开发文档分层读-markdown-的设计) |
+| **Token 策略** | LLM 自行编排多轮 tools，以 **`finish_task(summary)`** 结束；`write-guard` 改码前强制 read；无运行意图勿调 `xcode_run` — 见 [Token 消耗优化](#token-消耗优化) |
 | **Workflow** | 局域网**文件服务**、文件归类、PPT 大纲、定时任务 — 见 [src/workflow/README.md](src/workflow/README.md) |
 | **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`；build/run 工具与自动编译，见 Agent 工具 |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
@@ -68,10 +80,11 @@ Pecado/
 │   ├── commands/js/           # 本地 JSON 后置指令
 │   ├── gitgraph/              # Git 面板（自研 SVG 时间线，见 gitgraph/README.md）
 │   ├── codX/                  # Monaco 编程视图（见 codX/README.md）
+│   ├── markdown/              # Skill Layer 树解析（skill-layer.js）
 │   ├── workflow/              # Workflow 面板（文件服务、归类、PPT、定时任务，见 workflow/README.md）
 │   ├── settings/              # Preferences（html/css/js + register）
 │   ├── preload/preload.js
-│   ├── shared/                # ipc-channels、format-tree、codx-edit-*、line-numbers
+│   ├── shared/                # ipc-channels、format-tree、stream-text-reveal、prompt-language、codx-edit-*
 │   └── electron/              # dev 启动、env:init
 ├── package.json
 └── README.md
@@ -85,7 +98,7 @@ Pecado/
 |------|------|
 | [src/agent-loop/README.md](src/agent-loop/README.md) | Agent 多轮编排（INFER / PARSE / DISPATCH / EXEC / FEED） |
 | [src/gitgraph/README.md](src/gitgraph/README.md) | Git 提交图谱 UI、SVG 布局、节点菜单、IPC |
-| [src/workflow/README.md](src/workflow/README.md) | Workflow 面板：文件服务、归类、PPT、定时任务、开发文档 Tab |
+| [src/workflow/README.md](src/workflow/README.md) | Workflow 面板：Skill、文件服务、归类、PPT、定时任务 |
 | [src/workflow/skill/README.md](src/workflow/skill/README.md) | Skill 模块：保存、Layer 树、资源脚本执行 |
 | [src/codX/README.md](src/codX/README.md) | CodX 编程视图：Monaco、文件树、AI 行级改码、Preferences |
 
@@ -112,48 +125,93 @@ npm run build      # 产物在 release/
 
 ## LLM Function Calling（Agent 工具）
 
-**Open Folder 且 MCP 已连接** 时进入 **agent 模式**。每轮 LLM 请求的 `tools` 数组由主进程组装（`app-agent-loop.js` → `llm-server/format.js` → `mcpToolsToFunctionTools`），**不是** renderer 侧调用。
+**Open Folder 且 MCP 已连接** 时进入 **agent 模式**。每轮 LLM 的 `tools` 由主进程组装（`app-agent-loop.js` → `listTools()` + 本地 tools），**不是** renderer 调用。
+
+```mermaid
+flowchart LR
+  subgraph assemble [app-agent-loop 组装 tools]
+    F[finish_task ×1]
+    M[MCP listTools ×14]
+    S[Skill ×5]
+    C[CodX ×2]
+    X[Xcode ×4 macOS]
+  end
+  assemble --> API[Volc Chat Completions]
+  API -->|tool_calls| DISPATCH[task-dispatcher]
+```
 
 ### 数量
 
 | 来源 | 数量 | 条件 |
 |------|------|------|
-| **MCP server-filesystem** | **13** | Open Folder 后 `listTools()` |
-| **CodX 行级编辑** | **2** | `codx_edit_plan`、`codx_edit`（Open Folder + Agent） |
+| **`finish_task`** | **1** | 任务结束信号（`finish-tool.js`） |
+| **MCP server-filesystem** | **14** | Open Folder 后 `listTools()`（含已废弃 `read_file`，请用 `read_text_file`） |
+| **Workflow Skill** | **5** | `workflow/skill/agent/tools.js` |
+| **CodX 行级编辑** | **2** | `codx_edit_plan`、`codx_edit` |
 | **Pecado Xcode** | **4** | 仅 **macOS** |
-| **合计** | **19** | macOS + Agent 模式 |
-| **合计** | **15** | 非 macOS 或无 Xcode 工具 |
+| **合计（macOS Agent）** | **26** | |
+| **合计（非 macOS）** | **22** | 无 Xcode 四工具 |
 
-### MCP 工具（13）
+### MCP 工具（14，来自 server-filesystem）
+
+| 工具名 | 用途 | 备注 |
+|--------|------|------|
+| `read_text_file` | 读文本（可选 head/tail） | **推荐** |
+| `read_file` | 同 read_text_file | **已废弃**，仍随 listTools 暴露 |
+| `read_media_file` | 读图片/音频（base64） | |
+| `read_multiple_files` | 批量读文件 | |
+| `write_file` | 新建或覆盖写文件 | |
+| `edit_file` | 按片段编辑已有文件 | |
+| `create_directory` | 创建目录 | |
+| `list_directory` | 列目录 | |
+| `list_directory_with_sizes` | 列目录（含大小） | |
+| `move_file` | 移动/重命名 | |
+| `search_files` | 递归搜索 | |
+| `directory_tree` | 递归目录树 JSON | path 用 `"."` |
+| `get_file_info` | 文件元数据 | |
+| `list_allowed_directories` | 当前允许访问的根目录 | |
+
+包版本：`@modelcontextprotocol/server-filesystem`（见 `package.json` / `node_modules`）。
+
+### Skill 工具（5）
+
+定义于 `src/workflow/skill/agent/tools.js`，经 `task-dispatcher` 的 `dev_docs_tool` 分发至 `skill` 模块：
 
 | 工具名 | 用途 |
 |--------|------|
-| `read_text_file` | 读文本文件（可选 head/tail） |
-| `read_media_file` | 读图片/音频（base64） |
-| `read_multiple_files` | 批量读文件 |
-| `write_file` | 新建或覆盖写文件 |
-| `edit_file` | 按片段编辑已有文件 |
-| `create_directory` | 创建目录 |
-| `list_directory` | 列目录 |
-| `list_directory_with_sizes` | 列目录（含大小） |
-| `move_file` | 移动/重命名 |
-| `search_files` | 递归搜索 |
-| `directory_tree` | 递归目录树 JSON |
-| `get_file_info` | 文件元数据 |
-| `list_allowed_directories` | 当前允许访问的根目录 |
+| `read_skill_layer` | 拉 Layer JSON（system 已有树时一般不必调） |
+| `read_skill_section` | 按 path 读一节正文 |
+| `read_dev_doc_resources` | 读 Resources 全文 |
+| `read_skill_resource_file` | 读 Skill 附属资源文件 |
+| `run_skill_resource_script` | 执行 Skill 资源目录内脚本 |
 
-包版本：`@modelcontextprotocol/server-filesystem`（见 `node_modules/.../README.md`）。
+### finish_task（1）
+
+| 工具名 | 用途 |
+|--------|------|
+| `finish_task` | 用户意图全部完成时调用；`summary` 为给用户的最终结果说明 |
 
 ### CodX 工具（2）
 
-定义于 `src/codX/agent/tools.js`，经 `task-dispatcher` 的 `codx_tool` 分发；流式内容经 `stream-bridge.js` 写入 Monaco，**非空文件不自动落盘**。
+定义于 `src/codX/agent/tools.js`，经 `task-dispatcher` 的 `codx_tool` 分发；流式内容经 `stream-bridge.js` 写入 Monaco。
 
 | 工具名 | 用途 |
 |--------|------|
-| `codx_edit_plan` | 第一轮：提交 `path` + 各段 `line_start`（大行号在前），不含代码 |
+| `codx_edit_plan` | 第一轮：`path` + 各段 `line_start`（大行号在前），不含代码 |
 | `codx_edit` | 第二轮：同 path 流式 `text`，段末 `pecado_LLM_line_end`；编辑器实时显示 |
 
-约定见 `src/pecado/js/prompts/agent.js`（read / plan / edit 各单独一轮）。
+**落盘时机**（非空文件流式阶段只改 Monaco，不实时写盘）：
+
+```mermaid
+flowchart LR
+  A[codx_edit 流式] --> B[Monaco 实时显示]
+  B --> C{codx_edit 工具结束}
+  C --> D[codx-disk-sync flush 磁盘]
+  D --> E{xcode_build / xcode_run?}
+  E -->|有 pending plan| F[编译前再 flush]
+```
+
+约定见 `src/agent-loop/capability-prompt.js`（经 `pecado/js/prompts/agent.js` 注入 system）。
 
 ### Xcode 工具（4，macOS）
 
@@ -171,28 +229,74 @@ npm run build      # 产物在 release/
 | `parsedTask.type` | 执行模块 |
 |-------------------|----------|
 | `mcp_tool` | `mcp-filesystem/tool-executor.js` |
-| `codx_tool` | `codX/agent/tools.js`（经 `app-agent-loop.js`） |
-| `xcode_tool` | `xcode/agent/tools.js`（经 `app-agent-loop.js`） |
+| `dev_docs_tool` | `workflow/skill/agent/tools.js`（module: `skill`） |
+| `codx_tool` | `codX/agent/tools.js` |
+| `xcode_tool` | `xcode/agent/tools.js` |
+
+`finish_task` 在 loop 内处理，不经过外部 EXEC 模块。
+
+---
+
+## Agent 工程上下文
+
+Open Folder 后，不同入口拿到的工程信息不同。**MCP 已连接时一律走 agent 模式**（不会走 context）。
+
+```mermaid
+flowchart TB
+  OF[File → Open Folder] --> MCP[MCP 连接 + 缓存目录树]
+
+  subgraph main [主 Pecado]
+    M1[目录树气泡 → chat history]
+  end
+
+  subgraph codx [CodX 底栏]
+    C1[独立 history，无气泡]
+    C2[system: 工程锚点 + CodX 当前文件]
+    C3[codxChat: 中文 reasoning 提醒]
+  end
+
+  MCP --> M1
+  MCP --> C2
+  C2 --> C3
+
+  subgraph agent [agent 模式共用]
+    A1["buildProjectContextForAi('', { agentAnchorOnly: true })"]
+    A2[【工程锚点】+ 缓存目录树 ASCII]
+  end
+
+  MCP --> A1 --> A2
+```
+
+| 入口 | 目录树 / 上下文来源 |
+|------|---------------------|
+| **主 Pecado** | Open Folder 时目录树 **气泡写入 chat history** |
+| **CodX 底栏** | 无气泡；system 注入锚点 + `codxActiveFile` + `codxChat` 语言块 |
+| **agent 模式** | 工程锚点 + `@` 引用 + CodX 当前文件（见上） |
+| **context 模式** | MCP **未连接**且仍有缓存时：`buildProjectContextForAi` 拼 system（少见） |
+
+MCP 工具 `path` 须用 `"."` 或相对路径；`mcp-filesystem/read.js` 的 `prepareMcpToolPath` 会校正 LLM 拼错的绝对路径。
 
 ---
 
 ## Token 消耗优化
 
-Agent 默认曾「写代码 → 模型再 build → 再 run → 再修」，**每多一轮都是一次完整 LLM 请求**（带 history + 全套 tools），Coding Plan 下尤其慢且费额度。
+Agent 每多一轮 INFER 都会带上 **history + 全套 tools**，Coding Plan 下轮次越多越慢、越费额度。
 
-当前策略（`agent-loop/agent-reply.js` + `app-agent-loop.js`）：
+当前策略（`app-agent-loop.js` + `finish-tool.js` + `write-guard.js`）：
 
-| 场景 | 行为 | LLM 轮次 |
-|------|------|----------|
-| **`write_file` / `edit_file` / `codx_edit` 成功** | 结束 Agent 循环；`composeAgentReply` 拼装摘要返回 | **通常 1 轮** |
-| 用户要求 **编译 / Run** | 模型可调 `xcode_build` / `xcode_run`（Skill 脚本用 `run_skill_resource_script`） | 视任务 |
-| 只读目录/读文件 | 仍可多轮，直到模型输出文字 | 视任务而定 |
+| 场景 | 行为 |
+|------|------|
+| **多步任务** | LLM 自行编排 tools，最多 **12 轮**；完成后须 **`finish_task(summary)`** |
+| **无 tool 纯文字** | 收到 `FINISH_NUDGE`；闲聊等可一轮结束（`shouldReturnPlainTextReply`） |
+| **改已有文件** | `write-guard.js`：须先 `read_text_file`，同轮 `write_file` / `edit_file` 延后 |
+| **编译 / Run** | 模型按需调 `xcode_build` / `xcode_run`；**写代码后不会本地自动 build** |
+| **CodX 落盘** | `codx_edit` 结束后 flush；`xcode_build` / `xcode_run` 前若仍有 pending plan 再 flush |
 
-**不消耗 LLM token 的操作**：`xcode_build`、`xcode_run`、MCP `callTool` 本地执行；只有 **tool 结果写回 conv 后的下一轮 INFER** 才计 token——写代码路径已避免该下一轮。
+**不消耗 LLM token 的操作**：`xcode_build`、`xcode_run`、MCP `callTool` 本地执行；只有 **tool 结果写回 conv 后的下一轮 INFER** 才计 token。
 
-**仍会增加 context 的因素**：对话 history 过长、目录树气泡进 history、单次 tool 观测里的 build 日志尾部（约 12k 字符上限，见 `xcode/build-runner.js` `LOG_TAIL_MAX`）。
+**仍会增加 context 的因素**：对话 history 过长、目录树进 history / system、单次 tool 观测里的 build 日志尾部（约 12k 字符上限，见 `xcode/build-runner.js` `LOG_TAIL_MAX`）。
 
-Prompt 约定见 `src/pecado/js/prompts/agent.js`（写完后勿再调 `xcode_build`；无运行意图勿调 `xcode_run`）。
+Prompt 约定见 `src/agent-loop/capability-prompt.js`（无运行意图勿调 `xcode_run`；`directory_tree` 的 path 用 `"."` 或相对路径）。
 
 ### Skill 分层树：省 context token
 
@@ -295,7 +399,7 @@ path: resources/pdf-processing-guide/overview
        └─ 大范围 ─┘ └─ 在这个范围里按 # 找 ─────────┘
 ```
 
-本地操作，不用 npm 解析包；单次返回 ≤12k 字符。
+本地操作，不用 npm 解析包；`read_skill_section` 单次返回 ≤ **6k** 字符（`MAX_TOOL_BODY`）；脚本观测尾部约 12k（`MAX_RUN_OBSERVATION`）。
 
 ### Agent tool（正文按需读）
 
@@ -323,8 +427,11 @@ Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式
 | **pecado** | `pecado/` | IPC 入口、模式选择、prompts、UI sink、plain 单轮 | 不调 Volc HTTP、不执行 tool、不 DISPATCH |
 | **agent-loop** | `agent-loop/` | 多轮 conv、DISPATCH、`stream-hooks` → UI/xcode | 不解析 SSE、不实现 MCP tool |
 | **llm-server** | `llm-server/` | HTTP/SSE、INFER、PARSE（`EXECUTE_*` / `FEED_*`） | 不依赖 pecado / mcp / xcode |
-| **mcp-filesystem** | `mcp-filesystem/` | MCP 连接、读写沙箱、`EXECUTE_execute_tool` | 不选对话模式、不注册 VOLC IPC |
-| **xcode** | `xcode/` | 流式写盘、pbxproj、创建确认 | 不注册 IPC |
+| **mcp-filesystem** | `mcp-filesystem/` | MCP 连接、读写沙箱、工程上下文、`EXECUTE_execute_tool` | 不选对话模式、不注册 VOLC IPC |
+| **xcode** | `xcode/` | 流式写盘、pbxproj、创建确认、Agent build/run | 不注册 VOLC IPC |
+| **codX** | `codX/` | Monaco 编辑、底栏对话、Agent 工具实现与 IPC | 不含 loop 代码；**tools 由 agent-loop 调度** |
+| **workflow** | `workflow/` | Skill 面板、文件服务、归类/PPT/定时任务 | 不进 pecado 路由 |
+| **markdown** | `markdown/` | Skill Layer 树解析（`skill-layer.js`） | — |
 | **commands** | `commands/` | 回合结束后 JSON 本地指令 | 不进 Agent Loop |
 | **gitgraph** | `gitgraph/` | Git 时间线、Pull/Push/Commit、节点 Git 操作、工程路径栏 | 不进 Agent Loop |
 | **settings** | `settings/` | Volc 配置、菜单、Preferences 窗口 | — |
@@ -341,9 +448,10 @@ Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式
 | 4 | mcp-filesystem | `mcp-filesystem/ipc.js` | `MCP_FS.*` + Open Folder |
 | 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*`（含 `NODE_ACTION`） |
 | 6 | workflow | `workflow/register.js` | `WORKFLOW.*`（文件服务等） |
-| 7 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
+| 7 | codX | `codX/ipc.js` | 语法检查等 |
+| 8 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
 
-渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`。
+渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`；CodX 激活时加载 `codX/js/*`。
 
 ---
 
@@ -356,7 +464,7 @@ Pecado 的路由分**三层**，每层只做一件事；扩展新能力时按层
 | 层 | 位置 | 路由什么 | 方式 |
 |----|------|----------|------|
 | **L1 模块注册** | `main/js/main.js` | 哪个 IPC 通道由哪个模块处理 | 启动时 `register(ipcMain)` |
-| **L2 对话模式** | `pecado/js/agent/router.js` | plain / context / agent | `selectChatMode()` 读 MCP 状态 |
+| **L2 对话模式** | `pecado/js/agent/router.js` | plain / context / agent / git | `selectChatMode()` 读 MCP 状态 |
 | **L3 任务分发** | `agent-loop/task-dispatcher.js` | tool 任务交给哪个业务模块 | `route_task()` 按 `task.type` |
 
 ```mermaid
@@ -374,6 +482,9 @@ flowchart TB
   subgraph L3 [L3 任务分发 — agent-loop]
     TYPE{route_task by type}
     TYPE -->|mcp_tool| MCP[mcp-filesystem]
+    TYPE -->|dev_docs_tool| SK[skill]
+    TYPE -->|codx_tool| CX[codX]
+    TYPE -->|xcode_tool| XC[xcode]
   end
 
   IPC --> MODE
@@ -390,7 +501,7 @@ flowchart TB
 |------|------|--------|
 | **register** | 模块向主进程绑定 IPC handler | `*/register.js`、`mcp-filesystem/ipc.js` |
 | **router** | 对话入口：选模式、组 messages、调下游 | `pecado/js/agent/router.js` |
-| **CHAT_MODES** | `plain` \| `context` \| `agent` | router |
+| **CHAT_MODES** | `plain` \| `context` \| `agent` \| `git` | router |
 | **uiSink** | 主进程 → 渲染进程的流式 UI 回调对象 | `stream-ui.js` 创建，传给 loop |
 | **INFER / PARSE / DISPATCH / EXEC / FEED** | Agent 五节点（LangGraph 风格） | loop + llm-server + mcp |
 | **EXECUTE_*** | 业务模块**入口**：Loop 调用的执行函数 | `llm-server`、`mcp-filesystem` |
@@ -449,10 +560,11 @@ module.exports = {
 
 ```js
 // pecado/js/agent/router.js — 模式决策 + 分发到 runner
-const CHAT_MODES = { PLAIN: 'plain', CONTEXT: 'context', AGENT: 'agent' };
+const CHAT_MODES = { PLAIN: 'plain', CONTEXT: 'context', AGENT: 'agent', GIT: 'git' };
 
 async function selectChatMode({ userText, history }) {
   if (projectIo.getStatus().connected) {
+    // agent：注入工程锚点 + @ 引用 + CodX 当前文件
     return { mode: CHAT_MODES.AGENT, messages: buildChatMessages('agent', userText, history), xcodeStreamPath: '...' };
   }
   const ctx = await buildProjectContextForAi(userText);
@@ -462,9 +574,14 @@ async function selectChatMode({ userText, history }) {
 
 // handler 内
 if (mode === CHAT_MODES.AGENT) {
-  return runAppAgentLoop(createUiStreamSink(sender, streamId), apiKey, model, messages, loopOpts);
+  const uiSink = createUiStreamSink(sender, streamId);
+  return runAppAgentLoop(uiSink, { apiKey, model, apiMode, endpoint }, messages, {
+    xcodeStreamPath,
+    userText,
+    codxChat: Boolean(payload?.codxChat),
+  });
 }
-return runPlainSession({ apiKey, model, messages, uiSink, xcodeAbsPath });
+return runPlainSession({ apiKey, model, apiMode, endpoint, messages, uiSink, xcodeAbsPath });
 ```
 
 #### 4. uiSink：UI 旁路（不是 EXEC 节点）
@@ -606,20 +723,15 @@ sequenceDiagram
       L->>LLM: EXECUTE_parse_command
       LLM-->>L: FEED_parsed_command
       alt finishReason = tool_calls
-        L->>L: route_task
-        L->>MCP: EXECUTE_execute_tool
-        MCP-->>L: FEED_tool_result
+        L->>L: route_task → EXEC tools
         L->>L: feed_observation(conv)
-        alt 含 write_file / edit_file
-          L->>L: 自动 xcode_build（本地）
-          L-->>Rt: content（结束 loop）
-        else 仅 xcode_build / run / test
-          L-->>Rt: content（结束 loop）
-        else 读文件等
-          L->>L: 下一轮 INFER
+        alt 含 finish_task
+          L-->>Rt: content = summary（结束 loop）
+        else 无 finish_task
+          L->>L: 下一轮 INFER（最多 12 轮）
         end
       else 无 tool_calls
-        L-->>Rt: content
+        L-->>Rt: content 或 FINISH_NUDGE 后再 INFER
       end
     end
   else plain / context
@@ -627,7 +739,7 @@ sequenceDiagram
     LLM-->>Rt: content
   end
   Rt-->>Pre: { content } | { error }
-  Note over LLM,R: INFER 期间 stream-hooks → uiSink → BOTS_STREAM_EVENT → R
+  Note over LLM,R: INFER 期间 stream-hooks → uiSink → BOTS_STREAM_EVENT → R（或 codX/codx-chat.js）
   R->>Pre: handleBotCommand（可选 JSON）
 ```
 
@@ -658,6 +770,8 @@ flowchart TB
   subgraph DISPATCH [DISPATCH — agent-loop]
     RT[route_task]
     RT -->|mcp_tool| MOD[mcp-filesystem]
+    RT -->|dev_docs_tool| SK[skill]
+    RT -->|codx_tool| CX[codX]
     RT -->|xcode_tool| XC[xcode]
   end
 
@@ -687,23 +801,26 @@ flowchart TB
   INFER -.-> SIDE
 ```
 
-### 3. 三种对话模式
+### 3. 对话模式
 
 ```mermaid
 flowchart TD
   MSG[用户消息] --> SEL[pecado/router selectChatMode]
 
-  SEL -->|MCP 已连接| AGENT[agent 模式]
-  SEL -->|有 @path / 目录树| CTX[context 模式]
+  SEL -->|payloadMode=git| GIT[git 模式]
+  SEL -->|MCP 已连接| AGENT[agent 模式 — 常见路径]
+  SEL -->|MCP 未连 + 有缓存上下文| CTX[context 模式 — 少见]
   SEL -->|无工程上下文| PLAIN[plain 模式]
 
   AGENT --> LOOP[agent-loop/runAppAgentLoop]
-  LOOP --> TOOLS[MCP tools 多轮]
+  LOOP --> TOOLS[MCP + Skill + CodX + Xcode tools]
 
   CTX --> PLAIN流[plain-stream/runPlainSession]
   PLAIN --> PLAIN流
+  GIT --> PLAIN流
   PLAIN流 --> LLM[llm-server/collectPlainChat]
   CTX --> PC[project-context 拼 system]
+  AGENT --> ANCHOR[工程锚点 + 缓存目录树]
 ```
 
 ### 4. EXECUTE / FEED 命名约定
@@ -885,7 +1002,7 @@ git push origin main
 | 对话 IPC + 模式路由 | `src/pecado/js/agent/router.js` |
 | 对话 UI（renderer） | `src/pecado/js/index.js` |
 | Agent 编排 | `src/agent-loop/app-agent-loop.js`（详见 [src/agent-loop/README.md](src/agent-loop/README.md)） |
-| 写代码短路返回 | `src/agent-loop/agent-reply.js` |
+| 写代码直调 Xcode 回复 | `src/agent-loop/agent-reply.js`（`composeAgentReply`，直调 xcode 工具时用） |
 | 写入前 read 守卫 | `src/agent-loop/write-guard.js` |
 | INFER | `src/llm-server/llm-infer-service.js` |
 | PARSE | `src/llm-server/command-parser.js` |
@@ -901,7 +1018,12 @@ git push origin main
 | Git CLI / 节点操作 | `src/gitgraph/js/git-runner.js` |
 | Git log 解析 | `src/gitgraph/js/log-parser.js` |
 | Git 主进程 IPC | `src/gitgraph/js/register.js` |
+| CodX 底栏对话 | `src/codX/js/codx-chat.js`、`src/codX/js/codx-live-status.js` |
+| 流式正文渐显 | `src/shared/stream-text-reveal.js` |
+| 对话跟滚 | `src/shared/chat-scroll-follow.js` |
 | 工程上下文 | `src/mcp-filesystem/project-context.js` |
+| MCP 路径校正 | `src/mcp-filesystem/read.js`（`prepareMcpToolPath`） |
+| LLM 语言约束 | `src/shared/prompt-language.js` |
 | Workflow 文件服务 | `src/workflow/file-service/server.js` |
 | Skill 模块 | `src/workflow/skill/`（见 [skill/README.md](src/workflow/skill/README.md)） |
 | Skill 执行日志 | `src/shared/agent-log.js`、`src/pecado/js/skill-log-panel.js` |

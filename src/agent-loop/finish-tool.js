@@ -5,18 +5,18 @@
 const FINISH_TASK_NAME = 'finish_task';
 
 const FINISH_NUDGE =
-  '【系统】请根据用户意图自行编排并选用 tools。未完成则继续执行；全部完成时请调用 finish_task(summary)，勿仅用文字结束。';
+  '【系统】请根据用户意图自行编排并选用 tools。未完成则继续执行；全部完成时请调用 finish_task(summary)，勿仅用文字结束。思考链与 summary 请用简体中文。';
 
 function getFinishTaskTool() {
   return {
     name: FINISH_TASK_NAME,
     description:
       '当用户意图已全部完成时调用（改码、运行、脚本、咨询等均可）。' +
-      'summary 为给用户的简短结果说明。未完成前勿调用。',
+      'summary 为给用户的简短结果说明（简体中文）。未完成前勿调用。',
     inputSchema: {
       type: 'object',
       properties: {
-        summary: { type: 'string', description: '任务结果摘要' },
+        summary: { type: 'string', description: '任务结果摘要（简体中文）' },
       },
       required: ['summary'],
     },

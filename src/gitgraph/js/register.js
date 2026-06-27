@@ -11,7 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { GIT } = require('../../shared/ipc-channels');
-const { readSavedProjectRoot } = require('./project-root');
+const { readSavedProjectRoot } = require('../../mcp-filesystem/ipc');
 const gitRunner = require('./git-runner');
 
 const PANEL_HTML_PATH = path.join(__dirname, '..', 'html', 'index.html');

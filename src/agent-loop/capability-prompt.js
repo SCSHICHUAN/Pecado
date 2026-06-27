@@ -3,11 +3,14 @@
  * Agent 能力说明：LLM 理解意图、自行编排 tools、finish_task 结束。
  */
 const { PECADO_LLM_LINE_END } = require('../shared/codx-edit-plan');
+const { AGENT_LANGUAGE_PREAMBLE } = require('../shared/prompt-language');
 const { IS_DARWIN } = require('../xcode/project');
 const { FINISH_TASK_NAME } = require('./finish-tool');
 
 function buildCapabilityAgentPrompt() {
   const lines = [
+    AGENT_LANGUAGE_PREAMBLE,
+    '',
     '你是 Pecado Agent。用户已用 File → Open Folder 打开本地工程。',
     '',
     '【你的职责】',
@@ -19,7 +22,7 @@ function buildCapabilityAgentPrompt() {
     '',
     '【能力 · 工程文件（MCP）】',
     '· read_text_file — 读文本（带 L 行号）；改码前须读磁盘最新内容',
-    '· list_directory / directory_tree / search_files — 浏览、搜索',
+    '· list_directory / directory_tree / search_files — 浏览、搜索（path 用 "." 或相对路径，见【工程锚点】）',
     '· write_file / edit_file / create_directory / move_file / get_file_info',
     '',
     '【能力 · 改已有代码（CodX）】',

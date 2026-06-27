@@ -10,7 +10,8 @@
  *   4. mcp-filesystem/ipc.js        → MCP_FS + File → Open Folder
  *   5. gitgraph/js/register.js      → GIT 面板
  *   6. workflow/register.js         → Workflow 面板
- *   7. settings.setupApplicationMenu → 菜单栏（含 Open Folder、Preferences）
+ *   7. codX/ipc.js                  → CodX 语法检查等
+ *   8. settings.setupApplicationMenu → 菜单栏（含 Open Folder、Preferences）
  *
  * 【渲染进程】main/html/index.html + preload/preload.js
  *   · pecado/js/index.js — 对话 UI

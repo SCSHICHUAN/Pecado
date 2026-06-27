@@ -13,6 +13,20 @@
  *
  * 【对外能力】formatMcpTreeAscii(tree, maxLines?) / formatMcpTreeBox（内部）
  */
+function normalizeDirectoryTreeNodes(tree) {
+  if (!tree) return [];
+  if (Array.isArray(tree)) return tree;
+  if (typeof tree === 'object') {
+    const name = String(tree.name ?? '').trim();
+    const isDir = tree.type === 'directory';
+    if (isDir && (name === '.' || name === '') && Array.isArray(tree.children)) {
+      return tree.children;
+    }
+    return [tree];
+  }
+  return [];
+}
+
 function formatMcpTreeBox(nodes, prefix, lines, maxLines) {
   if (!Array.isArray(nodes) || lines.length >= maxLines) return;
   for (let i = 0; i < nodes.length; i += 1) {
@@ -30,8 +44,9 @@ function formatMcpTreeBox(nodes, prefix, lines, maxLines) {
 
 function formatMcpTreeAscii(tree, maxLines = 400) {
   const lines = ['.'];
-  if (Array.isArray(tree) && tree.length) {
-    formatMcpTreeBox(tree, '', lines, maxLines);
+  const nodes = normalizeDirectoryTreeNodes(tree);
+  if (nodes.length) {
+    formatMcpTreeBox(nodes, '', lines, maxLines);
   }
   if (lines.length >= maxLines) {
     lines.push('…（目录过多，已截断）');
@@ -40,8 +55,8 @@ function formatMcpTreeAscii(tree, maxLines = 400) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatMcpTreeBox, formatMcpTreeAscii };
+  module.exports = { formatMcpTreeBox, formatMcpTreeAscii, normalizeDirectoryTreeNodes };
 }
 if (typeof window !== 'undefined') {
-  window.formatMcpTree = { formatMcpTreeAscii };
+  window.formatMcpTree = { formatMcpTreeAscii, normalizeDirectoryTreeNodes };
 }

@@ -57,10 +57,9 @@ commit inner 总宽 = 左留白 1W + 文字区
 
 | 文件 | 职责 |
 |------|------|
-| `js/register.js` | 主进程 IPC：`GIT.*`、读取 `html/index.html` |
-| `js/git-runner.js` | `git log/status/pull/push/commit`、节点 `runNodeAction`、`remoteOriginUrl` |
+| `js/register.js` | 主进程 IPC：`GIT.*`、面板 HTML；工程根 `readSavedProjectRoot` |
+| `js/git-runner.js` | `git log/status/pull/push/commit`、节点 `runNodeAction` |
 | `js/log-parser.js` | `git log --pretty` → 时间线 commit 对象 |
-| `js/project-root.js` | 读 `userData/mcp-project.json` 工程路径 |
 | `js/timeline-layout.js` | Lane 分配、merge/fork 连线、节点坐标与颜色 |
 | `js/index.js` | 渲染进程：DOM、滚动同步、选中、工具栏、底部 Dock、节点悬浮/右键菜单 |
 | `js/git-chat.js` | Git 面板 pecado tab：可点击 Git 操作、LLM 分析、shell 命令确认 |

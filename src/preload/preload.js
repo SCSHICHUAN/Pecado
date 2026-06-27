@@ -14,7 +14,7 @@
  *   handleBotCommand(rawContent)       → invoke HANDLE_BOT_COMMAND
  *   mcpFsDirectoryTree(opts)             → invoke DIRECTORY_TREE
  *   onMcpFsProjectChanged(callback)      → listen PROJECT_CHANGED { projectRoot, tools?, showTree?, treeAscii?, xcodeProject? }
- *   mcpFsOpenXcodeProject(payload)       → invoke OPEN_XCODE_PROJECT { path }
+ *   mcpFsOpenProjectRoot(payload)        → invoke OPEN_PROJECT_ROOT
  *   gitGetState(payload?)                → invoke GIT.GET_STATE
  *   gitPull(payload?)                    → invoke GIT.PULL
  *   gitPush(payload?)                    → invoke GIT.PUSH
@@ -51,8 +51,6 @@ try {
     codxCheckSyntax: (payload) => ipcRenderer.invoke(CODX.CHECK_SYNTAX, payload || {}),
     getAppSettings: () => ipcRenderer.invoke(SETTINGS.GET),
     saveAppSettings: (payload) => ipcRenderer.invoke(SETTINGS.SAVE, payload || {}),
-    mcpFsOpenXcodeProject: (payload) =>
-      ipcRenderer.invoke(MCP_FS.OPEN_XCODE_PROJECT, payload || {}),
     mcpFsOpenPath: (payload) => ipcRenderer.invoke(MCP_FS.OPEN_PATH, payload || {}),
     mcpFsCopyFiles: (payload) => ipcRenderer.invoke(MCP_FS.COPY_FILES, payload || {}),
     mcpFsReadTextFile: (payload) => ipcRenderer.invoke(MCP_FS.READ_TEXT_FILE, payload || {}),

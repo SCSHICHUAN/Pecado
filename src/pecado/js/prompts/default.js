@@ -7,9 +7,11 @@
  *
  * 【调用方】pecado/js/agent/router.js → buildChatMessages
  *
- * 【对外能力】SYSTEM_PROMPT 常量（当前为简短英文助手人设）
+ * 【对外能力】SYSTEM_PROMPT 常量（plain / context 模式中文人设）
  */
 
-const SYSTEM_PROMPT = 'You are a helpful assistant.';
+const SYSTEM_PROMPT = `你是 Pecado 编程助手。用简洁、准确的中文回答用户。
+
+若模型支持思考/推理过程（reasoning），思考内容也请使用简体中文；代码与路径保持原文。`;
 
 module.exports = { SYSTEM_PROMPT };

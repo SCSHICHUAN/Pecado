@@ -175,10 +175,6 @@ function getMimeType(fileName) {
   return MIME_BY_EXT[ext] || 'application/octet-stream';
 }
 
-function isPreviewableImage(fileName) {
-  return getFileTypeInfo(fileName).kind === 'image';
-}
-
 /** 是否可在浏览器内直接打开预览 */
 function isPreviewable(fileName) {
   const { kind, ext } = getFileTypeInfo(fileName);
@@ -195,6 +191,5 @@ module.exports = {
   getExtension,
   getFileTypeInfo,
   getMimeType,
-  isPreviewableImage,
   isPreviewable,
 };

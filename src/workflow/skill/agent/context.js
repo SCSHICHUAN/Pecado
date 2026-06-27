@@ -4,13 +4,9 @@
  *   - 默认：Instructions（若有）+ Layer 树常驻；正文与资源脚本 path 不进 system
  *   - 跑脚本：run_skill_resource_script（path 按 Skill 正文；exec 层用磁盘资源树解析）
  */
-const { listDevDocMeta, readSkillMarkdown, readLayerJson, writeLayerJson } = require('../store');
+const { listDevDocMeta, readSkillMarkdown, readLayerTreeForMeta } = require('../store');
 const { normalizeDocMeta, buildSkillInstructionsContext } = require('../document');
-const {
-  isStructuredSkillMarkdown,
-  buildMarkdownLayerTree,
-  stripLayerSection,
-} = require('../../../markdown/skill-layer');
+const { isStructuredSkillMarkdown } = require('../../../markdown/skill-layer');
 
 const MAX_TOTAL = 48000;
 const MAX_PER_DOC_SKILL = 6000;
@@ -19,18 +15,6 @@ const MAX_PER_DOC_FULL = 120000;
 
 function readFullSkillMarkdown(meta) {
   return String(readSkillMarkdown(meta) || '').trim();
-}
-
-function readLayerTreeForMeta(meta) {
-  const skillName = meta.skillName || meta.id;
-  let tree = readLayerJson(skillName, meta.id);
-  if (!tree) {
-    const skillMd = readFullSkillMarkdown(meta);
-    if (!skillMd) return null;
-    tree = buildMarkdownLayerTree(stripLayerSection(skillMd), skillName);
-    if (tree) writeLayerJson(skillName, meta.id, tree);
-  }
-  return tree;
 }
 
 function isResourcesPinned(meta) {
@@ -124,4 +108,4 @@ function buildDevDocsContextForAi() {
   return lines.join('\n');
 }
 
-module.exports = { buildDevDocsContextForAi, isResourcesPinned, readLayerTreeForMeta };
+module.exports = { buildDevDocsContextForAi };

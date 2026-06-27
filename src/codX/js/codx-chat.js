@@ -10,6 +10,29 @@
     return document.getElementById(id);
   }
 
+  function getScrollEl() {
+    return $('codx-chat-scroll');
+  }
+
+  const chatScroll = window.ChatScrollFollow.create(getScrollEl);
+
+  const shouldFollowChatOutput = () => chatScroll.shouldFollowChatOutput();
+  const shouldAutoScrollAfterTurn = () => chatScroll.shouldAutoScrollAfterTurn();
+  const isChatPinnedToBottom = () => chatScroll.isChatPinnedToBottom();
+  const scrollChatToBottomForced = (opts) => chatScroll.scrollChatToBottomForced(opts);
+
+  function bindActiveTurnResizeFollow(...elements) {
+    chatScroll.bindResizeFollow(...elements);
+  }
+
+  function unbindActiveTurnResizeFollow() {
+    chatScroll.unbindResizeFollow();
+  }
+
+  function maybeFollowScroll() {
+    if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
+  }
+
   function renderMarkdown(text) {
     const api = window.electronAPI;
     if (api?.renderMarkdown) {
@@ -25,14 +48,8 @@
       .replace(/>/g, '&gt;');
   }
 
-  function scrollBottom() {
-    const el = $('codx-chat-scroll');
-    if (!el) return;
-    el.scrollTop = el.scrollHeight;
-  }
-
   function addMessage(role, text) {
-    const scroll = $('codx-chat-scroll');
+    const scroll = getScrollEl();
     if (!scroll) return;
     const row = document.createElement('div');
     row.className = `codx-chat-msg codx-chat-msg-${role}`;
@@ -49,7 +66,13 @@
 
     row.appendChild(body);
     scroll.appendChild(row);
-    scrollBottom();
+    if (role === 'user') {
+      if (isChatPinnedToBottom() && !chatScroll.isDetached) {
+        scrollChatToBottomForced({ streamFollow: true });
+      }
+    } else if (!chatScroll.isDetached) {
+      scrollChatToBottomForced({ streamFollow: true });
+    }
   }
 
   function createThinkingRow() {
@@ -100,14 +123,14 @@
 
     if (payload.phase === 'agent_log' && payload.entry) {
       window.CodXLiveStatus?.onExecEntry?.(payload.entry);
-      scrollBottom();
+      maybeFollowScroll();
       return true;
     }
 
     if (payload.phase === 'tool_stream') {
       if (window.CodXLiveStatus?.isTurnActive?.()) {
         window.CodXLiveStatus?.onToolStream?.(payload);
-        scrollBottom();
+        maybeFollowScroll();
         return true;
       }
       if (payload.name === 'codx_edit' || payload.name === 'write_file') return true;
@@ -136,7 +159,7 @@
         index: payload.index,
         streaming: payload.streaming,
       });
-      scrollBottom();
+      maybeFollowScroll();
       return true;
     }
 
@@ -144,7 +167,7 @@
   }
 
   function createStreamingRow(afterEl) {
-    const scroll = $('codx-chat-scroll');
+    const scroll = getScrollEl();
     if (!scroll) return null;
     const row = document.createElement('div');
     row.className = 'codx-chat-msg codx-chat-msg-assistant codx-chat-streaming';
@@ -158,7 +181,7 @@
     } else {
       scroll.appendChild(row);
     }
-    scrollBottom();
+    maybeFollowScroll();
     return { row, body };
   }
 
@@ -173,7 +196,7 @@
       },
       onAfterRender: (target) => {
         target?.classList.add('markdown-body');
-        scrollBottom();
+        maybeFollowScroll();
       },
     });
   }
@@ -217,6 +240,8 @@
       return;
     }
 
+    chatScroll.prepareForNewTurn();
+
     addMessage('user', text);
     history.push({ role: 'user', content: text });
     input.value = '';
@@ -239,8 +264,9 @@
     };
 
     const thinking = createThinkingRow();
-    $('codx-chat-scroll')?.appendChild(thinking);
-    scrollBottom();
+    getScrollEl()?.appendChild(thinking);
+    bindActiveTurnResizeFollow(thinking);
+    maybeFollowScroll();
 
     function ensureStreamingRow() {
       if (streamRow) return;
@@ -248,12 +274,13 @@
       if (!created) return;
       streamRow = created.row;
       streamBody = created.body;
+      bindActiveTurnResizeFollow(thinking, streamRow);
     }
 
     function onAgentReasoning(piece) {
       if (!piece) return;
       window.CodXLiveStatus?.onInferTextDelta?.(piece);
-      scrollBottom();
+      maybeFollowScroll();
     }
 
     function onFinalReplyDelta(piece) {
@@ -282,7 +309,7 @@
               path: payload.path,
               text: payload.text,
             });
-            scrollBottom();
+            maybeFollowScroll();
           } else {
             onFinalReplyDelta(payload.text);
           }
@@ -296,24 +323,36 @@
         userText: text,
         history: prior,
         codxActiveFile: activeRelPath || undefined,
+        codxChat: true,
       });
       flushStreamMarkdownRender(streamCtx);
       cancelStreamMarkdownRender(streamCtx);
-      const reply = res?.content || raw || (res?.error ? `错误：${res.error}` : '');
+      const invokeContent = res?.content || (res?.error ? `错误：${res.error}` : '');
+      const resolveTurn =
+        window.StreamTextReveal?.resolveStreamTurnContent ||
+        ((streamed, invoke) => {
+          const s = String(streamed ?? '').trim();
+          return s || String(invoke ?? '').trim();
+        });
+      const hadStream =
+        window.StreamTextReveal?.hasStreamedTurnContent?.(raw) ??
+        Boolean(String(raw ?? '').trim());
+      const displayText = resolveTurn(raw, invokeContent);
 
       if (streamBody) {
-        if (reply && reply !== raw) {
-          streamBody.innerHTML = renderMarkdown(reply);
+        if (!hadStream && displayText) {
+          streamBody.innerHTML = renderMarkdown(displayText);
         }
         streamRow?.classList.remove('codx-chat-streaming');
         thinking.remove();
-      } else if (reply) {
+      } else if (displayText) {
         thinking.remove();
-        addMessage('assistant', reply);
+        addMessage('assistant', displayText);
       } else {
         thinking.remove();
       }
-      history.push({ role: 'assistant', content: reply });
+      history.push({ role: 'assistant', content: displayText });
+      if (shouldAutoScrollAfterTurn()) scrollChatToBottomForced({ streamFollow: true });
     } catch (e) {
       cancelStreamMarkdownRender(streamCtx);
       thinking.remove();
@@ -322,13 +361,16 @@
     } finally {
       unsub();
       window.CodXLiveStatus?.clear?.();
+      chatScroll.endTurnFollow();
+      unbindActiveTurnResizeFollow();
       if (btn) btn.disabled = false;
     }
   }
 
   function resetHistory() {
     history = [{ role: 'assistant', content: '在编辑器中改代码，或在这里描述需求。' }];
-    const scroll = $('codx-chat-scroll');
+    chatScroll.resetDetached();
+    const scroll = getScrollEl();
     if (scroll) {
       scroll.replaceChildren();
       addMessage('assistant', history[0].content);
@@ -336,6 +378,7 @@
   }
 
   function bind() {
+    chatScroll.bindScrollListeners();
     const input = $('codx-chat-input');
     const btn = $('codx-chat-send');
     let imeComposing = false;
@@ -357,7 +400,7 @@
       sendMessage();
     });
     syncInputHeight(input);
-    const scroll = $('codx-chat-scroll');
+    const scroll = getScrollEl();
     if (scroll && !scroll.dataset.inited) {
       scroll.dataset.inited = '1';
       addMessage('assistant', history[0].content);

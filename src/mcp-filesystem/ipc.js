@@ -2,7 +2,7 @@
  * @file ipc.js
  *
  * 【功能】mcp-filesystem 的 Electron 集成：对话框、IPC、主窗口引用、持久化工程路径。
- *   - File → Open Folder：dialog 选目录 → projectIo.connect → 推送 xcodeProject 供底栏「打开项目」→ saveProjectRoot
+ *   - File → Open Folder：dialog 选目录 → projectIo.connect → 推送 xcodeProject → saveProjectRoot
  *   - 连接成功 webContents.send MCP_FS.PROJECT_CHANGED → renderer 更新工程路径（仅 Open Folder 时带目录树）
  *   - ipcMain.handle MCP_FS.DIRECTORY_TREE → readDirectoryTree
  *   - app.before-quit → disconnect
@@ -190,18 +190,6 @@ function registerIpcHandlers(ipcMain) {
       };
     } catch (e) {
       return { error: e.message || String(e) };
-    }
-  });
-
-  ipcMain.handle(MCP_FS.OPEN_XCODE_PROJECT, async (_event, payload) => {
-    try {
-      const filePath = String(payload?.path || '').trim();
-      if (!filePath) return { ok: false, error: '缺少 path' };
-      if (!fs.existsSync(filePath)) return { ok: false, error: `路径不存在：${filePath}` };
-      xcodeProject.openXcodeProject(filePath);
-      return { ok: true, path: filePath };
-    } catch (e) {
-      return { ok: false, error: e.message || String(e) };
     }
   });
 

@@ -6,8 +6,7 @@ const path = require('path');
 const {
   listDevDocMeta,
   readSkillMarkdown,
-  readLayerJson,
-  writeLayerJson,
+  readLayerTreeForMeta,
   layerJsonBasename,
   getSkillMdPath,
   getLayerJsonPath,
@@ -16,11 +15,7 @@ const {
   normalizeDocMeta,
   extractResourcesFromSkill,
 } = require('../document');
-const {
-  buildMarkdownLayerTree,
-  stripLayerSection,
-  readSkillSectionByPath,
-} = require('../../../markdown/skill-layer');
+const { readSkillSectionByPath } = require('../../../markdown/skill-layer');
 
 const {
   readResourceFileContent,
@@ -232,17 +227,6 @@ function findEnabledDocBySkillName(skillName) {
     metas.find((d) => String(d.id || '').toLowerCase() === key) ||
     null
   );
-}
-
-function readLayerTreeForMeta(meta) {
-  const skillName = meta.skillName || meta.id;
-  let tree = readLayerJson(skillName, meta.id);
-  if (!tree) {
-    const skillMd = readSkillMarkdown(meta);
-    tree = buildMarkdownLayerTree(stripLayerSection(skillMd), skillName);
-    writeLayerJson(skillName, meta.id, tree);
-  }
-  return tree;
 }
 
 function readResourcesForMeta(meta) {

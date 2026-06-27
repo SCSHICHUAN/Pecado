@@ -27,7 +27,7 @@
       .map((line) => `    ${line}`)
       .join('\n');
     const xcodeHint = xcodeProject
-      ? `\n\n检测到 Xcode 工程 **${xcodeProject.name}**（${xcodeProject.kind === 'workspace' ? '.xcworkspace' : '.xcodeproj'}），可点击底栏 **打开项目**。`
+      ? `\n\n检测到 Xcode 工程 **${xcodeProject.name}**（${xcodeProject.kind === 'workspace' ? '.xcworkspace' : '.xcodeproj'}）。`
       : '';
     return (
       `已选择工程 **${folderName}**${xcodeHint}\n\n` +
@@ -45,7 +45,6 @@
     if (!uiDeps) return;
     uiDeps.addMessage(md, 'assistant');
     uiDeps.pushChatHistory({ role: 'assistant', content: md });
-    uiDeps.scrollChatToBottomForced();
   }
 
   async function showProjectTreeBubble(projectRoot, xcodeProject) {
@@ -66,50 +65,10 @@
     showProjectTreeMarkdown(projectRoot, md);
   }
 
-  /** @type {HTMLButtonElement | null} */
-  let openXcodeBtn = null;
-  /** @type {{ kind: string, name: string, path: string } | null} */
-  let currentXcodeProject = null;
-
-  function syncOpenXcodeToolbar(xcodeProject) {
-    currentXcodeProject = xcodeProject?.path ? xcodeProject : null;
-    if (!openXcodeBtn) return;
-    const has = Boolean(currentXcodeProject);
-    openXcodeBtn.hidden = !has;
-    openXcodeBtn.disabled = !has;
-    openXcodeBtn.textContent = '打开项目';
-    openXcodeBtn.title = has
-      ? `在 Xcode 中打开：${currentXcodeProject.path}`
-      : '当前工程未检测到 .xcodeproj / .xcworkspace';
-  }
-
-  async function openXcodeProjectFromToolbar() {
-    const api = getApi();
-    const filePath = String(currentXcodeProject?.path || '').trim();
-    if (!filePath || !openXcodeBtn || !api || typeof api.mcpFsOpenXcodeProject !== 'function') return;
-    openXcodeBtn.disabled = true;
-    try {
-      const res = await api.mcpFsOpenXcodeProject({ path: filePath });
-      if (res?.ok) return;
-      if (uiDeps) {
-        uiDeps.addMessage(`打开 Xcode 工程失败：${res?.error || '未知错误'}`, 'assistant');
-        uiDeps.scrollChatToBottomForced();
-      }
-    } catch (e) {
-      if (uiDeps) {
-        uiDeps.addMessage(`打开 Xcode 工程异常：${e.message || String(e)}`, 'assistant');
-        uiDeps.scrollChatToBottomForced();
-      }
-    } finally {
-      if (openXcodeBtn) openXcodeBtn.disabled = false;
-    }
-  }
-
   function setupProjectListener() {
     const api = getApi();
     if (!api || typeof api.onMcpFsProjectChanged !== 'function') return;
     api.onMcpFsProjectChanged(({ projectRoot, showTree, treeAscii, xcodeProject }) => {
-      if (projectRoot) syncOpenXcodeToolbar(xcodeProject);
       if (!projectRoot || showTree !== true) return;
       if (treeAscii) {
         showProjectTreeMarkdown(
@@ -130,14 +89,6 @@
 
   function init(deps) {
     uiDeps = deps;
-    openXcodeBtn = document.getElementById('pecado-open-xcode-btn');
-    openXcodeBtn?.addEventListener('click', () => {
-      if (openXcodeBtn?.disabled) return;
-      openXcodeProjectFromToolbar().catch((err) => {
-        console.error('[project-ui] openXcodeProjectFromToolbar', err);
-      });
-    });
-    syncOpenXcodeToolbar(null);
     setupProjectListener();
   }
 
@@ -158,170 +109,22 @@ let chatHistory = [{ role: 'assistant', content: INITIAL_GREETING }];
 if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScroll) {
   console.error('[pecado] index.js: 缺少必要的 DOM 节点，请检查 main/html/index.html 结构');
 } else {
-  /** 一般「在底部附近」判定 */
-  const SCROLL_PIN_THRESHOLD_PX = 80;
-  /** 流式跟读：只有离底极近才自动滚 */
-  const STREAM_FOLLOW_MAX_GAP_PX = 20;
-  /** 用户 scroll 超过该 gap 视为在看历史 */
-  const STREAM_DETACH_SCROLL_GAP_PX = 40;
-  /** 向上滑轮后的冷却窗：禁止流式抢滚动 */
-  const WHEEL_UP_BLOCK_STREAM_MS = 900;
-
-  let chatProgrammaticScrollActive = false;
-  let chatUserDetachedFromStream = false;
-  let lastWheelUpIntentAt = 0;
-  /** 本轮对话进行中：大段 Markdown 突增时仍跟滚，除非用户主动上滑 */
-  let activeChatTurnFollow = false;
-  /** @type {ResizeObserver | null} */
-  let activeBubbleResizeObserver = null;
-
-  function isChatWheelCooldownActive() {
-    const now = performance.now();
-    return lastWheelUpIntentAt > 0 && now - lastWheelUpIntentAt < WHEEL_UP_BLOCK_STREAM_MS;
-  }
-
-  function shouldFollowChatOutput() {
-    if (chatUserDetachedFromStream) return false;
-    if (isChatWheelCooldownActive()) return false;
-    if (activeChatTurnFollow) return true;
-    return chatScrollGapFromBottom() <= STREAM_FOLLOW_MAX_GAP_PX;
-  }
-
-  function shouldStreamFollowBottom() {
-    return shouldFollowChatOutput();
-  }
-
-  function chatScrollGapFromBottom() {
-    const el = workspaceScroll;
-    return el.scrollHeight - el.scrollTop - el.clientHeight;
-  }
-
-  function isChatPinnedToBottom() {
-    return chatScrollGapFromBottom() <= SCROLL_PIN_THRESHOLD_PX;
-  }
-
-  /** 本轮结束时的滚底：跟读中或仍在底部附近 */
-  function shouldAutoScrollAfterTurn() {
-    if (chatUserDetachedFromStream) return false;
-    if (isChatWheelCooldownActive()) return false;
-    if (activeChatTurnFollow) return true;
-    return chatScrollGapFromBottom() <= SCROLL_PIN_THRESHOLD_PX;
-  }
+  const chatScroll = window.ChatScrollFollow.create(() => workspaceScroll);
+  chatScroll.bindScrollListeners();
 
   function bindActiveBubbleResizeFollow(bubble) {
-    activeBubbleResizeObserver?.disconnect();
-    activeBubbleResizeObserver = null;
-    if (!bubble || typeof ResizeObserver === 'undefined') return;
-    activeBubbleResizeObserver = new ResizeObserver(() => {
-      if (shouldFollowChatOutput()) scrollChatToBottomForced({ streamFollow: true });
-    });
-    activeBubbleResizeObserver.observe(bubble);
+    chatScroll.bindResizeFollow(bubble);
   }
 
   function unbindActiveBubbleResizeFollow() {
-    activeBubbleResizeObserver?.disconnect();
-    activeBubbleResizeObserver = null;
+    chatScroll.unbindResizeFollow();
   }
 
-  function syncDetachFromStreamOnUserScroll() {
-    if (chatProgrammaticScrollActive) return;
-    const gap = chatScrollGapFromBottom();
-    if (gap > STREAM_DETACH_SCROLL_GAP_PX) {
-      chatUserDetachedFromStream = true;
-    } else if (gap <= 8) {
-      chatUserDetachedFromStream = false;
-    }
-  }
-
-  workspaceScroll.addEventListener('scroll', syncDetachFromStreamOnUserScroll, { passive: true });
-
-  function onChatWheelCapture(e) {
-    if (e.ctrlKey) return;
-    if (e.deltaY < 0) {
-      lastWheelUpIntentAt = performance.now();
-      chatUserDetachedFromStream = true;
-      return;
-    }
-    if (!chatProgrammaticScrollActive && e.deltaY > 0 && isChatPinnedToBottom()) {
-      chatUserDetachedFromStream = false;
-    }
-  }
-  workspaceScroll.addEventListener('wheel', onChatWheelCapture, { passive: true, capture: true });
-
-  let chatTouchLastY = null;
-  workspaceScroll.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) chatTouchLastY = e.touches[0].clientY;
-  }, { passive: true });
-  workspaceScroll.addEventListener(
-    'touchmove',
-    (e) => {
-      if (e.touches.length !== 1) return;
-      const y = e.touches[0].clientY;
-      if (chatTouchLastY == null) return;
-      const dy = y - chatTouchLastY;
-      if (dy > 2) {
-        lastWheelUpIntentAt = performance.now();
-        chatUserDetachedFromStream = true;
-      }
-      if (!chatProgrammaticScrollActive && dy < -2 && isChatPinnedToBottom()) {
-        chatUserDetachedFromStream = false;
-      }
-      chatTouchLastY = y;
-    },
-    { passive: true }
-  );
-  workspaceScroll.addEventListener('touchend', () => {
-    chatTouchLastY = null;
-  }, { passive: true });
-
-  /**
-   * @param {{ streamFollow?: boolean }} [opts] streamFollow=true 时瞬时滚底（流式跟读），避免 smooth 与用户滚轮打架
-   */
-  function scrollChatToBottomForced(opts = {}) {
-    if (!workspaceScroll) return;
-    const el = workspaceScroll;
-    const streamFollow = opts.streamFollow === true;
-    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const instant = streamFollow || reduceMotion;
-
-    chatProgrammaticScrollActive = true;
-
-    /** 大段 Markdown / 代码块同帧写入时 scrollHeight 可能滞后，多帧 + 微延迟滚底 */
-    const flushInstant = () => {
-      const top = Math.max(0, el.scrollHeight - el.clientHeight);
-      el.scrollTo({ top, behavior: 'auto' });
-    };
-
-    if (instant) {
-      flushInstant();
-      let passes = 0;
-      const maxPasses = 32;
-      const settle = () => {
-        passes += 1;
-        flushInstant();
-        if (chatScrollGapFromBottom() > 2 && passes < maxPasses) {
-          requestAnimationFrame(settle);
-          return;
-        }
-        setTimeout(() => {
-          flushInstant();
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              chatProgrammaticScrollActive = false;
-            });
-          });
-        }, passes < 4 ? 16 : 0);
-      };
-      requestAnimationFrame(settle);
-      return;
-    }
-
-    const top = Math.max(0, el.scrollHeight - el.clientHeight);
-    el.scrollTo({ top, behavior: 'smooth' });
-    setTimeout(() => {
-      chatProgrammaticScrollActive = false;
-    }, 480);
-  }
+  const shouldFollowChatOutput = () => chatScroll.shouldFollowChatOutput();
+  const shouldAutoScrollAfterTurn = () => chatScroll.shouldAutoScrollAfterTurn();
+  const isChatPinnedToBottom = () => chatScroll.isChatPinnedToBottom();
+  const isChatWheelCooldownActive = () => chatScroll.isChatWheelCooldownActive();
+  const scrollChatToBottomForced = (opts) => chatScroll.scrollChatToBottomForced(opts);
 
   /**
    * 为每个 fenced `pre` 外包层：圆角背景层 + 横向滚动层 +「复制」按钮，并给 `code` 加上 hljs 类名
@@ -621,8 +424,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       }
     }
 
-    chatUserDetachedFromStream = false;
-    lastWheelUpIntentAt = 0;
+    chatScroll.prepareForNewTurn();
 
     addMessage(message, 'user');
     const priorHistory = [...chatHistory];
@@ -634,7 +436,6 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
     sendButton.disabled = true;
     if (xcodeRunBtn) xcodeRunBtn.disabled = true;
-    activeChatTurnFollow = true;
 
     const { bubble } = addStreamingAssistantShell();
     bindActiveBubbleResizeFollow(bubble);
@@ -645,6 +446,13 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       startedAt: turnStartedAt,
       inferAcc: '',
       update(entry) {
+        if (
+          entry?.logKind === 'agent-phase' &&
+          String(entry.phase || '').trim().toUpperCase() === 'INFER' &&
+          String(entry.phaseStatus || '') === 'start'
+        ) {
+          this.inferAcc = '';
+        }
         updateTurnExecBlock(bubble, entry);
         const kind = entry?.logKind;
         const scrollOnProgress =
@@ -702,13 +510,23 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       }
 
       const reply = result.content || rawAccum;
+      const resolveTurn =
+        window.StreamTextReveal?.resolveStreamTurnContent ||
+        ((streamed, invoke) => {
+          const s = String(streamed ?? '').trim();
+          return s || String(invoke ?? '').trim();
+        });
+      const hadStream =
+        window.StreamTextReveal?.hasStreamedTurnContent?.(rawAccum) ??
+        Boolean(String(rawAccum ?? '').trim());
       let displayText = reply;
-      if (typeof window.electronAPI?.handleBotCommand === 'function') {
+      if (!hadStream && typeof window.electronAPI?.handleBotCommand === 'function') {
         const r = await window.electronAPI.handleBotCommand(reply);
         displayText = r?.displayText ?? reply;
       }
+      displayText = resolveTurn(rawAccum, displayText);
       const stickEnd = shouldAutoScrollAfterTurn();
-      if (displayText !== reply || !rawAccum.trim()) {
+      if (!hadStream) {
         setAssistantBubbleMarkdown(bubble, displayText);
       } else {
         enhanceAssistantCodeBlocks(bubble);
@@ -728,7 +546,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     } finally {
       window.LogPanel?.finishBubbleStopwatch?.(bubble, { isError: turnHadError });
       window.__pecadoTurnExec = null;
-      activeChatTurnFollow = false;
+      chatScroll.endTurnFollow();
       unbindActiveBubbleResizeFollow();
       sendButton.disabled = false;
       if (xcodeRunBtn) xcodeRunBtn.disabled = false;
@@ -736,7 +554,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
   }
 
   function addMessage(text, type) {
-    const stickAssistant = type === 'assistant' && !chatUserDetachedFromStream;
+    const stickAssistant = type === 'assistant' && !chatScroll.isDetached;
 
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
@@ -762,7 +580,11 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     }
 
     chatContent.insertBefore(messageDiv, scrollAnchor);
-    if (type === 'user' || stickAssistant) {
+    if (type === 'user') {
+      if (isChatPinnedToBottom() && !chatScroll.isDetached) {
+        scrollChatToBottomForced({ streamFollow: true });
+      }
+    } else if (stickAssistant) {
       scrollChatToBottomForced({ streamFollow: true });
     }
     return bubble;

@@ -6,4 +6,4 @@ const { buildCapabilityAgentPrompt } = require('../../../agent-loop/capability-p
 
 const AGENT_SYSTEM_PROMPT = buildCapabilityAgentPrompt();
 
-module.exports = { AGENT_SYSTEM_PROMPT, buildCapabilityAgentPrompt };
+module.exports = { AGENT_SYSTEM_PROMPT };

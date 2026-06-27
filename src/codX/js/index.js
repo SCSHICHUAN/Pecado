@@ -11,6 +11,7 @@
   let dockSideLayout = false;
   /** @type {ReturnType<typeof setTimeout> | null} */
   let treeRefreshTimer = null;
+  let treeRefreshGen = 0;
   const DOCK_SIDE_LAYOUT_KEY = 'codx.dockSideLayout';
   const DOCK_OPEN_KEY = 'codx.dockOpen';
   const DOCK_TAB_KEY = 'codx.dockTab';
@@ -70,10 +71,26 @@
     return active;
   }
 
-  function resetCodxSession() {
+  function normalizeProjectRoot(root) {
+    return String(root || '')
+      .trim()
+      .replace(/\\/g, '/')
+      .replace(/\/+$/, '');
+  }
+
+  /** 是否从已有工程切换到另一工程（空路径不算切换） */
+  function projectRootChanged(prev, next) {
+    const a = normalizeProjectRoot(prev);
+    const b = normalizeProjectRoot(next);
+    if (!a || !b) return false;
+    return a !== b;
+  }
+
+  function resetCodxSession(opts = {}) {
+    const { resetChat = true } = opts;
     window.CodXEditor?.resetAll?.();
     window.CodXFileTree?.clearActivePath?.();
-    window.CodXChat?.resetHistory?.();
+    if (resetChat) window.CodXChat?.resetHistory?.();
     deferredDisk.clear();
   }
 
@@ -222,7 +239,10 @@
     const api = getApi();
     const treeEl = $('codx-file-tree');
     if (!api?.mcpFsDirectoryTree || !treeEl) return;
+
+    const myGen = ++treeRefreshGen;
     const res = await api.mcpFsDirectoryTree({ directoriesOnly: false });
+    if (myGen !== treeRefreshGen) return;
     if (res.error) {
       console.warn('[CodX] refreshTree:', res.error);
       return;
@@ -598,7 +618,7 @@
     }
     await syncProjectRootFromTree(tree);
     syncProjectHead();
-    if (lastCodxProjectRoot && lastCodxProjectRoot !== projectRoot) {
+    if (lastCodxProjectRoot && projectRootChanged(lastCodxProjectRoot, projectRoot)) {
       resetCodxSession();
     }
     lastCodxProjectRoot = projectRoot;
@@ -693,7 +713,7 @@
         const prev = projectRoot;
         projectRoot = root;
         syncProjectHead();
-        if (active && prev && prev !== root) {
+        if (active && projectRootChanged(prev, root)) {
           resetCodxSession();
         }
         if (active) {

@@ -265,22 +265,6 @@ body.app-view-git .app-bottom-bar {
     cursor: not-allowed;
 }
 
-#app-bottom-tools-chat .skill-button-open-xcode {
-    color: #7eb8ff;
-    border-color: #3d4f66;
-}
-
-#app-bottom-tools-chat .skill-button-open-xcode:hover:not(:disabled) {
-    color: #fff;
-    background: #2a3545;
-    border-color: #7eb8ff;
-}
-
-#app-bottom-tools-chat .skill-button-open-xcode:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-
 #app-bottom-tools-chat .skill-button {
     height: 22px;
     margin: 0;

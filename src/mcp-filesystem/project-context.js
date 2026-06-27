@@ -94,10 +94,27 @@ async function buildAtMentionContextForAi(userText) {
   return lines.length > 1 ? lines.join('\n') : '';
 }
 
-/** @param {string} userText */
-async function buildProjectContextForAi(userText) {
+function buildProjectAnchorLines() {
+  if (!cache.root) return [];
+  const lines = [
+    '【工程锚点】',
+    `工程根目录: ${cache.root}`,
+    'MCP 工具 path：用 "." 表示工程根；或用相对路径（如 src/foo.swift）。勿编造不存在的绝对路径。',
+  ];
+  if (cache.treeAscii) {
+    lines.push('', '【目录结构（本地缓存）】', cache.treeAscii);
+  }
+  return lines;
+}
+
+/**
+ * @param {string} userText
+ * @param {{ agentAnchorOnly?: boolean }} [opts]
+ */
+async function buildProjectContextForAi(userText, opts = {}) {
   await ensureProjectCached();
   if (!cache.root) return '';
+  if (opts.agentAnchorOnly) return buildProjectAnchorLines().join('\n');
 
   const lines = [
     '【本地工程上下文】来自本机 MCP filesystem（directory_tree + read_text_file），请结合以下内容理解并回答代码问题。',

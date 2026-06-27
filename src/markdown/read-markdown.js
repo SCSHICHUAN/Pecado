@@ -1,20 +1,9 @@
 /**
  * @file read-markdown.js
- * 【功能】读取与解析 Markdown 文本（frontmatter、纯文本、标题树）
+ * 【功能】解析 Markdown 文本（frontmatter、纯文本、标题树）
  */
-const fs = require('fs');
 
 const FENCE_RE = /^(`{3,}|~{3,})/;
-
-/**
- * @param {string} filePath
- * @returns {string}
- */
-function readMarkdownFile(filePath) {
-  const p = String(filePath || '').trim();
-  if (!p || !fs.existsSync(p)) return '';
-  return fs.readFileSync(p, 'utf8');
-}
 
 /**
  * @param {string} markdown
@@ -137,7 +126,6 @@ function getSectionContent(markdown, headingTitle) {
 }
 
 module.exports = {
-  readMarkdownFile,
   splitFrontmatter,
   stripMarkdownToPlain,
   parseHeadingTree,

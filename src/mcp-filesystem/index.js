@@ -46,5 +46,6 @@ module.exports = {
   writeWholeFileToDisk: write.writeWholeFileStreaming,
 
   resolveUnderProject: read.resolveUnderProject,
+  prepareMcpToolPath: read.prepareMcpToolPath,
   toProjectRelPath: read.toProjectRelPath,
 };

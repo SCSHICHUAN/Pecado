@@ -35,11 +35,18 @@ const { feed_observation, feed_assistant_tool_calls } = require('./context-feede
 const { createAgentStreamHooks } = require('./stream-hooks');
 const { planTasksWithWriteGuard, attachSyntheticToolCallsToConv, pathKey } = require('./write-guard');
 const { resolveAbsInProject } = require('../xcode/stream');
-const { isCodeWriteTool, composeAgentReply } = require('./agent-reply');
+const { composeAgentReply } = require('./agent-reply');
 const { publishToolLog, buildAgentPhaseEntry, emitAgentLog, publishXcodeProgress, publishSkillProgress } = require('../shared/agent-log');
 const codxDiskSync = require('./codx-disk-sync');
+const { CODX_REASONING_ROUND_NUDGE } = require('../shared/prompt-language');
 
 const MAX_TOOL_ROUNDS = 12;
+
+/** CodX 多轮 INFER：追加 ephemeral 语言提醒，不污染 conv */
+function messagesForInfer(conv, { codxChat, round }) {
+  if (!codxChat || round <= 0) return conv;
+  return [...conv, { role: 'user', content: CODX_REASONING_ROUND_NUDGE }];
+}
 
 /** 用户消息是否像需要调 tool 的任务（闲聊如「你好」不算） */
 function messageImpliesToolWork(text) {
@@ -144,7 +151,11 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
       logAgentPhase(uiSink, 'INFER', { round: roundNo, status: 'start' });
 
       const { hooks, streamContext } = createAgentStreamHooks({ uiSink, projectRoot, xcodeAbsPath });
-      const inferFeed = FEED_infer_round(await EXECUTE_call_llm(chatOpts, hooks), streamContext);
+      const inferMessages = messagesForInfer(conv, { codxChat: loopOpts.codxChat, round });
+      const inferFeed = FEED_infer_round(
+        await EXECUTE_call_llm({ ...chatOpts, messages: inferMessages }, hooks),
+        streamContext
+      );
       if (!inferFeed.ok) {
         uiSink.onError?.(inferFeed.error);
         return { error: inferFeed.error };

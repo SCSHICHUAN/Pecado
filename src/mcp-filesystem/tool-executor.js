@@ -7,6 +7,7 @@
  * 【出口】FEED_tool_result    — 本模块向 Loop 反馈 tool 执行 Observation
  */
 const projectIo = require('./index');
+const { prepareMcpToolPath, resolveMcpDirectoryPath } = require('./read');
 const { getMainWindow } = require('./ipc');
 const { confirmCreateOperation, integrateAfterCreate } = require('../xcode/prompt');
 const xcodeProject = require('../xcode/project');
@@ -150,7 +151,14 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
       content: [{ type: 'text', text: `Successfully wrote to ${args.path}` }],
     };
   } else {
-    result = await projectIo.callTool(name, args);
+    const callArgs = { ...args };
+    if (callArgs.path != null && projectRoot) {
+      callArgs.path =
+        name === 'directory_tree' || name === 'list_directory'
+          ? resolveMcpDirectoryPath(callArgs.path, projectRoot)
+          : prepareMcpToolPath(callArgs.path, projectRoot);
+    }
+    result = await projectIo.callTool(name, callArgs);
   }
 
   if ((name === 'read_text_file' || name === 'read_file') && result?.content?.[0]?.text != null) {

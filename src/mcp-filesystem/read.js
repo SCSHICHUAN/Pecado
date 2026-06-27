@@ -16,6 +16,7 @@
 const path = require('path');
 const transport = require('./mcp-transport');
 const { DEFAULT_TREE_EXCLUDES, filterDirectoryTree } = require('./tree-filter');
+const { normalizeDirectoryTreeNodes } = require('../shared/format-tree');
 
 /**
  * @param {string} projectRoot
@@ -33,6 +34,51 @@ function resolveUnderProject(projectRoot, filePath) {
     throw new Error(`路径超出工程目录：${filePath}`);
   }
   return abs;
+}
+
+/**
+ * MCP tool path：修正 LLM 拼错根路径；相对保留；越界回退 "."。
+ * @param {string} pathArg
+ * @param {string} projectRoot
+ * @returns {string}
+ */
+function prepareMcpToolPath(pathArg, projectRoot) {
+  const raw = String(pathArg ?? '').trim();
+  if (!raw || raw === '.') return raw || '.';
+  const root = path.resolve(String(projectRoot || ''));
+  if (!root) return raw;
+
+  let candidate = raw;
+  if (path.isAbsolute(raw.replace(/\\/g, '/'))) {
+    const rootNorm = root.replace(/\\/g, '/');
+    const rawNorm = raw.replace(/\\/g, '/');
+    if (
+      (rawNorm.startsWith(rootNorm) && rawNorm !== rootNorm && !rawNorm.startsWith(`${rootNorm}/`)) ||
+      (!rawNorm.startsWith(`${rootNorm}/`) && rawNorm !== rootNorm)
+    ) {
+      candidate = '.';
+    }
+  }
+
+  if (!candidate || candidate === '.') return '.';
+  if (!path.isAbsolute(candidate)) return candidate;
+  try {
+    resolveUnderProject(projectRoot, candidate);
+    return candidate;
+  } catch {
+    return '.';
+  }
+}
+
+/** directory_tree 等需要绝对路径的 MCP 调用 */
+function resolveMcpDirectoryPath(pathArg, projectRoot) {
+  const root = path.resolve(String(projectRoot || ''));
+  if (!root) return String(pathArg || '').trim();
+  if (pathArg == null || String(pathArg).trim() === '') return root;
+  const prepared = prepareMcpToolPath(pathArg, projectRoot);
+  if (!prepared || prepared === '.') return root;
+  if (path.isAbsolute(prepared)) return path.resolve(prepared);
+  return resolveUnderProject(root, prepared);
 }
 
 /**
@@ -67,17 +113,20 @@ async function readDirectoryTree(opts = {}) {
   const excludePatterns = Array.isArray(opts.excludePatterns)
     ? opts.excludePatterns
     : DEFAULT_TREE_EXCLUDES;
-  const treePath = opts.path ? path.resolve(String(opts.path)) : status.projectRoot;
-  const text = await transport.callToolText('directory_tree', { path: treePath, excludePatterns });
+  const resolvedTreePath = resolveMcpDirectoryPath(opts.path, status.projectRoot);
+  const text = await transport.callToolText('directory_tree', {
+    path: resolvedTreePath,
+    excludePatterns,
+  });
   let tree;
   try {
     tree = JSON.parse(text);
   } catch {
     tree = text;
   }
-  if (!Array.isArray(tree)) return tree;
+  const nodes = normalizeDirectoryTreeNodes(tree);
   const directoriesOnly = opts.directoriesOnly !== false;
-  return filterDirectoryTree(tree, { directoriesOnly });
+  return filterDirectoryTree(nodes, { directoriesOnly });
 }
 
 async function listAllowedDirectories() {
@@ -87,6 +136,8 @@ async function listAllowedDirectories() {
 module.exports = {
   DEFAULT_TREE_EXCLUDES,
   resolveUnderProject,
+  prepareMcpToolPath,
+  resolveMcpDirectoryPath,
   toProjectRelPath,
   readText,
   readDirectoryTree,

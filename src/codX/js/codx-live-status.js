@@ -359,6 +359,9 @@
       String(entry.phase || '').trim().toUpperCase() === 'INFER' &&
       isAgentPhaseStart(entry)
     ) {
+      if (active.inferTextAcc.trim()) {
+        setHistory(formatSnapshot('思考', active.inferTextAcc.trim()));
+      }
       active.inferTextAcc = '';
       active.inferStreaming = false;
     }

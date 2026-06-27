@@ -1,7 +1,16 @@
 /**
  * @file context.js
- * CodX 编程视图 → Agent 上下文（当前编辑文件）
+ * CodX 编程视图 → Agent 上下文（当前编辑文件 + 语言）
  */
+const { CODX_CHAT_LANGUAGE_BLOCK } = require('../../shared/prompt-language');
+
+/**
+ * CodX 底栏对话：system 末尾再提醒一次（提高 reasoning 中文命中率）
+ * @returns {string}
+ */
+function buildCodxChatLanguageBlockForAi() {
+  return CODX_CHAT_LANGUAGE_BLOCK;
+}
 
 /**
  * @param {string} relPath 工程内相对路径
@@ -19,4 +28,4 @@ function buildCodxEditorContextForAi(relPath) {
   ].join('\n');
 }
 
-module.exports = { buildCodxEditorContextForAi };
+module.exports = { buildCodxEditorContextForAi, buildCodxChatLanguageBlockForAi };

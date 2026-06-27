@@ -99,5 +99,28 @@
     return { schedule, flush, cancel };
   }
 
-  window.StreamTextReveal = { create };
+  /**
+   * 流式回合最终正文：本轮有过 content delta 则以流式累积为准；
+   * invoke 返回的 content 仅在没有流式正文时作为兜底（finish_task 摘要等不得覆盖已流式展示的正文）。
+   * @param {string} streamedRaw
+   * @param {string} invokeContent
+   */
+  function resolveStreamTurnContent(streamedRaw, invokeContent) {
+    const streamed = String(streamedRaw ?? '').trim();
+    if (streamed) return streamed;
+    return String(invokeContent ?? '').trim();
+  }
+
+  function hasStreamedTurnContent(streamedRaw) {
+    return Boolean(String(streamedRaw ?? '').trim());
+  }
+
+  const api = { create, resolveStreamTurnContent, hasStreamedTurnContent };
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = api;
+  }
+  if (typeof window !== 'undefined') {
+    window.StreamTextReveal = api;
+  }
 })();

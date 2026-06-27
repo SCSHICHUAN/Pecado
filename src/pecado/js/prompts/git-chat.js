@@ -1,6 +1,8 @@
 /** Git 面板 pecado tab 使用的 system 提示词 */
 const GIT_CHAT_SYSTEM_PROMPT = `你是 Pecado Git 助手。用简洁、可执行的中文回答。
 
+若输出思考/推理过程，请使用简体中文。
+
 你的职责：
 1. 用户执行 push、pull、status、commit、branch 等操作时，根据命令与输出分析：发生了什么、当前仓库状态、下一步建议。
 2. 操作成功时：先给结论，再解释输出含义，最后给出优先的下一步（可点击命令）。

@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
 const { readStore, writeStore } = require('../config-store');
+const { buildMarkdownLayerTree, stripLayerSection } = require('../../markdown/skill-layer');
 
 const DOCS_DIR_NAME = 'workflow-dev-docs';
 
@@ -128,6 +129,18 @@ function newDocId() {
   return `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function readLayerTreeForMeta(meta) {
+  const skillName = meta.skillName || meta.id;
+  let tree = readLayerJson(skillName, meta.id);
+  if (!tree) {
+    const skillMd = String(readSkillMarkdown(meta) || '').trim();
+    if (!skillMd) return null;
+    tree = buildMarkdownLayerTree(stripLayerSection(skillMd), skillName);
+    if (tree) writeLayerJson(skillName, meta.id, tree);
+  }
+  return tree;
+}
+
 module.exports = {
   getSkillStorageDir: getDevDocsDir,
   getDevDocsDir,
@@ -143,6 +156,7 @@ module.exports = {
   getLayerJsonPath,
   writeLayerJson,
   readLayerJson,
+  readLayerTreeForMeta,
   removeSkillArtifacts,
   removeLegacyDocArtifacts,
   deleteDocFile,

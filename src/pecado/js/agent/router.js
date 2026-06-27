@@ -33,7 +33,8 @@ const { SYSTEM_PROMPT } = require('../prompts/default');
 const { AGENT_SYSTEM_PROMPT } = require('../prompts/agent');
 const { GIT_CHAT_SYSTEM_PROMPT } = require('../prompts/git-chat');
 const { buildDevDocsContextForAi } = require('../../../workflow/skill/agent/context');
-const { buildCodxEditorContextForAi } = require('../../../codX/agent/context');
+const { buildCodxEditorContextForAi, buildCodxChatLanguageBlockForAi } = require('../../../codX/agent/context');
+const { wrapCodxUserTextForAi } = require('../../../shared/prompt-language');
 
 const CHAT_MODES = Object.freeze({
   PLAIN: 'plain',
@@ -107,6 +108,7 @@ async function selectChatMode(input = {}) {
     payloadXcodeStreamPath,
     payloadGitContext,
     payloadCodxActiveFile,
+    payloadCodxChat,
   } = input;
 
   if (userText != null && String(userText).trim()) {
@@ -122,12 +124,16 @@ async function selectChatMode(input = {}) {
       mode = CHAT_MODES.AGENT;
       const codxActiveFile = String(payloadCodxActiveFile || '').trim();
       xcodeStreamPath = pickXcodeStreamTarget(text, codxActiveFile);
+      const anchorBlock = await buildProjectContextForAi('', { agentAnchorOnly: true });
       contextBlock = await buildAtMentionContextForAi(text);
       const codxBlock = buildCodxEditorContextForAi(codxActiveFile);
-      if (codxBlock) {
-        contextBlock = contextBlock.trim()
-          ? `${contextBlock.trim()}\n\n${codxBlock}`
-          : codxBlock;
+      const parts = [anchorBlock, contextBlock, codxBlock].map((s) => String(s || '').trim()).filter(Boolean);
+      contextBlock = parts.join('\n\n');
+      if (payloadCodxChat) {
+        contextBlock = [contextBlock, buildCodxChatLanguageBlockForAi()]
+          .map((s) => String(s || '').trim())
+          .filter(Boolean)
+          .join('\n\n');
       }
     } else {
       contextBlock = await buildProjectContextForAi(text);
@@ -136,8 +142,14 @@ async function selectChatMode(input = {}) {
 
     return {
       mode,
-      messages: buildChatMessages(mode, text, history, contextBlock),
+      messages: buildChatMessages(
+        mode,
+        payloadCodxChat ? wrapCodxUserTextForAi(text) : text,
+        history,
+        contextBlock
+      ),
       xcodeStreamPath,
+      codxChat: Boolean(payloadCodxChat),
     };
   }
 
@@ -167,10 +179,11 @@ function register(ipcMain) {
       payloadXcodeStreamPath: payload?.xcodeStreamPath,
       payloadGitContext: payload?.gitContext,
       payloadCodxActiveFile: payload?.codxActiveFile,
+      payloadCodxChat: Boolean(payload?.codxChat),
     });
     if (selected.error) return { error: selected.error };
 
-    const { mode, messages, xcodeStreamPath } = selected;
+    const { mode, messages, xcodeStreamPath, codxChat } = selected;
 
     const { apiKey, model, apiMode, endpoint } = resolveVolcCredentials();
     if (!apiKey) {
@@ -187,6 +200,7 @@ function register(ipcMain) {
         return await runAppAgentLoop(uiSink, llmOpts, messages, {
           xcodeStreamPath: xcodeStreamPath || undefined,
           userText: String(userText || ''),
+          codxChat: Boolean(codxChat),
         });
       } finally {
         unbindAgentLogSender();

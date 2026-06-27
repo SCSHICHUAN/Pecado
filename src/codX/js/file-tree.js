@@ -21,6 +21,7 @@
   }
 
   function shouldSkipDir(name) {
+    if (name === '.') return false;
     return (
       name.startsWith('.') ||
       name === 'node_modules' ||
@@ -147,7 +148,10 @@
   function buildRootItems(tree, projectRoot = '') {
     /** @type {Array<{ name: string, relPath: string, isDir: boolean, children?: object[] }>} */
     const items = [];
-    const nodes = Array.isArray(tree) ? tree : tree ? [tree] : [];
+    const normalize =
+      window.formatMcpTree?.normalizeDirectoryTreeNodes ||
+      ((t) => (Array.isArray(t) ? t : t ? [t] : []));
+    const nodes = normalize(tree);
     for (const node of nodes) {
       const n = normalizeNode(node, '', projectRoot);
       if (n) items.push(n);
@@ -402,8 +406,6 @@
 
     treeContainer = container;
     currentProjectRoot = String(projectRoot || '');
-    container.replaceChildren();
-
     const savedSelected = loadSelectedPath(currentProjectRoot);
     expandedPathsSet = new Set(loadExpandedPaths(currentProjectRoot));
     if (savedSelected) {
@@ -412,20 +414,25 @@
       }
     }
 
-    container.onclick = (e) => {
-      const row = e.target.closest('.codx-tree-row.is-file');
-      if (!row || !container.contains(row)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      hideFileContextMenu();
-      const relPath = row.dataset.relPath;
-      if (!relPath) return;
-      setActivePath(relPath);
-      onSelect?.(relPath);
-    };
+    const staging = document.createElement('div');
+    renderGroup(staging, rootItems, 0, onSelect);
+    applyExpandedPaths(staging);
 
-    renderGroup(container, rootItems, 0, onSelect);
-    applyExpandedPaths(container);
+    if (!container.onclick) {
+      container.onclick = (e) => {
+        const row = e.target.closest('.codx-tree-row.is-file');
+        if (!row || !container.contains(row)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        hideFileContextMenu();
+        const relPath = row.dataset.relPath;
+        if (!relPath) return;
+        setActivePath(relPath);
+        onSelect?.(relPath);
+      };
+    }
+
+    container.replaceChildren(...staging.childNodes);
 
     if (savedSelected) {
       setActivePath(savedSelected);
