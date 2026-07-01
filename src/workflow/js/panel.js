@@ -3,7 +3,7 @@
  * 【功能】Workflow 面板 UI（Skill · 文件服务 · 归类 · PPT · 定时任务）
  */
 (function () {
-  const PANEL_VERSION = '57';
+  const PANEL_VERSION = '60';
 
   function getSkillView() {
     return $('wf-devdocs-skill-view');
@@ -63,8 +63,10 @@
   let activeDevDoc = null;
   /** 添加 skill 尚未保存到服务端 */
   let devDocIsNewDraft = false;
-  /** @type {object | null} */
-  let devDocEditSnapshot = null;
+  /** @type {object[]} */
+  let uiImportItems = [];
+  /** @type {ReturnType<typeof setTimeout> | null} */
+  let uiImportStatusTimer = null;
 
   function $(id) {
     return document.getElementById(id);
@@ -112,6 +114,9 @@
     }
     if (tabId === 'skill') {
       refreshDevDocsList().catch(() => {});
+    }
+    if (tabId === 'ui-import') {
+      refreshUiImportList().catch(() => {});
     }
   }
 
@@ -467,6 +472,95 @@
       devDocs = res.devDocs;
       renderDevDocsList();
     }
+    refreshUiImportList().catch(() => {});
+  }
+
+  function setUiImportStatus(text, kind) {
+    const el = $('wf-ui-import-status');
+    if (!el) return;
+    if (uiImportStatusTimer) {
+      clearTimeout(uiImportStatusTimer);
+      uiImportStatusTimer = null;
+    }
+    const msg = String(text ?? '').trim();
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = '';
+      el.className = 'wf-ui-import-status';
+      return;
+    }
+    let tone = kind;
+    if (!tone) {
+      if (/失败|错误|无法|请先/.test(msg)) tone = 'error';
+      else if (/已导入|成功|已打开/.test(msg)) tone = 'success';
+      else tone = 'info';
+    }
+    el.hidden = false;
+    el.textContent = msg;
+    el.className = `wf-ui-import-status is-${tone}`;
+    uiImportStatusTimer = setTimeout(() => {
+      uiImportStatusTimer = null;
+      setUiImportStatus('');
+    }, 3500);
+  }
+
+  async function refreshUiImportList() {
+    const list = $('wf-ui-import-list');
+    if (!list) return;
+    if (!projectRoot) {
+      uiImportItems = [];
+      list.innerHTML = '<li class="wf-skill-empty">请先 File → Open Folder 打开工程</li>';
+      return;
+    }
+    const res = await getApi()?.workflowListUiDesigns?.({ projectRoot });
+    if (!res?.ok) {
+      uiImportItems = [];
+      list.innerHTML = `<li class="wf-skill-empty">${escapeHtml(res?.error || '无法读取设计稿列表')}</li>`;
+      return;
+    }
+    uiImportItems = Array.isArray(res.items) ? res.items : [];
+    renderUiImportList();
+  }
+
+  function renderUiImportList() {
+    const list = $('wf-ui-import-list');
+    if (!list) return;
+    if (!uiImportItems.length) {
+      list.innerHTML = '<li class="wf-skill-empty">暂无设计稿，点上方「添加 UI 文件」导入</li>';
+      return;
+    }
+    list.innerHTML = uiImportItems
+      .map((item) => {
+        const kind = item.hasFramelink ? 'Framelink' : '文件夹';
+        const jsonHint = item.jsonName ? ` · ${item.jsonName}` : '';
+        const time = formatLogTime(item.mtime);
+        return `<li class="wf-skill-item wf-ui-import-item" data-rel-path="${escapeHtml(item.relPath)}" title="在 Finder 中打开">
+          <div class="wf-skill-item-main">
+            <span class="wf-skill-item-title">${escapeHtml(item.name)}</span>
+            <span class="wf-skill-item-meta">${escapeHtml(kind)}${escapeHtml(jsonHint)} · ${escapeHtml(time)}</span>
+          </div>
+        </li>`;
+      })
+      .join('');
+
+    list.querySelectorAll('.wf-ui-import-item').forEach((row) => {
+      row.addEventListener('click', () => {
+        openUiDesignImport(row.dataset.relPath).catch((e) => setUiImportStatus(String(e), 'error'));
+      });
+    });
+  }
+
+  async function openUiDesignImport(relPath) {
+    if (!projectRoot) {
+      setUiImportStatus('请先 File → Open Folder 打开工程', 'error');
+      return;
+    }
+    const res = await getApi()?.workflowOpenUiDesign?.({ projectRoot, relPath });
+    if (!res?.ok) {
+      setUiImportStatus(res?.error || '无法打开文件夹', 'error');
+      return;
+    }
+    setUiImportStatus(`已打开 ${relPath}`, 'success');
   }
 
   function renderScheduleList() {
@@ -531,28 +625,36 @@
   }
 
   function setDevDocsStatus(text, kind) {
-    const el = $('wf-devdocs-status');
-    if (!el) return;
+    const targets = [$('wf-devdocs-status'), $('wf-devdocs-list-status')].filter(Boolean);
+    if (!targets.length) return;
     if (devDocsStatusTimer) {
       clearTimeout(devDocsStatusTimer);
       devDocsStatusTimer = null;
     }
     const msg = String(text ?? '').trim();
     if (!msg) {
-      el.hidden = true;
-      el.textContent = '';
-      el.className = 'wf-devdocs-status';
+      for (const el of targets) {
+        el.hidden = true;
+        el.textContent = '';
+        el.className = el.id === 'wf-devdocs-list-status'
+          ? 'wf-devdocs-list-status'
+          : 'wf-devdocs-status';
+      }
       return;
     }
     let tone = kind;
     if (!tone) {
-      if (/失败|错误|无法|请填写|不能为空|请先选择/.test(msg)) tone = 'error';
-      else if (/已生成|已保存|已删除|成功/.test(msg)) tone = 'success';
+      if (/失败|错误|无法|请填写|不能为空|请先选择|请先 File/.test(msg)) tone = 'error';
+      else if (/已生成|已保存|已删除|成功|已导入/.test(msg)) tone = 'success';
       else tone = 'info';
     }
-    el.hidden = false;
-    el.textContent = msg;
-    el.className = `wf-devdocs-status is-${tone}`;
+    for (const el of targets) {
+      el.hidden = false;
+      el.textContent = msg;
+      el.className = `${
+        el.id === 'wf-devdocs-list-status' ? 'wf-devdocs-list-status' : 'wf-devdocs-status'
+      } is-${tone}`;
+    }
     devDocsStatusTimer = setTimeout(() => {
       devDocsStatusTimer = null;
       setDevDocsStatus('');
@@ -1297,6 +1399,28 @@
     }
   }
 
+  async function importUiDesignFromPicker() {
+    if (!projectRoot) {
+      setUiImportStatus('请先 File → Open Folder 打开工程', 'error');
+      return;
+    }
+    setUiImportStatus('选择 Figma 导出文件夹…', 'info');
+    const res = await getApi()?.workflowImportUiDesign?.({ projectRoot });
+    if (res?.canceled) {
+      setUiImportStatus('');
+      return;
+    }
+    if (!res?.ok) {
+      setUiImportStatus(res?.error || '导入失败', 'error');
+      return;
+    }
+    let msg = `已导入到 ${res.relPath}`;
+    if (res.renamed) msg += '（目标已存在，已自动重命名）';
+    if (!res.hasFramelink) msg += '；未检测到 Framelink JSON，请确认文件夹内容';
+    setUiImportStatus(msg, 'success');
+    await refreshUiImportList();
+  }
+
   async function openDevDocsStorageDir() {
     const res = await getApi()?.workflowDevDocsOpenDir?.();
     if (!res?.ok) {
@@ -1767,6 +1891,9 @@
     $('wf-devdocs-add-skill')?.addEventListener('click', () => {
       createEmptySkill().catch((e) => setDevDocsStatus(String(e)));
     });
+    $('wf-ui-import-pick')?.addEventListener('click', () => {
+      importUiDesignFromPicker().catch((e) => setUiImportStatus(String(e), 'error'));
+    });
     $('wf-devdocs-list-edit')?.addEventListener('click', () => {
       setDevDocsListSelectMode(!devDocsListSelectMode);
     });
@@ -1848,6 +1975,7 @@
     api.onMcpFsProjectChanged(({ projectRoot: root }) => {
       projectRoot = root || '';
       updateProjectLabel();
+      refreshUiImportList().catch(() => {});
     });
   }
 

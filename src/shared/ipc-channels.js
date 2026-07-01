@@ -86,6 +86,9 @@ module.exports = {
     DEV_DOCS_GENERATE_SKILL: 'workflow-dev-docs-generate-skill',
     DEV_DOCS_DELETE: 'workflow-dev-docs-delete',
     DEV_DOCS_OPEN_DIR: 'workflow-dev-docs-open-dir',
+    IMPORT_UI_DESIGN: 'workflow-import-ui-design',
+    LIST_UI_DESIGNS: 'workflow-list-ui-designs',
+    OPEN_UI_DESIGN: 'workflow-open-ui-design',
   },
   SKILL: {
     /** main → renderer：Skill tool 执行日志 */

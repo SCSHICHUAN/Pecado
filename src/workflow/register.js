@@ -35,6 +35,8 @@ const { clearVideoThumbnailCache } = require('./file-service/thumbnails');
 const skillService = require('./skill/service');
 const { getSkillStorageDir } = require('./skill/store');
 const { readSectionPreview, readResourcePreview } = require('./skill/preview');
+const { importUiDesignFolder, listUiDesignImports, resolveUiDesignImportPath } = require('./design-import/copy');
+const { warmProjectTreeCache } = require('../mcp-filesystem/project-context');
 const { SKILL } = require('../shared/ipc-channels');
 
 const PANEL_HTML = path.join(__dirname, 'html', 'panel.html');
@@ -336,6 +338,58 @@ function register(ipcMain, getMainWindowFn) {
       const err = await shell.openPath(res.dir);
       if (err) return { ok: false, error: err };
       return { ok: true, dir: res.dir };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.IMPORT_UI_DESIGN, async (_evt, payload) => {
+    try {
+      const projectRoot = resolveProjectDir(payload?.projectRoot);
+      if (!projectRoot) {
+        return { ok: false, error: '请先 File → Open Folder 打开工程' };
+      }
+
+      const win = typeof getMainWindowFn === 'function' ? getMainWindowFn() : null;
+      const pick = await dialog.showOpenDialog(win, {
+        title: '选择 Figma 导出的 UI 文件夹',
+        properties: ['openDirectory'],
+      });
+      if (pick.canceled || !pick.filePaths?.[0]) {
+        return { ok: false, canceled: true };
+      }
+
+      const result = importUiDesignFolder(projectRoot, pick.filePaths[0]);
+      if (!result.ok) return result;
+
+      const status = projectIo.getStatus();
+      if (status.connected && status.projectRoot === projectRoot) {
+        await warmProjectTreeCache();
+      }
+
+      return result;
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.LIST_UI_DESIGNS, async (_evt, payload) => {
+    try {
+      const projectRoot = resolveProjectDir(payload?.projectRoot);
+      return listUiDesignImports(projectRoot);
+    } catch (e) {
+      return { ok: false, error: e.message || String(e), items: [] };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.OPEN_UI_DESIGN, async (_evt, payload) => {
+    try {
+      const projectRoot = resolveProjectDir(payload?.projectRoot);
+      const resolved = resolveUiDesignImportPath(projectRoot, payload?.relPath);
+      if (!resolved.ok) return resolved;
+      const err = await shell.openPath(resolved.absPath);
+      if (err) return { ok: false, error: err };
+      return { ok: true, path: resolved.absPath, relPath: resolved.relPath };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

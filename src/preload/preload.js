@@ -103,6 +103,12 @@ try {
       ipcRenderer.invoke(WORKFLOW.DEV_DOCS_GENERATE_SKILL, payload || {}),
     workflowDevDocsDelete: (payload) => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_DELETE, payload || {}),
     workflowDevDocsOpenDir: () => ipcRenderer.invoke(WORKFLOW.DEV_DOCS_OPEN_DIR),
+    workflowImportUiDesign: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.IMPORT_UI_DESIGN, payload || {}),
+    workflowListUiDesigns: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.LIST_UI_DESIGNS, payload || {}),
+    workflowOpenUiDesign: (payload) =>
+      ipcRenderer.invoke(WORKFLOW.OPEN_UI_DESIGN, payload || {}),
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {

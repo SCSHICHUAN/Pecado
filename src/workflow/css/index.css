@@ -583,6 +583,59 @@
   margin-bottom: 4px;
 }
 
+.wf-ui-import-status {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+  color: #9ab;
+}
+
+.wf-ui-import-status.is-success {
+  color: #7fd99a;
+}
+
+.wf-ui-import-status.is-error {
+  color: #f48771;
+}
+
+.wf-ui-import-status.is-info {
+  color: #9ab;
+}
+
+.wf-ui-import-list-wrap {
+  margin-top: 8px;
+}
+
+.wf-ui-import-item {
+  cursor: pointer;
+}
+
+.wf-ui-import-item .wf-skill-item-meta {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.wf-devdocs-list-status {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+  color: #9ab;
+}
+
+.wf-devdocs-list-status.is-success {
+  color: #7fd99a;
+}
+
+.wf-devdocs-list-status.is-error {
+  color: #f48771;
+}
+
+.wf-devdocs-list-status.is-info {
+  color: #9ab;
+}
+
 .wf-devdocs-status {
   font-size: 12px;
   line-height: 1.45;

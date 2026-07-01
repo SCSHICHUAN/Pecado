@@ -14,6 +14,12 @@ const {
   PECADO_LLM_LINE_END,
 } = require('../../shared/codx-edit-plan');
 const projectIo = require('../../mcp-filesystem');
+const {
+  READ_DESIGN_SUMMARY_TOOL_NAME,
+  isCodxUiToolName,
+  getCodxUiTools,
+  EXECUTE_codx_ui_tool,
+} = require('../ui/tools');
 
 function normalizeCodxRelPath(inputPath) {
   const raw = String(inputPath || '').trim();
@@ -79,11 +85,11 @@ const CODX_EDIT_TOOL = {
 
 function isCodxToolName(name) {
   const n = String(name || '');
-  return n === CODX_EDIT_TOOL_NAME || n === CODX_EDIT_PLAN_TOOL_NAME;
+  return n === CODX_EDIT_TOOL_NAME || n === CODX_EDIT_PLAN_TOOL_NAME || isCodxUiToolName(n);
 }
 
 function getCodxTools() {
-  return [{ ...CODX_EDIT_PLAN_TOOL }, { ...CODX_EDIT_TOOL }];
+  return [{ ...CODX_EDIT_PLAN_TOOL }, { ...CODX_EDIT_TOOL }, ...getCodxUiTools()];
 }
 
 /**
@@ -92,6 +98,10 @@ function getCodxTools() {
  */
 async function EXECUTE_codx_tool(routedTask, execOpts = {}) {
   const { name, args, index } = routedTask.task;
+
+  if (isCodxUiToolName(name)) {
+    return EXECUTE_codx_ui_tool(routedTask, execOpts);
+  }
 
   if (name === CODX_EDIT_PLAN_TOOL_NAME) {
     const relPath = normalizeCodxRelPath(args?.path);
@@ -173,6 +183,7 @@ function FEED_codx_tool_result(execRaw) {
 module.exports = {
   CODX_EDIT_PLAN_TOOL_NAME,
   CODX_EDIT_TOOL_NAME,
+  READ_DESIGN_SUMMARY_TOOL_NAME,
   PECADO_LLM_LINE_END,
   normalizeCodxRelPath,
   isCodxToolName,

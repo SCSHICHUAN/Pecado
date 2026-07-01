@@ -12,6 +12,7 @@
 
   <nav class="workflow-tabs" role="tablist" aria-label="Workflow 功能">
     <button type="button" class="workflow-tab is-active" data-wf-tab="skill" role="tab" aria-selected="true">Skill</button>
+    <button type="button" class="workflow-tab" data-wf-tab="ui-import" role="tab" aria-selected="false">UI</button>
     <button type="button" class="workflow-tab" data-wf-tab="download" role="tab" aria-selected="false">文件服务</button>
     <button type="button" class="workflow-tab" data-wf-tab="organize" role="tab" aria-selected="false">文件归类</button>
     <button type="button" class="workflow-tab" data-wf-tab="ppt" role="tab" aria-selected="false">写 PPT</button>
@@ -173,6 +174,7 @@
           <button type="button" class="wf-btn" id="wf-devdocs-list-toggle-all" hidden>全选</button>
           <button type="button" class="wf-btn wf-btn-danger" id="wf-devdocs-list-delete" hidden>删除</button>
         </div>
+        <div class="wf-devdocs-list-status" id="wf-devdocs-list-status" hidden role="status" aria-live="polite"></div>
         <div class="wf-skill-list-wrap">
           <div class="wf-skill-list-title">skills</div>
           <ul class="wf-skill-items" id="wf-devdocs-list">
@@ -261,6 +263,24 @@
             <button type="button" class="wf-btn wf-btn-danger" id="wf-devdocs-delete-all-ok">删除</button>
           </div>
         </div>
+      </div>
+    </section>
+
+    <section class="workflow-panel" data-wf-panel="ui-import" role="tabpanel" hidden>
+      <p class="workflow-desc">
+        从 Figma 用 <strong>Framelink Exporter</strong> 插件导出 UI 文件夹（含 <code>.json</code> 与 <code>.assets</code>），
+        点「添加 UI 文件」复制到当前工程的 <code>DesignImports/</code>。
+        Agent 可通过 <code>read_text_file</code> 读取设计稿并生成 Swift / Objective-C 界面代码。
+      </p>
+      <div class="wf-actions">
+        <button type="button" class="wf-btn wf-btn-primary" id="wf-ui-import-pick">添加 UI 文件</button>
+      </div>
+      <div class="wf-ui-import-status" id="wf-ui-import-status" hidden role="status" aria-live="polite"></div>
+      <div class="wf-skill-list-wrap wf-ui-import-list-wrap">
+        <div class="wf-skill-list-title">已导入的设计稿</div>
+        <ul class="wf-skill-items" id="wf-ui-import-list">
+          <li class="wf-skill-empty">暂无设计稿</li>
+        </ul>
       </div>
     </section>
   </div>
