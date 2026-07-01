@@ -134,6 +134,7 @@ function register(ipcMain, getMainWindowFn) {
           codxEditorLineNumberMinChars: saved.codxEditorLineNumberMinChars,
           codxEditorLineNumberFontSize: saved.codxEditorLineNumberFontSize,
           codxEditorLineNumberFontWeight: saved.codxEditorLineNumberFontWeight,
+          codxDesignDepth: saved.codxDesignDepth,
         });
       }
       return { ok: true, ...saved };

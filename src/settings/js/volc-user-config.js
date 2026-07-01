@@ -114,6 +114,11 @@ const MAX_CODX_EDITOR_LETTER_SPACING = 10;
 const MIN_CODX_EDITOR_SPACE_WIDTH = 0;
 const MAX_CODX_EDITOR_SPACE_WIDTH = 24;
 
+// Design summary depth
+const DEFAULT_CODX_DESIGN_DEPTH = 4;
+const MIN_CODX_DESIGN_DEPTH = 1;
+const MAX_CODX_DESIGN_DEPTH = 8;
+
 function getUserVolcConfigPath() {
   return path.join(app.getPath('userData'), 'volc-user-config.json');
 }
@@ -223,6 +228,12 @@ function normalizeCodxEditorLineNumberFontWeight(value) {
   return CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT_OPTIONS.includes(n) ? n : DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT;
 }
 
+function normalizeCodxDesignDepth(value) {
+  const n = parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(n)) return DEFAULT_CODX_DESIGN_DEPTH;
+  return Math.min(MAX_CODX_DESIGN_DEPTH, Math.max(MIN_CODX_DESIGN_DEPTH, n));
+}
+
 function readUserVolcConfig() {
   try {
     if (!app.isReady()) {
@@ -241,6 +252,7 @@ function readUserVolcConfig() {
         codxEditorLineNumberMinChars: DEFAULT_CODX_EDITOR_LINE_NUMBER_MIN_CHARS,
         codxEditorLineNumberFontSize: DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_SIZE,
         codxEditorLineNumberFontWeight: DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT,
+        codxDesignDepth: DEFAULT_CODX_DESIGN_DEPTH,
       };
     }
     const j = readRawUserConfigFile();
@@ -349,6 +361,9 @@ function writeUserVolcConfig(payload) {
         ? incoming.codxEditorLineNumberFontWeight
         : existing.codxEditorLineNumberFontWeight
     ),
+    codxDesignDepth: normalizeCodxDesignDepth(
+      incoming.codxDesignDepth != null ? incoming.codxDesignDepth : existing.codxDesignDepth
+    ),
   };
 
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -371,6 +386,7 @@ function writeUserVolcConfig(payload) {
     codxEditorLineNumberMinChars: base.codxEditorLineNumberMinChars,
     codxEditorLineNumberFontSize: base.codxEditorLineNumberFontSize,
     codxEditorLineNumberFontWeight: base.codxEditorLineNumberFontWeight,
+    codxDesignDepth: base.codxDesignDepth,
   };
 }
 
@@ -468,5 +484,9 @@ module.exports = {
   CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT_OPTIONS,
   DEFAULT_CODX_EDITOR_LINE_NUMBER_FONT_WEIGHT,
   normalizeCodxEditorLineNumberFontWeight,
+  DEFAULT_CODX_DESIGN_DEPTH,
+  MIN_CODX_DESIGN_DEPTH,
+  MAX_CODX_DESIGN_DEPTH,
+  normalizeCodxDesignDepth,
   MISSING_KEY_ERROR,
 };

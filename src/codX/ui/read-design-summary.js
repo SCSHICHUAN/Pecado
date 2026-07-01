@@ -7,6 +7,7 @@ const path = require('path');
 const projectIo = require('../../mcp-filesystem');
 const { DESIGN_IMPORTS_DIR } = require('../../workflow/design-import/copy');
 const { simplifyDesignBundle } = require('./simplify');
+const { readUserVolcConfig, DEFAULT_CODX_DESIGN_DEPTH } = require('../../settings/js/volc-user-config');
 
 function findFramelinkJsonInDir(dir) {
   let best = '';
@@ -82,8 +83,11 @@ function readDesignSummary(projectRoot, args = {}) {
     return { ok: false, error: '不是 Framelink Exporter 导出的 JSON' };
   }
 
+  const depth = args.depth != null ? Number(args.depth) : (() => {
+    try { return readUserVolcConfig().codxDesignDepth; } catch { return DEFAULT_CODX_DESIGN_DEPTH; }
+  })();
   const simplified = simplifyDesignBundle(bundle, {
-    depth: args.depth,
+    depth,
     nodeId: args.nodeId,
   });
   if (!simplified.ok) return simplified;

@@ -36,6 +36,7 @@ const codxEditorLineNumbersEl = document.getElementById('codx-editor-line-number
 const codxEditorLineNumberMinCharsEl = document.getElementById('codx-editor-line-number-min-chars');
 const codxEditorLineNumberFontSizeEl = document.getElementById('codx-editor-line-number-font-size');
 const codxEditorLineNumberFontWeightEl = document.getElementById('codx-editor-line-number-font-weight');
+const codxDesignDepthEl = document.getElementById('codx-design-depth');
 const configDirBtn = document.getElementById('config-dir-btn');
 
 let activePanel = 'volc';
@@ -138,6 +139,7 @@ function readFormValues() {
     codxEditorLineNumberFontWeight: codxEditorLineNumberFontWeightEl
       ? codxEditorLineNumberFontWeightEl.value
       : '0',
+    codxDesignDepth: codxDesignDepthEl ? codxDesignDepthEl.value : '4',
   };
 }
 
@@ -209,6 +211,9 @@ function applyConfig(cfg) {
     } else {
       codxEditorLineNumberFontWeightEl.value = '0';
     }
+  }
+  if (codxDesignDepthEl && cfg.codxDesignDepth != null) {
+    codxDesignDepthEl.value = String(cfg.codxDesignDepth);
   }
   showConfigDir(cfg.configDir || '');
 }
