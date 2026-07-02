@@ -25,6 +25,7 @@ const {
   CODX_EDIT_TOOL_NAME,
 } = require('../codX/agent/tools');
 const { PECADO_LLM_LINE_END } = require('../shared/codx-edit-plan');
+const { getReadMediaFileTool, getMediaCallbacks, isReadMediaFileToolName } = require('../mcp-filesystem/read-media');
 const {
   getFinishTaskTool,
   isFinishTaskName,
@@ -112,6 +113,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
   const allTools = [
     getFinishTaskTool(),
+    getReadMediaFileTool(),
     ...mcpTools,
     ...getDevDocTools(),
     ...getXcodeTools(),
@@ -277,6 +279,17 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
                 pendingCodxEditPath = null;
               }
             }
+          } else if (isReadMediaFileToolName(parsedTask.name)) {
+            var mediaCb = getMediaCallbacks(projectRoot, {
+              feedObservationOfReadMedia: function (chatBlock) {
+                var toolMsg = { role: 'user', content: ['The file has been read. Here is the content:', chatBlock] };
+                conv.push(toolMsg);
+              },
+            });
+            var mediaResult = mediaCb(parsedTask);
+            execRaw = mediaResult.error
+              ? { isError: true, content: [{ type: 'text', text: mediaResult.error }] }
+              : { content: [{ type: 'text', text: mediaResult.toolResult || 'ok' }] };
           } else {
             execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
           }

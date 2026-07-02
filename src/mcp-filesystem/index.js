@@ -22,6 +22,7 @@
 const transport = require('./mcp-transport');
 const read = require('./read');
 const write = require('./write');
+const readMedia = require('./read-media');
 
 module.exports = {
   connect: transport.connect,
@@ -48,4 +49,8 @@ module.exports = {
   resolveUnderProject: read.resolveUnderProject,
   prepareMcpToolPath: read.prepareMcpToolPath,
   toProjectRelPath: read.toProjectRelPath,
+
+  getReadMediaFileTool: readMedia.getReadMediaFileTool,
+  getMediaCallbacks: readMedia.getMediaCallbacks,
+  isReadMediaFileToolName: readMedia.isReadMediaFileToolName,
 };

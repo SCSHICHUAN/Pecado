@@ -7,6 +7,7 @@
 const projectIo = require('../mcp-filesystem');
 const { IS_DARWIN } = require('../xcode/project');
 const { isCodxToolName } = require('../codX/agent/tools');
+const { isReadMediaFileToolName } = require('../mcp-filesystem/read-media');
 
 /**
  * @param {object} parsedTask
@@ -47,6 +48,10 @@ function route_task(parsedTask) {
     case 'mcp_tool': {
       if (!projectIo.getStatus().connected) {
         return { error: 'DISPATCH：MCP 未连接' };
+      }
+      // read_media_file 走本地读盘（在 app-agent-loop 里内联调度）
+      if (isReadMediaFileToolName(parsedTask.name)) {
+        return { module: 'mcp-filesystem', task: parsedTask };
       }
       return {
         module: 'mcp-filesystem',

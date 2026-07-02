@@ -1638,3 +1638,65 @@ body {
     background: #4a4a4a;
     color: #fff;
 }
+
+/* ===== 图片拖拽与预览 ===== */
+
+/* 图片预览条（输入框上方） */
+.image-preview-bar {
+    display: flex;
+    gap: 8px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+}
+
+.image-preview-item {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+}
+
+.image-preview-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: #1c1c1e;
+}
+
+.image-preview-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.75);
+    color: #fff;
+    border: none;
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.image-preview-remove:hover {
+    background: rgba(255, 59, 48, 0.85);
+}
+
+/* 用户气泡内的图片附件 */
+.message.user .chat-image-attachment {
+    display: block;
+    width: 200px;
+    height: 150px;
+    max-width: 200px;
+    max-height: 150px;
+    border-radius: 8px;
+    margin-bottom: 8px;
+    object-fit: contain;
+    background: rgba(0,0,0,0.3);
+}

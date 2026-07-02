@@ -103,8 +103,72 @@ const scrollAnchor = document.getElementById('chat-scroll-anchor');
 const workspaceScroll = document.getElementById('workspace-scroll');
 
 const INITIAL_GREETING = '你好！我是 Pecado。有什么可以帮助你的吗？';
-/** @type {Array<{ role: string, content: string }>} */
+/** @type {Array<{ role: string, content: string | Array<object> }>} */
 let chatHistory = [{ role: 'assistant', content: INITIAL_GREETING }];
+
+/** @type {Array<object>} */
+let pendingImages = [];
+
+function renderImagePreview() {
+  var bar = document.getElementById('image-preview-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'image-preview-bar';
+    bar.className = 'image-preview-bar';
+    var inputContainer = document.querySelector('.input-container');
+    if (inputContainer && inputContainer.parentNode) {
+      inputContainer.parentNode.insertBefore(bar, inputContainer);
+    }
+  }
+  bar.innerHTML = '';
+  pendingImages.forEach(function (img, idx) {
+    var item = document.createElement('div');
+    item.className = 'image-preview-item';
+    var thumb = document.createElement('img');
+    thumb.className = 'image-preview-thumb';
+    thumb.src = window.MediaUtils.toDataUri(img);
+    thumb.alt = img.name || '';
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'image-preview-remove';
+    removeBtn.textContent = '\u00d7';
+    removeBtn.type = 'button';
+    removeBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      pendingImages.splice(idx, 1);
+      renderImagePreview();
+    });
+    item.appendChild(thumb);
+    item.appendChild(removeBtn);
+    bar.appendChild(item);
+  });
+  if (pendingImages.length === 0 && bar.parentNode) {
+    bar.remove();
+  }
+}
+
+// 拖拽图片到气泡区+输入区，阻止浏览器默认打开文件行为
+document.addEventListener('dragover', function (e) {
+  e.preventDefault();
+  e.stopPropagation();
+});
+document.addEventListener('drop', async function (e) {
+  e.preventDefault();
+  e.stopPropagation();
+  var files = Array.from(e.dataTransfer.files).filter(
+    function (f) { return f.type.startsWith('image/') || f.name.toLowerCase().endsWith('.svg'); }
+  );
+  if (!files.length) return;
+  for (var i = 0; i < files.length; i++) {
+    try {
+      var img = await window.MediaUtils.fromFile(files[i]);
+      pendingImages.push(img);
+    } catch (err) {
+      console.error('[pecado] \u56fe\u7247\u8bfb\u53d6\u5931\u8d25', err);
+    }
+  }
+  renderImagePreview();
+});
 
 if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScroll) {
   console.error('[pecado] index.js: 缺少必要的 DOM 节点，请检查 main/html/index.html 结构');
@@ -361,7 +425,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     return `s-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   }
 
-  async function runBotAgent(text, priorHistory, streamHandlers) {
+  async function runBotAgent(text, priorHistory, imagesPayload, streamHandlers) {
     const api = window.electronAPI;
     if (!api || typeof api.volcArkBotsChatStream !== 'function') {
       return { error: 'electronAPI.volcArkBotsChatStream 不可用' };
@@ -395,12 +459,18 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       });
     }
 
+    var ipcMedia = window.MediaUtils.toIpcPayload(imagesPayload);
+    var payloadObj = {
+      streamId: streamId,
+      userText: text,
+      images: ipcMedia.images,
+      svgs: ipcMedia.svgs,
+      history: Array.isArray(priorHistory) ? priorHistory : [],
+    };
+    Object.keys(payloadObj).forEach(function (k) { if (payloadObj[k] === undefined) delete payloadObj[k]; });
+
     try {
-      const r = await api.volcArkBotsChatStream({
-        streamId,
-        userText: text,
-        history: Array.isArray(priorHistory) ? priorHistory : [],
-      });
+      const r = await api.volcArkBotsChatStream(payloadObj);
       if (r && r.error) return { error: r.error };
       if (typeof r?.content !== 'string') return { error: '响应缺少 content' };
       return { content: r.content };
@@ -412,6 +482,8 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
   async function sendMessage(overrideText) {
     const message = (overrideText != null ? String(overrideText) : chatInput.value).trim();
     if (!message) return;
+
+    const turnImages = overrideText != null ? [] : [...pendingImages];
 
     // 运行/编译/测试前自动同步所有未保存的Monaco修改到磁盘，无需手动按⌘S
     if (/^(xcode_run|xcode_build|xcode_test)/i.test(message)) {
@@ -426,12 +498,19 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
     chatScroll.prepareForNewTurn();
 
-    addMessage(message, 'user');
+    addMessage(message, 'user', turnImages);
     const priorHistory = [...chatHistory];
-    chatHistory.push({ role: 'user', content: message });
+    var userContent = turnImages.length
+      ? [{ type: 'text', text: message }].concat(turnImages.map(function (img) {
+          return window.MediaUtils.toChatContent(img);
+        }))
+      : message;
+    chatHistory.push({ role: 'user', content: userContent });
     if (overrideText == null) {
       chatInput.value = '';
       chatInput.style.height = 'auto';
+      pendingImages = [];
+      renderImagePreview();
     }
 
     sendButton.disabled = true;
@@ -486,6 +565,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
       const result = await runBotAgent(
         message,
         priorHistory,
+        turnImages.length ? turnImages : null,
         {
           onDelta: (piece) => {
             rawAccum += piece;
@@ -553,7 +633,7 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
     }
   }
 
-  function addMessage(text, type) {
+  function addMessage(text, type, imageAttachments) {
     const stickAssistant = type === 'assistant' && !chatScroll.isDetached;
 
     const messageDiv = document.createElement('div');
@@ -561,12 +641,36 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
     const avatar = document.createElement('div');
     avatar.className = 'message-avatar';
-    avatar.textContent = type === 'user' ? '我' : '🤖';
+    avatar.textContent = type === 'user' ? '\u6211' : '\ud83e\udd16';
 
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
     if (type === 'user') {
-      bubble.textContent = text;
+      const hasImages = Array.isArray(imageAttachments) && imageAttachments.length;
+      if (hasImages) {
+        imageAttachments.forEach((img) => {
+          const wrap = document.createElement('div');
+          wrap.style.width = '56px';
+          wrap.style.height = '56px';
+          wrap.style.marginBottom = '8px';
+          wrap.style.borderRadius = '8px';
+          wrap.style.overflow = 'hidden';
+          wrap.style.background = 'rgba(0,0,0,0.3)';
+          wrap.style.display = 'block';
+          const imgEl = document.createElement('img');
+          imgEl.style.width = '100%';
+          imgEl.style.height = '100%';
+          imgEl.style.objectFit = 'contain';
+          imgEl.style.display = 'block';
+          imgEl.src = window.MediaUtils.toDataUri(img);
+          imgEl.alt = img.name || '';
+          wrap.appendChild(imgEl);
+          bubble.appendChild(wrap);
+        });
+      }
+      const textSpan = document.createElement('span');
+      textSpan.textContent = text;
+      bubble.appendChild(textSpan);
     } else {
       setAssistantBubbleMarkdown(bubble, text);
     }

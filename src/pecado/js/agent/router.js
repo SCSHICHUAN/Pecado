@@ -57,8 +57,10 @@ function isGitChatMode(mode) {
  * @param {string} userText
  * @param {Array<{ role: string, content: string }>} history
  * @param {string} [contextBlock]
+ * @param {Array<{base64: string, mimeType: string}>} [images]
+ * @param {Array<string>} [svgs]
  */
-function buildChatMessages(mode, userText, history, contextBlock = '') {
+function buildChatMessages(mode, userText, history, contextBlock = '', images, svgs) {
   let systemContent = AGENT_SYSTEM_PROMPT;
   if (isGitChatMode(mode)) {
     systemContent = GIT_CHAT_SYSTEM_PROMPT;
@@ -78,14 +80,38 @@ function buildChatMessages(mode, userText, history, contextBlock = '') {
   if (isAgentMode(mode) && contextBlock.trim()) {
     systemContent += `\n\n${contextBlock.trim()}`;
   }
+
+  const hasImages = Array.isArray(images) && images.length;
+  const hasSvgs = Array.isArray(svgs) && svgs.length;
+
+  let userContent;
+  if (hasImages || hasSvgs) {
+    const parts = [{ type: 'text', text: userText }];
+    if (hasSvgs) {
+      svgs.forEach((svg) => parts.push({ type: 'text', text: svg }));
+    }
+    if (hasImages) {
+      images.forEach((img) => {
+        parts.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.mimeType};base64,${img.base64}` },
+        });
+      });
+    }
+    userContent = parts;
+  } else {
+    userContent = userText;
+  }
+
   const hist = Array.isArray(history) ? history : [];
   return [
     { role: 'system', content: systemContent },
-    ...hist.map((m) => ({
-      role: m.role,
-      content: m.content == null ? '' : String(m.content),
-    })),
-    { role: 'user', content: userText },
+    ...hist.map((m) => {
+      const c = m.content;
+      if (Array.isArray(c)) return { role: m.role, content: c };
+      return { role: m.role, content: c == null ? '' : String(c) };
+    }),
+    { role: 'user', content: userContent },
   ];
 }
 
@@ -96,6 +122,11 @@ function buildChatMessages(mode, userText, history, contextBlock = '') {
  *   legacyMessages?: Array<{ role: string, content: string }>,
  *   payloadMode?: string,
  *   payloadXcodeStreamPath?: string | null,
+ *   payloadGitContext?: string | null,
+ *   payloadCodxActiveFile?: string | null,
+ *   payloadCodxChat?: boolean,
+ *   payloadImages?: Array<{base64: string, mimeType: string}>,
+ *   payloadSvgs?: Array<string>,
  * }} input
  * @returns {Promise<{ mode: string, messages: Array<object>, xcodeStreamPath: string | null } | { error: string }>}
  */
@@ -109,6 +140,8 @@ async function selectChatMode(input = {}) {
     payloadGitContext,
     payloadCodxActiveFile,
     payloadCodxChat,
+    payloadImages,
+    payloadSvgs,
   } = input;
 
   if (userText != null && String(userText).trim()) {
@@ -146,7 +179,9 @@ async function selectChatMode(input = {}) {
         mode,
         payloadCodxChat ? wrapCodxUserTextForAi(text) : text,
         history,
-        contextBlock
+        contextBlock,
+        payloadImages,
+        payloadSvgs
       ),
       xcodeStreamPath,
       codxChat: Boolean(payloadCodxChat),
@@ -166,7 +201,7 @@ async function selectChatMode(input = {}) {
 
 function register(ipcMain) {
   ipcMain.handle(VOLC_ARK.BOTS_CHAT_COMPLETION, async (event, payload) => {
-    const { streamId, userText, history, messages: legacyMessages } = payload || {};
+    const { streamId, userText, history, images, svgs, messages: legacyMessages } = payload || {};
     if (!streamId || typeof streamId !== 'string') {
       return { error: '缺少 streamId（流式对话需要）' };
     }
@@ -180,6 +215,8 @@ function register(ipcMain) {
       payloadGitContext: payload?.gitContext,
       payloadCodxActiveFile: payload?.codxActiveFile,
       payloadCodxChat: Boolean(payload?.codxChat),
+      payloadImages: images,
+      payloadSvgs: svgs,
     });
     if (selected.error) return { error: selected.error };
 

@@ -19,6 +19,14 @@ function normalizeMessageContent(content) {
   if (content == null) return '';
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
+    const hasImage = content.some(
+      (p) => p && p.type === 'image_url' && p.image_url
+    );
+    if (hasImage) {
+      return content.filter(
+        (p) => p && (p.type === 'text' || p.type === 'image_url')
+      );
+    }
     return content
       .map((p) => (p && p.type === 'text' && p.text != null ? String(p.text) : ''))
       .join('');
