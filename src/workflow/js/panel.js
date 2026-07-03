@@ -512,7 +512,7 @@
       list.innerHTML = '<li class="wf-skill-empty">请先 File → Open Folder 打开工程</li>';
       return;
     }
-    const res = await getApi()?.workflowListUiDesigns?.({ projectRoot });
+    const res = await getApi()?.workflowListUiDesigns?.({ projectRoot, includePreview: true });
     if (!res?.ok) {
       uiImportItems = [];
       list.innerHTML = `<li class="wf-skill-empty">${escapeHtml(res?.error || '无法读取设计稿列表')}</li>`;
@@ -534,7 +534,11 @@
         const kind = item.hasFramelink ? 'Framelink' : '文件夹';
         const jsonHint = item.jsonName ? ` · ${item.jsonName}` : '';
         const time = formatLogTime(item.mtime);
+        const thumbHtml = item.previewBase64
+          ? `<img class="wf-ui-import-thumb" src="data:image/png;base64,${escapeHtml(item.previewBase64)}" alt="">`
+          : '';
         return `<li class="wf-skill-item wf-ui-import-item" data-rel-path="${escapeHtml(item.relPath)}" title="在 Finder 中打开">
+          ${thumbHtml}
           <div class="wf-skill-item-main">
             <span class="wf-skill-item-title">${escapeHtml(item.name)}</span>
             <span class="wf-skill-item-meta">${escapeHtml(kind)}${escapeHtml(jsonHint)} · ${escapeHtml(time)}</span>
@@ -560,7 +564,6 @@
       setUiImportStatus(res?.error || '无法打开文件夹', 'error');
       return;
     }
-    setUiImportStatus(`已打开 ${relPath}`, 'success');
   }
 
   function renderScheduleList() {

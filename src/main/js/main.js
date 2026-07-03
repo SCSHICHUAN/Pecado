@@ -91,8 +91,8 @@ function createWindow() {
     mainWindow.show();
   });
 
-  console.log(
-    `[window] restore ${winWidth}x${winHeight} @ (${x},${y})${isMaximized ? ' maximized' : ''}`
+  if (process.stdout.writable) process.stdout.write(
+    `[window] restore ${winWidth}x${winHeight} @ (${x},${y})${isMaximized ? ' maximized' : ''}\n`
   );
 
   mainWindow.loadFile(RENDERER_HTML);
@@ -106,22 +106,11 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    console.log(`Renderer console: ${message} (${line}:${sourceId})`);
+    if (process.stdout.writable) process.stdout.write(`Renderer console: ${message}\n`);
   });
 
-  mainWindow.on('show', () => {
-    console.log('Window is shown');
-    console.log('Is visible:', mainWindow.isVisible());
-    console.log('Is focused:', mainWindow.isFocused());
-  });
-
-  mainWindow.on('focus', () => {
-    console.log('Window is focused');
-  });
-
-  console.log('Main window created');
-  console.log('Is visible:', mainWindow.isVisible());
-  console.log('Is focused:', mainWindow.isFocused());
+  mainWindow.on('show', () => {});
+  mainWindow.on('focus', () => {});
 }
 
 app.whenReady().then(async () => {
@@ -146,9 +135,9 @@ app.whenReady().then(async () => {
 
   try {
     const res = await mcpFilesystemIpc.restoreSavedProject(() => mainWindowRef, { notify: false });
-    if (res?.ok) console.log('[main] restored project:', res.projectRoot);
+    if (res?.ok && process.stdout.writable) process.stdout.write(`[main] restored project: ${res.projectRoot}\n`);
   } catch (e) {
-    console.error('[main] restoreSavedProject', e);
+    if (process.stdout.writable) process.stderr.write(`[main] restoreSavedProject: ${e.message}\n`);
   }
 
   createWindow();

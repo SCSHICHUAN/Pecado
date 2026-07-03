@@ -1224,6 +1224,33 @@ body.app-view-codx #pecado-codx-git-btn {
   display: none;
 }
 
+/* UI 按钮：仅在 CodX 视图显示，Git 按钮右边 */
+body.app-view-codx #pecado-ui-pick-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid #4a4a4a;
+  border-radius: 4px;
+  background: transparent;
+  color: #a0a0a0;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+body.app-view-codx #pecado-ui-pick-btn:hover {
+  background: #3a3a3a;
+  color: #fff;
+  border-color: #5a5a5a;
+}
+#pecado-ui-pick-btn {
+  display: none;
+}
+
 /* 文件右键菜单 */
 .codx-file-menu {
   position: fixed;
@@ -1341,4 +1368,131 @@ body.app-view-codx #pecado-codx-git-btn {
 #codx-chat-input::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
+}
+
+/* ---- CodX UI 设计稿标签 ---- */
+.codx-design-tag {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  flex-shrink: 0;
+  border-top: 1px solid #2c2c2e;
+}
+.codx-design-tag[hidden] {
+  display: none;
+}
+.codx-design-tag img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #1c1c1e;
+  flex-shrink: 0;
+}
+.codx-design-tag span {
+  flex: 1;
+  font-size: 12px;
+  color: #bbb;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.codx-design-tag button {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: rgba(255,255,255,0.12);
+  color: #999;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0;
+}
+.codx-design-tag button:hover {
+  background: rgba(255,59,48,0.7);
+  color: #fff;
+}
+
+/* ---- 设计稿选择器下拉 ---- */
+.pecado-ui-picker {
+  position: fixed;
+  width: 320px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #252528;
+  border: 1px solid #3a3a3e;
+  border-radius: 10px;
+  box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+  z-index: 9999;
+}
+.pecado-ui-picker.hidden {
+  display: none;
+}
+.pecado-ui-picker-list {
+  padding: 6px 0;
+}
+.pecado-ui-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.pecado-ui-picker-item:hover {
+  background: #3a3a3e;
+}
+.pecado-ui-picker-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #2c2c2e;
+  flex-shrink: 0;
+}
+.pecado-ui-picker-name {
+  font-size: 13px;
+  color: #ddd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pecado-ui-picker-empty,
+.pecado-ui-picker-loading {
+  padding: 16px 12px;
+  font-size: 13px;
+  color: #777;
+  text-align: center;
+}
+
+/* 用户气泡中的设计稿预览 */
+.codx-chat-design-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 6px;
+  white-space: normal;
+  user-select: none;
+}
+.codx-chat-design-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid #555;
+}
+.codx-chat-design-label {
+  font-size: 12px;
+  color: #aaa;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

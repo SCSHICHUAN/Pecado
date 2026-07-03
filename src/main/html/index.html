@@ -189,6 +189,11 @@
             </nav>
             <div class="codx-dock-panel" id="codx-dock-pecado">
               <div class="codx-chat-scroll" id="codx-chat-scroll"></div>
+              <div id="codx-design-tag" class="codx-design-tag" hidden>
+                <img id="codx-design-tag-img" alt="" />
+                <span id="codx-design-tag-name"></span>
+                <button type="button" id="codx-design-tag-remove" title="移除设计稿">&times;</button>
+              </div>
               <div class="codx-chat-input-row">
                 <textarea id="codx-chat-input" placeholder="描述要改的代码…" rows="1"></textarea>
                 <button type="button" id="codx-chat-send">发送</button>
@@ -212,11 +217,15 @@
           <button type="button" class="skill-button skill-button-run" id="pecado-xcode-run-btn" aria-label="运行项目" title="xcode_run">▶</button>
           <button type="button" class="skill-button skill-button-codx" id="pecado-codx-btn" aria-label="打开编程" title="CodX 代码编辑器">打开编程</button>
           <button type="button" class="skill-button skill-button-git-focus" id="pecado-codx-git-btn" aria-label="Git 面板" title="全屏 Git 面板" hidden>Git</button>
+          <button type="button" id="pecado-ui-pick-btn" aria-label="选择设计稿" title="UI 设计稿" hidden>UI</button>
         </div>
         <!-- Workflow 底部快捷区：有内容时由 workflow 模块注入 #app-bottom-tools-workflow -->
       </div>
     </footer>
     </div>
+  </div>
+  <div class="pecado-ui-picker hidden" id="pecado-ui-picker">
+    <div class="pecado-ui-picker-list" id="pecado-ui-picker-list"></div>
   </div>
   <script src="../../shared/format-tree.js"></script>
   <script src="../../shared/stream-text-reveal.js"></script>

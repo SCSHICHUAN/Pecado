@@ -35,7 +35,7 @@ const { clearVideoThumbnailCache } = require('./file-service/thumbnails');
 const skillService = require('./skill/service');
 const { getSkillStorageDir } = require('./skill/store');
 const { readSectionPreview, readResourcePreview } = require('./skill/preview');
-const { importUiDesignFolder, listUiDesignImports, resolveUiDesignImportPath } = require('./design-import/copy');
+const { importUiDesignFolder, listUiDesignImports, resolveUiDesignImportPath, getDesignFirstPreview } = require('./design-import/copy');
 const { warmProjectTreeCache } = require('../mcp-filesystem/project-context');
 const { SKILL } = require('../shared/ipc-channels');
 
@@ -376,7 +376,14 @@ function register(ipcMain, getMainWindowFn) {
   ipcMain.handle(WORKFLOW.LIST_UI_DESIGNS, async (_evt, payload) => {
     try {
       const projectRoot = resolveProjectDir(payload?.projectRoot);
-      return listUiDesignImports(projectRoot);
+      const result = listUiDesignImports(projectRoot);
+      if (result.ok && result.items && payload?.includePreview) {
+        for (const item of result.items) {
+          const preview = getDesignFirstPreview(projectRoot, item.relPath);
+          if (preview.ok) item.previewBase64 = preview.previewBase64;
+        }
+      }
+      return result;
     } catch (e) {
       return { ok: false, error: e.message || String(e), items: [] };
     }

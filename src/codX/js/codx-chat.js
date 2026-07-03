@@ -48,7 +48,7 @@
       .replace(/>/g, '&gt;');
   }
 
-  function addMessage(role, text) {
+  function addMessage(role, text, design) {
     const scroll = getScrollEl();
     if (!scroll) return;
     const row = document.createElement('div');
@@ -58,7 +58,24 @@
     body.className = 'codx-chat-msg-body';
 
     if (role === 'user') {
-      body.textContent = text;
+      if (design) {
+        const tagWrap = document.createElement('div');
+        tagWrap.className = 'codx-chat-design-preview';
+        if (design.previewBase64) {
+          const thumb = document.createElement('img');
+          thumb.className = 'codx-chat-design-thumb';
+          thumb.src = 'data:image/png;base64,' + design.previewBase64;
+          tagWrap.appendChild(thumb);
+        }
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'codx-chat-design-label';
+        nameSpan.textContent = design.name || '';
+        tagWrap.appendChild(nameSpan);
+        body.appendChild(tagWrap);
+      }
+      const textSpan = document.createElement('span');
+      textSpan.textContent = text;
+      body.appendChild(textSpan);
     } else {
       body.classList.add('markdown-body');
       body.innerHTML = renderMarkdown(text);
@@ -234,15 +251,18 @@
     const btn = $('codx-chat-send');
     const text = String(input?.value || '').trim();
     if (!text) return;
+
+    // 如果选了设计稿
+    var design = window.__codxSelectedDesign;
+    if (design) window.__codxClearDesign();
+
     const api = window.electronAPI;
     if (!api?.volcArkBotsChatStream) {
       alert('对话 API 不可用');
       return;
     }
 
-    chatScroll.prepareForNewTurn();
-
-    addMessage('user', text);
+    addMessage('user', text, design);
     history.push({ role: 'user', content: text });
     input.value = '';
     syncInputHeight(input);
@@ -361,8 +381,6 @@
     } finally {
       unsub();
       window.CodXLiveStatus?.clear?.();
-      chatScroll.endTurnFollow();
-      unbindActiveTurnResizeFollow();
       if (btn) btn.disabled = false;
     }
   }
@@ -408,4 +426,154 @@
   }
 
   window.CodXChat = { bind, resetHistory };
+
+  // ---- CodX UI 设计稿选择 ----
+  (function () {
+    window.__codxSelectedDesign = null;
+
+    window.__codxClearDesign = function () {
+      window.__codxSelectedDesign = null;
+      var tag = document.getElementById('codx-design-tag');
+      if (tag) {
+        tag.style.display = '';
+        tag.setAttribute('hidden', '');
+      }
+    };
+
+    function renderDesignTag() {
+      var tag = document.getElementById('codx-design-tag');
+      var img = document.getElementById('codx-design-tag-img');
+      var nameEl = document.getElementById('codx-design-tag-name');
+      if (!tag || !img || !nameEl) return;
+      var d = window.__codxSelectedDesign;
+      if (!d) { tag.hidden = true; return; }
+      tag.style.display = 'flex';
+      tag.removeAttribute('hidden');
+      if (d.previewBase64) img.src = 'data:image/png;base64,' + d.previewBase64;
+      else img.src = '';
+      nameEl.textContent = d.name || '';
+    }
+
+    function positionPicker() {
+      var picker = document.getElementById('pecado-ui-picker');
+      var container = document.getElementById('codx-chat-input');
+      if (!picker || !container) return;
+      var rect = container.getBoundingClientRect();
+      picker.style.left = rect.left + 'px';
+      picker.style.width = rect.width + 'px';
+      picker.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+    }
+
+    async function loadDesignPickerList() {
+      var list = document.getElementById('pecado-ui-picker-list');
+      if (!list) return;
+      list.innerHTML = '<div class="pecado-ui-picker-loading">加载中…</div>';
+      positionPicker();
+
+      var api = window.electronAPI;
+      var listRes = { ok: false, items: [] };
+      if (api && api.workflowListUiDesigns) {
+        try {
+          listRes = await api.workflowListUiDesigns({
+            projectRoot: window.CodX?.getProjectRoot?.() || '',
+            includePreview: true
+          });
+        } catch (e) {
+          listRes = { ok: false, items: [], error: e.message || String(e) };
+        }
+      }
+
+      if (!listRes.ok) {
+        list.innerHTML = '<div class="pecado-ui-picker-empty">' + (listRes.error || '无法读取设计稿列表') + '</div>';
+        return;
+      }
+      if (!listRes.items.length) {
+        list.innerHTML = '<div class="pecado-ui-picker-empty">暂无设计稿</div>';
+        return;
+      }
+
+      list.innerHTML = '';
+      listRes.items.forEach(function (item) {
+        var row = document.createElement('div');
+        row.className = 'pecado-ui-picker-item';
+        if (item.previewBase64) {
+          var thumb = document.createElement('img');
+          thumb.className = 'pecado-ui-picker-thumb';
+          thumb.src = 'data:image/png;base64,' + item.previewBase64;
+          row.appendChild(thumb);
+        }
+        var nameSpan = document.createElement('span');
+        nameSpan.className = 'pecado-ui-picker-name';
+        nameSpan.textContent = item.name;
+        row.appendChild(nameSpan);
+
+        (function (captured) {
+          row.addEventListener('click', function () {
+            window.__codxSelectedDesign = {
+              name: captured.name,
+              relPath: captured.relPath,
+              previewBase64: captured.previewBase64,
+            };
+            renderDesignTag();
+            var picker = document.getElementById('pecado-ui-picker');
+            if (picker) picker.classList.add('hidden');
+          });
+        })(item);
+
+        list.appendChild(row);
+      });
+    }
+
+    function init() {
+      var uiPickBtn = document.getElementById('pecado-ui-pick-btn');
+      var uiPicker = document.getElementById('pecado-ui-picker');
+      var tagRemove = document.getElementById('codx-design-tag-remove');
+      var ignoreNextDocClick = false;
+
+      if (tagRemove) {
+        tagRemove.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          window.__codxClearDesign();
+        });
+      }
+
+      if (!uiPickBtn || !uiPicker) return;
+
+      uiPickBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!uiPicker.classList.contains('hidden')) {
+          uiPicker.classList.add('hidden');
+          return;
+        }
+        ignoreNextDocClick = true;
+        uiPicker.classList.remove('hidden');
+        loadDesignPickerList();
+      });
+
+      document.addEventListener('click', function (e) {
+        if (ignoreNextDocClick) { ignoreNextDocClick = false; return; }
+        if (!uiPicker || uiPicker.classList.contains('hidden')) return;
+        if (uiPicker.contains(e.target)) return;
+        if (uiPickBtn && uiPickBtn.contains(e.target)) return;
+        uiPicker.classList.add('hidden');
+      });
+
+      window.addEventListener('resize', function () {
+        if (uiPicker && !uiPicker.classList.contains('hidden')) positionPicker();
+      });
+
+      // 面板拖拽时 ResizeObserver 触发实时适配
+      var inputEl = document.getElementById('codx-chat-input');
+      if (inputEl && window.ResizeObserver) {
+        var ro = new ResizeObserver(function () {
+          if (uiPicker && !uiPicker.classList.contains('hidden')) positionPicker();
+        });
+        ro.observe(inputEl);
+      }
+    }
+
+    init();
+  })();
 })();

@@ -144,10 +144,56 @@ function resolveUiDesignImportPath(projectRoot, relPath) {
   return { ok: true, absPath: abs, relPath: rel.split(path.sep).join('/') };
 }
 
+/**
+ * @param {string} projectRoot
+ * @param {string} relPath 如 DesignImports/foo
+ * @returns {{ ok: boolean, previewBase64?: string, error?: string }}
+ */
+function getDesignFirstPreview(projectRoot, relPath) {
+  const root = path.resolve(String(projectRoot || '').trim());
+  const rel = String(relPath || '').trim().replace(/\\/g, '/');
+  if (!root || !rel) return { ok: false, error: '路径无效' };
+
+  const abs = path.resolve(root, rel);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) {
+    return { ok: false, error: '设计稿文件夹不存在' };
+  }
+
+  // 找第一个 node_*.png
+  try {
+    function pickPreview(dir) {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return null;
+      var files = fs.readdirSync(dir).filter(function (f) {
+        return f.startsWith('node_') && f.endsWith('.png');
+      }).sort();
+      if (files.length > 0) return { dir: dir, file: files[0] };
+      // fallback: 任意 png
+      var pngs = fs.readdirSync(dir).filter(function (f) {
+        return f.endsWith('.png');
+      }).sort();
+      if (pngs.length > 0) return { dir: dir, file: pngs[0] };
+      return null;
+    }
+
+    // 先查 .assets 子目录
+    var folderName = path.basename(abs);
+    var assetsDir = path.join(abs, folderName + '.assets');
+    var found = pickPreview(assetsDir) || pickPreview(abs);
+    if (found) {
+      var buf = fs.readFileSync(path.join(found.dir, found.file));
+      return { ok: true, previewBase64: buf.toString('base64') };
+    }
+    return { ok: false, error: '无预览图' };
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+}
+
 module.exports = {
   DESIGN_IMPORTS_DIR,
   importUiDesignFolder,
   listUiDesignImports,
   resolveUiDesignImportPath,
   copyDirRecursive,
+  getDesignFirstPreview,
 };
