@@ -37,12 +37,32 @@ const { getSkillStorageDir } = require('./skill/store');
 const { readSectionPreview, readResourcePreview } = require('./skill/preview');
 const { importUiDesignFolder, listUiDesignImports, resolveUiDesignImportPath, getDesignFirstPreview } = require('./design-import/copy');
 const { warmProjectTreeCache } = require('../mcp-filesystem/project-context');
+const { formatMcpTreeAscii } = require('../shared/format-tree');
 const { SKILL } = require('../shared/ipc-channels');
 
 const PANEL_HTML = path.join(__dirname, 'html', 'panel.html');
 
 function readPanelHtml() {
   return fs.readFileSync(PANEL_HTML, 'utf8');
+}
+
+function getDesignPreviewPaths(projectRoot, relPath) {
+  const abs = path.join(projectRoot, String(relPath || ''));
+  const previews = [];
+  const folderName = path.basename(abs);
+  const searchDirs = [path.join(abs, folderName + '.assets'), abs];
+  for (const dir of searchDirs) {
+    try {
+      if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) continue;
+      const pngs = fs.readdirSync(dir).filter(f => f.endsWith('.png')).sort();
+      for (const f of pngs) {
+        if (previews.length >= 8) break;
+        previews.push(path.join(dir, f));
+      }
+    } catch (_) {}
+    if (previews.length >= 8) break;
+  }
+  return previews;
 }
 
 function resolveProjectDir(payloadRoot) {
@@ -397,6 +417,25 @@ function register(ipcMain, getMainWindowFn) {
       const err = await shell.openPath(resolved.absPath);
       if (err) return { ok: false, error: err };
       return { ok: true, path: resolved.absPath, relPath: resolved.relPath };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.GET_UI_DESIGN_INFO, async (_evt, payload) => {
+    try {
+      const projectRoot = resolveProjectDir(payload?.projectRoot);
+      const relPath = String(payload?.relPath || '');
+      if (!projectRoot || !relPath) return { ok: false, error: '参数无效' };
+
+      // 用 MCP directory_tree 获取 JSON 目录树
+      const treeJson = await projectIo.readDirectoryTree({ path: relPath, directoriesOnly: false });
+      const treeAscii = formatMcpTreeAscii(treeJson, 200);
+
+      // 预览图路径（复用 getDesignFirstPreview 的查找逻辑）
+      const previewPaths = getDesignPreviewPaths(projectRoot, relPath);
+
+      return { ok: true, relPath, treeAscii, previewPaths };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

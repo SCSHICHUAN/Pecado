@@ -89,6 +89,7 @@ module.exports = {
     IMPORT_UI_DESIGN: 'workflow-import-ui-design',
     LIST_UI_DESIGNS: 'workflow-list-ui-designs',
     OPEN_UI_DESIGN: 'workflow-open-ui-design',
+    GET_UI_DESIGN_INFO: 'workflow-get-ui-design-info',
   },
   SKILL: {
     /** main → renderer：Skill tool 执行日志 */

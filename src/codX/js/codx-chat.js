@@ -252,18 +252,38 @@
     const text = String(input?.value || '').trim();
     if (!text) return;
 
-    // 如果选了设计稿
-    var design = window.__codxSelectedDesign;
-    if (design) window.__codxClearDesign();
-
     const api = window.electronAPI;
     if (!api?.volcArkBotsChatStream) {
       alert('对话 API 不可用');
       return;
     }
 
+    // 如果选了设计稿，获取目录树和预览图路径，拼到消息前面
+    var design = window.__codxSelectedDesign;
+    var llmContent = text;
+    if (design) {
+      try {
+        var info = await api.workflowGetUiDesignInfo({
+          projectRoot: window.CodX?.getProjectRoot?.() || '',
+          relPath: design.relPath,
+        });
+        if (info && info.ok) {
+          var previewLines = info.previewPaths && info.previewPaths.length
+            ? '\n\n🖼 预览图路径：\n' + info.previewPaths.map(function (p) { return '- ' + p; }).join('\n')
+            : '';
+          llmContent = '【当前选中的 UI 设计稿】' + design.name + '（' + design.relPath + '）\n' +
+            '📁 目录结构：\n' + info.treeAscii + previewLines + '\n\n' +
+            '用户消息：' + text;
+        }
+      } catch (e) {
+        // 获取失败则降级，只告知设计稿名称
+        llmContent = '【当前选中的 UI 设计稿：' + design.name + '（' + design.relPath + '）】\n\n' + text;
+      }
+      window.__codxClearDesign();
+    }
+
     addMessage('user', text, design);
-    history.push({ role: 'user', content: text });
+    history.push({ role: 'user', content: llmContent });
     input.value = '';
     syncInputHeight(input);
     if (btn) btn.disabled = true;
@@ -340,7 +360,7 @@
     try {
       const res = await api.volcArkBotsChatStream({
         streamId,
-        userText: text,
+        userText: llmContent,
         history: prior,
         codxActiveFile: activeRelPath || undefined,
         codxChat: true,
