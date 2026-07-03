@@ -1441,6 +1441,10 @@ body.app-view-codx #pecado-ui-pick-btn:hover {
   padding: 8px 12px;
   cursor: pointer;
   transition: background 0.15s;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.pecado-ui-picker-item:last-child {
+  border-bottom: none;
 }
 .pecado-ui-picker-item:hover {
   background: #3a3a3e;
@@ -1459,6 +1463,16 @@ body.app-view-codx #pecado-ui-pick-btn:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.pecado-ui-picker-index {
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #555;
+  user-select: none;
 }
 .pecado-ui-picker-empty,
 .pecado-ui-picker-loading {

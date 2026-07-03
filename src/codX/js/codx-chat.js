@@ -493,9 +493,13 @@
       }
 
       list.innerHTML = '';
-      listRes.items.forEach(function (item) {
+      listRes.items.forEach(function (item, idx) {
         var row = document.createElement('div');
         row.className = 'pecado-ui-picker-item';
+        var num = document.createElement('span');
+        num.className = 'pecado-ui-picker-index';
+        num.textContent = String(idx + 1);
+        row.appendChild(num);
         if (item.previewBase64) {
           var thumb = document.createElement('img');
           thumb.className = 'pecado-ui-picker-thumb';
