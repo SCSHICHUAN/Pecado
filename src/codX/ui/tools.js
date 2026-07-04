@@ -1,32 +1,34 @@
 /**
  * @file tools.js
- * CodX UI 设计稿工具（read_design_summary）
+ * CodX UI 设计稿工具（read_UI_layer）
  */
 const projectIo = require('../../mcp-filesystem');
-const { readDesignSummary } = require('./read-design-summary');
+const { readUiLayer } = require('./read-ui-layer');
 
-const READ_DESIGN_SUMMARY_TOOL_NAME = 'read_design_summary';
+const READ_UI_LAYER_TOOL_NAME = 'read_UI_layer';
 
-const READ_DESIGN_SUMMARY_TOOL = {
-  name: READ_DESIGN_SUMMARY_TOOL_NAME,
+const READ_UI_LAYER_TOOL = {
+  name: READ_UI_LAYER_TOOL_NAME,
   description:
-    '读取 DesignImports/ 下 Framelink 导出的 UI 设计稿，返回精简 layout/tree 摘要（省 token）。' +
-    '禁止对同一 JSON 使用无 head/tail 的 read_text_file。' +
-    '实现界面前先调本工具；需要视觉参考再 read_media_file 读 summary 里的 previewAssets。',
+    '分层读取压缩后的 Figma 设计稿 JSON。' +
+    '首次调用不传 layer：返回前3层完整节点数据（骨架），含每个子节点的 id/type/name/size/childCount。' +
+    '需要深入时，传 nodeId + layer（建议+2）获取该节点往下的完整数据。' +
+    'JSON 中的 key 已被压缩为 S0/S1/... 短Key，需参考 __keyMap 还原真实含义。' +
+    '优先使用本工具代替 read_text_file 读 Figma JSON。',
   inputSchema: {
     type: 'object',
     properties: {
       bundlePath: {
         type: 'string',
-        description: '相对工程路径，如 DesignImports/apple_ios_16_ui_kit__… 或其下 .json',
+        description: '相对工程路径，如 DesignImports/apple_ios_16_ui_kit__…',
       },
-      depth: {
+      layer: {
         type: 'integer',
-        description: '节点树深度，默认 4，最大 8',
+        description: '返回哪一层的完整数据，默认3（骨架）。深入某个子节点时传更大值（如5）',
       },
       nodeId: {
         type: 'string',
-        description: '可选，只摘要指定 Figma node id（如 2:1993）',
+        description: '可选，指定从哪个节点的下一层开始读取（配合layer使用）',
       },
     },
     required: ['bundlePath'],
@@ -34,50 +36,56 @@ const READ_DESIGN_SUMMARY_TOOL = {
 };
 
 function isCodxUiToolName(name) {
-  return String(name || '') === READ_DESIGN_SUMMARY_TOOL_NAME;
+  return String(name || '') === READ_UI_LAYER_TOOL_NAME;
 }
 
 function getCodxUiTools() {
-  return [{ ...READ_DESIGN_SUMMARY_TOOL }];
+  return [{ ...READ_UI_LAYER_TOOL }];
 }
 
 async function EXECUTE_codx_ui_tool(routedTask) {
   const { name, args } = routedTask.task;
-  if (name !== READ_DESIGN_SUMMARY_TOOL_NAME) {
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `未知 CodX UI 工具：${name}` }],
-    };
-  }
 
   const status = projectIo.getStatus();
   if (!status.connected || !status.projectRoot) {
     return {
       isError: true,
-      content: [{ type: 'text', text: 'read_design_summary：请先 Open Folder 打开工程' }],
+      content: [{ type: 'text', text: `${name}：请先 Open Folder 打开工程` }],
     };
   }
 
-  const result = readDesignSummary(status.projectRoot, args || {});
-  if (!result.ok) {
-    return {
-      isError: true,
-      content: [{ type: 'text', text: `read_design_summary：${result.error}` }],
-    };
-  }
+  if (name === READ_UI_LAYER_TOOL_NAME) {
+    const result = readUiLayer(status.projectRoot, args || {});
+    if (!result.ok) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `read_UI_layer：${result.error}` }],
+      };
+    }
 
-  const header = [
-    `bundle: ${result.bundlePath}`,
-    `json: ${result.jsonRel}`,
-    `nodes: ${result.nodeCount}${result.truncated ? ' (truncated)' : ''} · ${result.charCount} chars`,
-    result.hint,
-    '',
-    '---',
-    result.summary,
-  ].join('\n');
+    const keyMapNote = result.compressed
+      ? '注意：JSON 中长 key 已压缩为 S0,S1,... 短Key，参考顶部 __keyMap 字典还原'
+      : '（JSON 未压缩，使用原始 key 名称）';
+
+    const header = [
+      `bundle: ${args.bundlePath}`,
+      `layer: ${result.layer} · nodeId: ${result.nodeId} · totalNodes: ${result.totalNodes}`,
+      result.hint,
+      keyMapNote,
+      '',
+      '---',
+      JSON.stringify(result.data, null, 2),
+      '',
+      '--- childSummary ---',
+      JSON.stringify(result.childSummary, null, 2),
+    ].join('\n');
+
+    return { content: [{ type: 'text', text: header }] };
+  }
 
   return {
-    content: [{ type: 'text', text: header }],
+    isError: true,
+    content: [{ type: 'text', text: `未知 CodX UI 工具：${name}` }],
   };
 }
 
@@ -96,7 +104,7 @@ function FEED_codx_ui_tool_result(execRaw) {
 }
 
 module.exports = {
-  READ_DESIGN_SUMMARY_TOOL_NAME,
+  READ_UI_LAYER_TOOL_NAME,
   isCodxUiToolName,
   getCodxUiTools,
   EXECUTE_codx_ui_tool,

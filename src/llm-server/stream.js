@@ -97,14 +97,23 @@ async function* parseSseJsonStream(body) {
     carry = lines.pop() ?? '';
 
     for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === 'data: [DONE]' || trimmed === '[DONE]') {
+        yield '__SSE_DONE__';
+        continue;
+      }
       const json = parseSseLine(line);
       if (json != null) yield json;
     }
   }
 
   if (carry.trim()) {
-    const json = parseSseLine(carry);
-    if (json != null) yield json;
+    if (carry.trim() === 'data: [DONE]' || carry.trim() === '[DONE]') {
+      yield '__SSE_DONE__';
+    } else {
+      const json = parseSseLine(carry);
+      if (json != null) yield json;
+    }
   }
 }
 
@@ -182,9 +191,14 @@ async function* streamChat(opts) {
   let fullContent = '';
   let fullReasoning = '';
   let finishReason = null;
+  let receivedDone = false;
   const toolAcc = createToolCallAccumulator();
 
   for await (const json of parseSseJsonStream(res.body)) {
+    if (typeof json === 'string' && json === '__SSE_DONE__') {
+      receivedDone = true;
+      continue;
+    }
     const errMsg = streamJsonErrorMessage(json);
     if (errMsg) {
       yield { type: 'error', message: errMsg };
@@ -234,6 +248,7 @@ async function* streamChat(opts) {
     content: fullContent,
     reasoning: fullReasoning,
     toolCalls,
+    doneReceived: receivedDone,
   };
 }
 

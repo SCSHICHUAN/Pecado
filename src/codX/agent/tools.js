@@ -15,7 +15,6 @@ const {
 } = require('../../shared/codx-edit-plan');
 const projectIo = require('../../mcp-filesystem');
 const {
-  READ_DESIGN_SUMMARY_TOOL_NAME,
   isCodxUiToolName,
   getCodxUiTools,
   EXECUTE_codx_ui_tool,
@@ -183,7 +182,6 @@ function FEED_codx_tool_result(execRaw) {
 module.exports = {
   CODX_EDIT_PLAN_TOOL_NAME,
   CODX_EDIT_TOOL_NAME,
-  READ_DESIGN_SUMMARY_TOOL_NAME,
   PECADO_LLM_LINE_END,
   normalizeCodxRelPath,
   isCodxToolName,

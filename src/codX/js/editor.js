@@ -612,6 +612,7 @@
     const pending = activeRelPath ? openFiles.get(activeRelPath)?.content : null;
     const fromFallback = fallbackTa ? fallbackTa.value : '';
     const initial = pending ?? fromFallback ?? PLACEHOLDER;
+    editor?.dispose();
     host.replaceChildren();
     fallbackTa = null;
     useFallback = false;

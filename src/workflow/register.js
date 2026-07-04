@@ -36,6 +36,7 @@ const skillService = require('./skill/service');
 const { getSkillStorageDir } = require('./skill/store');
 const { readSectionPreview, readResourcePreview } = require('./skill/preview');
 const { importUiDesignFolder, listUiDesignImports, resolveUiDesignImportPath, getDesignFirstPreview } = require('./design-import/copy');
+const { compressFigmaBundle, hasCompressed } = require('../codX/ui/compress-figma');
 const { warmProjectTreeCache } = require('../mcp-filesystem/project-context');
 const { formatMcpTreeAscii } = require('../shared/format-tree');
 const { SKILL } = require('../shared/ipc-channels');
@@ -382,6 +383,13 @@ function register(ipcMain, getMainWindowFn) {
       const result = importUiDesignFolder(projectRoot, pick.filePaths[0]);
       if (!result.ok) return result;
 
+      // 导入成功后生成压缩文件
+      if (result.hasFramelink) {
+        try {
+          compressFigmaBundle(projectRoot, result.relPath);
+        } catch (_) { /* 压缩失败不影响导入流程 */ }
+      }
+
       const status = projectIo.getStatus();
       if (status.connected && status.projectRoot === projectRoot) {
         await warmProjectTreeCache();
@@ -414,6 +422,14 @@ function register(ipcMain, getMainWindowFn) {
       const projectRoot = resolveProjectDir(payload?.projectRoot);
       const resolved = resolveUiDesignImportPath(projectRoot, payload?.relPath);
       if (!resolved.ok) return resolved;
+
+      // 如果缺少压缩文件，触发一次生成
+      if (!hasCompressed(projectRoot, resolved.relPath)) {
+        try {
+          compressFigmaBundle(projectRoot, resolved.relPath);
+        } catch (_) {}
+      }
+
       const err = await shell.openPath(resolved.absPath);
       if (err) return { ok: false, error: err };
       return { ok: true, path: resolved.absPath, relPath: resolved.relPath };

@@ -138,6 +138,13 @@
   function handleStreamPayload(payload) {
     if (!payload) return false;
 
+    if (payload.phase === 'error') {
+      // SSE流断开：记录错误，供 sendMessage catch 块做续写处理
+      window.__codxLastStreamError = payload.error || '流式响应中断';
+      window.__codxStreamErrorTs = Date.now();
+      return true;
+    }
+
     if (payload.phase === 'agent_log' && payload.entry) {
       window.CodXLiveStatus?.onExecEntry?.(payload.entry);
       maybeFollowScroll();
@@ -145,6 +152,9 @@
     }
 
     if (payload.phase === 'tool_stream') {
+      if (payload.name === 'codx_edit' || payload.name === 'write_file') {
+        window.__codxLastCodePath = payload.path || '';
+      }
       if (window.CodXLiveStatus?.isTurnActive?.()) {
         window.CodXLiveStatus?.onToolStream?.(payload);
         maybeFollowScroll();
@@ -160,6 +170,9 @@
       payload.phase === 'write_file_begin' ||
       payload.phase === 'codx_edit_plan'
     ) {
+      if (payload.phase === 'codx_edit_begin' || payload.phase === 'write_file_begin') {
+        window.__codxLastCodePath = payload.path || '';
+      }
       window.CodXLiveStatus?.onStepStart?.({
         phase: payload.phase,
         name:
@@ -367,6 +380,49 @@
       });
       flushStreamMarkdownRender(streamCtx);
       cancelStreamMarkdownRender(streamCtx);
+
+      // SSE 流中断 -> 走续写，不直接显示错误
+      const codePathResume = window.__codxLastCodePath;
+      const streamErrorResume = window.__codxLastStreamError || '';
+      if (codePathResume && (res?.error || streamErrorResume)) {
+        window.__codxLastCodePath = '';
+        window.__codxLastStreamError = '';
+        window.__codxStreamErrorTs = 0;
+        thinking.remove();
+        if (streamRow) { streamRow.classList.remove('codx-chat-streaming'); }
+
+        let editorContent = '';
+        try {
+          if (window.CodXEditor?.getCachedContent) {
+            const cached = window.CodXEditor.getCachedContent(codePathResume);
+            if (cached && typeof cached === 'object') editorContent = String(cached.content || '');
+            else if (cached) editorContent = String(cached);
+          }
+          if (!editorContent && api.mcpFsReadTextFile) {
+            const pr = window.CodX?.getProjectRoot?.() || '';
+            const readRes = await api.mcpFsReadTextFile({ path: codePathResume, projectRoot: pr });
+            if (readRes && readRes.ok) editorContent = readRes.content || '';
+          }
+        } catch (_) {}
+
+        if (editorContent) {
+          addMessage('assistant', `⚠️ 流式输出中断（${streamErrorResume || res?.error || '网络异常'}），正在自动续写…`);
+          const resumePrompt =
+            '【系统】上一轮流式输出意外中断。' +
+            '以下是当前编辑器中已写入的代码（可能不完整），请检查并补全剩余部分，确保代码完整可运行。' +
+            '使用 codx_edit 完成未写完的代码。\n\n' +
+            `文件：${codePathResume}\n\`\`\`\n${editorContent}\n\`\`\``;
+          history.push({ role: 'assistant', content: raw || '' });
+          history.push({ role: 'user', content: resumePrompt });
+          addMessage('user', '（自动续写：流中断，补全 ' + codePathResume + '）');
+          window.__codxResumeTarget = { codePath: codePathResume };
+        } else {
+          addMessage('assistant', `⚠️ 流式输出中断（${streamErrorResume || res?.error || '网络异常'}），无法读取 ${codePathResume} 内容，请手动重新发送。`);
+          history.push({ role: 'assistant', content: raw || '' });
+        }
+        return; // 跳过后续正常路径，由 finally 后的 resume 触发 sendMessage
+      }
+
       const invokeContent = res?.content || (res?.error ? `错误：${res.error}` : '');
       const resolveTurn =
         window.StreamTextReveal?.resolveStreamTurnContent ||
@@ -397,11 +453,60 @@
       cancelStreamMarkdownRender(streamCtx);
       thinking.remove();
       if (streamRow) streamRow.remove();
-      addMessage('assistant', `异常：${e.message || String(e)}`);
+
+      // SSE 断开检测：如果 LLM 正在写代码，记录续写参数，在 finally 后执行
+      const codePath = window.__codxLastCodePath;
+      const streamError = window.__codxLastStreamError || '';
+      window.__codxLastCodePath = '';
+      window.__codxLastStreamError = '';
+      window.__codxStreamErrorTs = 0;
+
+      window.__codxResumeTarget = null;
+      if (codePath && (streamError || e && e.message)) {
+        // 尝试读取当前编辑器内容
+        let editorContent = '';
+        try {
+          if (window.CodXEditor?.getCachedContent) {
+            const cached = window.CodXEditor.getCachedContent(codePath);
+            if (cached && typeof cached === 'object') editorContent = String(cached.content || '');
+            else if (cached) editorContent = String(cached);
+          }
+          if (!editorContent && api.mcpFsReadTextFile) {
+            const pr = window.CodX?.getProjectRoot?.() || '';
+            const readRes = await api.mcpFsReadTextFile({ path: codePath, projectRoot: pr });
+            if (readRes && readRes.ok) editorContent = readRes.content || '';
+          }
+        } catch (_) {}
+
+        if (editorContent) {
+          addMessage('assistant', `⚠️ 流式输出中断（${streamError || e.message || '网络异常'}），正在自动续写…`);
+
+          const resumePrompt =
+            '【系统】上一轮流式输出意外中断。' +
+            '以下是当前编辑器中已写入的代码（可能不完整），请检查并补全剩余部分，确保代码完整可运行。' +
+            '使用 codx_edit 完成未写完的代码。\n\n' +
+            `文件：${codePath}\n\`\`\`\n${editorContent}\n\`\`\``;
+
+          history.push({ role: 'assistant', content: raw || '' });
+          history.push({ role: 'user', content: resumePrompt });
+          addMessage('user', '（自动续写：流中断，补全 ' + codePath + '）');
+          window.__codxResumeTarget = { codePath };
+        } else {
+          addMessage('assistant', `⚠️ 流式输出中断（${streamError || e.message || '网络异常'}），无法读取 ${codePath} 内容，请手动检查并重新发送。`);
+        }
+      } else {
+        addMessage('assistant', `异常：${e.message || String(e)}`);
+      }
     } finally {
       unsub();
       window.CodXLiveStatus?.clear?.();
       if (btn) btn.disabled = false;
+    }
+
+    // 自动续写：finally 完成后触发，避免 btn.disabled 状态冲突
+    if (window.__codxResumeTarget) {
+      window.__codxResumeTarget = null;
+      setTimeout(() => sendMessage(), 500);
     }
   }
 
