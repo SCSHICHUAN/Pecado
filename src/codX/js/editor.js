@@ -275,9 +275,8 @@
       return;
     }
     btn.hidden = false;
-    btn.classList.toggle('is-on', minimapEnabled);
-    btn.title = minimapEnabled ? '关闭缩略图' : '开启缩略图';
     btn.setAttribute('aria-pressed', minimapEnabled ? 'true' : 'false');
+    btn.title = minimapEnabled ? '关闭缩略图' : '开启缩略图';
     btn.setAttribute('aria-label', minimapEnabled ? '关闭缩略图' : '开启缩略图');
     syncToolbarUi();
   }
@@ -627,12 +626,14 @@
       state.content = editor.getValue();
       state.dirty = true;
       updateTabDirty(activeRelPath);
+      syncToolbarUi();
     });
     bindMinimapToggle();
     bindSyncXcodeButton();
     syncTypographyCss();
     applyLineNumberStyleCss();
     syncMinimapToggleUi();
+    syncToolbarUi();
     updateEmptyState();
     return editor;
   }
@@ -1938,6 +1939,8 @@
     }
     btn.hidden = false;
     btn.disabled = pending === 0;
+    btn.setAttribute('aria-pressed', pending > 0 ? 'true' : 'false');
+    btn.classList.toggle('is-pending', pending > 0);
     btn.title = pending > 0 ? `同步 ${pending} 个待确认改动到 Xcode` : '没有待同步的改动';
     btn.setAttribute('aria-label', btn.title);
   }

@@ -94,22 +94,6 @@
     deferredDisk.clear();
   }
 
-  function syncCodxBtnUi() {
-    const btn = $('pecado-codx-btn');
-    if (!btn) return;
-    if (active) {
-      btn.textContent = '关闭编程';
-      btn.title = '退出 CodX 代码编辑器';
-      btn.setAttribute('aria-label', '关闭编程');
-      btn.classList.add('is-active');
-    } else {
-      btn.textContent = '打开编程';
-      btn.title = 'CodX 代码编辑器';
-      btn.setAttribute('aria-label', '打开编程');
-      btn.classList.remove('is-active');
-    }
-  }
-
   async function loadSettings() {
     const api = getApi();
     if (!api?.getAppSettings) return;
@@ -379,7 +363,6 @@
     document.body.classList.toggle('codx-dock-side-layout', dockSideLayout && active);
     const btn = $('codx-dock-side-toggle');
     if (btn) {
-      btn.classList.toggle('is-on', dockSideLayout);
       btn.title = dockSideLayout ? '关闭右侧分区' : '打开右侧分区';
       btn.setAttribute('aria-label', dockSideLayout ? '关闭右侧分区' : '打开右侧分区');
       btn.setAttribute('aria-pressed', dockSideLayout ? 'true' : 'false');
@@ -579,7 +562,7 @@
       window.CodXEditor?.layout?.();
     });
     syncDockToggle();
-    syncCodxBtnUi();
+    $('nav-coding')?.classList.add('active');
   }
 
   function exit() {
@@ -603,7 +586,7 @@
     if (typeof window.__setMainPanelVisible === 'function') {
       window.__setMainPanelVisible(prev);
     }
-    syncCodxBtnUi();
+    $('nav-coding')?.classList.remove('active');
   }
 
   async function tryOpenCodx(opts = {}) {
@@ -690,6 +673,10 @@
       openProjectInFinder().catch(console.error);
     });
 
+    $('codx-close-btn')?.addEventListener('click', () => {
+      exit();
+    });
+
     document.addEventListener('keydown', (e) => {
       if (!active) return;
       const zoom = codxFontZoomDelta(e);
@@ -759,19 +746,6 @@
       initPromise = Promise.resolve();
     }
 
-    $('pecado-codx-btn')?.addEventListener('click', async () => {
-      try {
-        if (active) {
-          exit();
-          return;
-        }
-        await tryOpenCodx({ prevView: resolvePrevView() });
-      } catch (e) {
-        console.error('[CodX] enter failed', e);
-        alert(`编程视图打开失败：${e?.message || e}`);
-      }
-    });
-
     $('pecado-codx-git-btn')?.addEventListener('click', () => {
       if (!active) return;
       window.__enterGitFocusFromCodx?.()?.catch?.((e) => {
@@ -779,7 +753,6 @@
       });
     });
 
-    syncCodxBtnUi();
     maybeRestoreCodxPanel().catch(console.error);
   }
 
@@ -788,6 +761,7 @@
     enter,
     exit,
     isActive,
+    tryOpenCodx,
     getProjectRoot: () => projectRoot,
     revealDock,
     isDockOpen: () => dockOpen,

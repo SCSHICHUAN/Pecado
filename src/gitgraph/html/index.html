@@ -5,6 +5,12 @@
 -->
 <header class="git-toolbar">
   <div class="git-toolbar-start">
+    <div class="git-toolbar-title">Git</div>
+  </div>
+  <div class="git-toolbar-actions">
+    <button type="button" class="git-action-btn" id="git-btn-push">Push</button>
+    <button type="button" class="git-action-btn" id="git-btn-pull">Pull</button>
+    <button type="button" class="git-action-btn git-action-btn-primary" id="git-btn-commit">Commit</button>
     <button
       type="button"
       class="git-focus-close-btn"
@@ -13,12 +19,6 @@
       aria-label="关闭 Git 面板"
       title="返回编程"
     >关闭</button>
-    <div class="git-toolbar-title">Git</div>
-  </div>
-  <div class="git-toolbar-actions">
-    <button type="button" class="git-action-btn" id="git-btn-push">Push</button>
-    <button type="button" class="git-action-btn" id="git-btn-pull">Pull</button>
-    <button type="button" class="git-action-btn git-action-btn-primary" id="git-btn-commit">Commit</button>
   </div>
 </header>
 <div class="git-meta" id="git-meta">
@@ -58,23 +58,12 @@
   <div class="git-split-right">
     <div class="git-bottom-dock" id="git-bottom-dock">
       <nav class="git-bottom-tabs" role="tablist" aria-label="Git 详情">
-        <button type="button" class="git-bottom-tab is-active" data-git-bottom-tab="status" role="tab" aria-selected="true">status</button>
+        <button type="button" class="git-bottom-tab is-active" data-git-bottom-tab="chat" role="tab" aria-selected="true">pecado</button>
+        <button type="button" class="git-bottom-tab" data-git-bottom-tab="status" role="tab" aria-selected="false">status</button>
         <button type="button" class="git-bottom-tab" data-git-bottom-tab="log" role="tab" aria-selected="false">log</button>
-        <button type="button" class="git-bottom-tab" data-git-bottom-tab="chat" role="tab" aria-selected="false">pecado</button>
       </nav>
       <div class="git-bottom-panels">
-        <section class="git-bottom-panel is-active" data-git-bottom-panel="status" role="tabpanel">
-          <div class="git-status-wrap">
-            <div class="git-status-label" id="git-status-label">status</div>
-            <pre class="git-status" id="git-status"></pre>
-          </div>
-        </section>
-        <section class="git-bottom-panel" data-git-bottom-panel="log" role="tabpanel">
-          <div class="git-log-panel">
-            <div class="git-log-output" id="git-log-output" aria-live="polite"></div>
-          </div>
-        </section>
-        <section class="git-bottom-panel" data-git-bottom-panel="chat" role="tabpanel">
+        <section class="git-bottom-panel is-active" data-git-bottom-panel="chat" role="tabpanel">
           <div class="git-chat-panel">
             <div class="git-chat-messages" id="git-chat-messages" aria-live="polite">
               <div class="git-chat-msg git-chat-msg-assistant">
@@ -85,6 +74,17 @@
               <textarea id="git-chat-input" class="git-chat-input" rows="1" placeholder="Git 操作…"></textarea>
               <button type="button" class="git-chat-send" id="git-chat-send" aria-label="发送">↑</button>
             </div>
+          </div>
+        </section>
+        <section class="git-bottom-panel" data-git-bottom-panel="status" role="tabpanel">
+          <div class="git-status-wrap">
+            <div class="git-status-label" id="git-status-label">status</div>
+            <pre class="git-status" id="git-status"></pre>
+          </div>
+        </section>
+        <section class="git-bottom-panel" data-git-bottom-panel="log" role="tabpanel">
+          <div class="git-log-panel">
+            <div class="git-log-output" id="git-log-output" aria-live="polite"></div>
           </div>
         </section>
       </div>

@@ -30,6 +30,10 @@
           <div class="function-icon">🤖</div>
           <div>Pecado</div>
         </div>
+        <div class="function-item" id="nav-coding" data-view="codx">
+          <div class="function-icon">💻</div>
+          <div>Coding</div>
+        </div>
         <div class="function-item" id="nav-workflow" data-view="workflow">
           <div class="function-icon">⚡</div>
           <div>Workflow</div>
@@ -102,12 +106,22 @@
     <div id="panel-codx" class="hidden" aria-label="CodX 编程">
       <div class="codx-shell" id="codx-shell">
         <aside class="codx-sidebar">
-          <button
-            type="button"
-            id="codx-project-head"
-            class="codx-sidebar-head"
-            title="在 Finder 中打开工程目录"
-          >未打开工程</button>
+          <div class="codx-sidebar-top">
+            <button
+              type="button"
+              id="codx-project-head"
+              class="codx-sidebar-head"
+              title="在 Finder 中打开工程目录"
+            >未打开工程</button>
+            <button
+              type="button"
+              id="codx-close-btn"
+              class="codx-sidebar-close"
+              title="关闭编程面板"
+            >
+              <span class="codx-sidebar-close-icon" aria-hidden="true"></span>
+            </button>
+          </div>
           <div class="codx-file-tree" id="codx-file-tree"></div>
           <div
             class="codx-resizer codx-resizer-v"
@@ -131,7 +145,7 @@
                 aria-pressed="false"
                 title="Pecado/log 显示在编辑区右侧"
               >
-                ⫽
+                <span class="codx-dock-side-toggle-icon" aria-hidden="true"></span>
               </button>
               <button
                 type="button"
@@ -141,7 +155,12 @@
                 title="将所有待确认改动写入 Xcode"
                 hidden
               >
-                ↥
+                <span class="codx-sync-xcode-icon" aria-hidden="true">
+                  <span class="codx-sync-line codx-sync-line--long"></span>
+                  <span class="codx-sync-line codx-sync-line--long"></span>
+                  <span class="codx-sync-line codx-sync-line--long"></span>
+                  <span class="codx-sync-line codx-sync-line--short"></span>
+                </span>
               </button>
               <button
                 type="button"
@@ -152,7 +171,11 @@
                 title="关闭缩略图"
                 hidden
               >
-                ◫
+                <span class="codx-minimap-toggle-icon" aria-hidden="true">
+                  <span class="codx-minimap-line codx-minimap-line--long"></span>
+                  <span class="codx-minimap-line codx-minimap-line--long"></span>
+                  <span class="codx-minimap-line codx-minimap-line--short"></span>
+                </span>
               </button>
             </div>
             <div class="codx-editor-stack">
@@ -185,7 +208,9 @@
                 <button type="button" class="codx-dock-tab is-active" data-codx-dock-tab="pecado" role="tab">Pecado</button>
                 <button type="button" class="codx-dock-tab" data-codx-dock-tab="log" role="tab">log</button>
               </div>
-              <button type="button" class="codx-dock-maximize-btn" id="codx-dock-maximize" title="最大化面板">最大</button>
+              <button type="button" class="codx-dock-maximize-btn" id="codx-dock-maximize" title="最大化面板">
+                <span class="codx-dock-maximize-icon" aria-hidden="true"></span>
+              </button>
             </nav>
             <div class="codx-dock-panel" id="codx-dock-pecado">
               <div class="codx-chat-scroll" id="codx-chat-scroll"></div>
@@ -215,7 +240,6 @@
       <div class="app-bottom-view-tools">
         <div class="app-bottom-tools app-bottom-tools-chat" id="app-bottom-tools-chat" data-app-view="chat">
           <button type="button" class="skill-button skill-button-run" id="pecado-xcode-run-btn" aria-label="运行项目" title="xcode_run">▶</button>
-          <button type="button" class="skill-button skill-button-codx" id="pecado-codx-btn" aria-label="打开编程" title="CodX 代码编辑器">打开编程</button>
           <button type="button" class="skill-button skill-button-git-focus" id="pecado-codx-git-btn" aria-label="Git 面板" title="全屏 Git 面板" hidden>Git</button>
           <button type="button" id="pecado-ui-pick-btn" aria-label="选择设计稿" title="UI 设计稿" hidden>UI</button>
         </div>

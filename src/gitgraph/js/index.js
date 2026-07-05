@@ -70,7 +70,7 @@
   let remoteOriginUrl = '';
   /** @type {{ commit: object } | null} */
   let nodeMenuContext = null;
-  let activeGitBottomTab = 'status';
+  let activeGitBottomTab = 'chat';
   let gitPanelOpen = false;
   let chatPanelOpen = true;
   let gitFocusActive = false;
@@ -282,7 +282,7 @@
   }
 
   function switchGitBottomTab(tabId) {
-    const tab = tabId || 'status';
+    const tab = tabId || 'chat';
     activeGitBottomTab = tab;
     const mount = $('panel-git');
     if (!mount) return;
@@ -383,6 +383,9 @@
     if (pecado) pecado.classList.toggle('active', view === 'chat');
     if (workflow) workflow.classList.toggle('active', view === 'workflow');
     if (git) git.classList.toggle('active', view === 'git');
+    // Coding 是独立视图，不与 chat/workflow/git 互斥
+    const coding = $('nav-coding');
+    if (coding) coding.classList.toggle('active', view === 'codx');
   }
 
   async function showView(view) {
@@ -2243,6 +2246,13 @@
     $('nav-pecado')?.addEventListener('click', () => showView('chat'));
     $('nav-workflow')?.addEventListener('click', () => showView('workflow'));
     $('nav-git')?.addEventListener('click', () => showView('git'));
+    $('nav-coding')?.addEventListener('click', async () => {
+      try {
+        await window.CodX?.tryOpenCodx?.({ prevView: 'chat' });
+      } catch (e) {
+        console.error('[sidebar] CodX open failed', e);
+      }
+    });
   }
 
   function setupHscrollWrapWheel() {
