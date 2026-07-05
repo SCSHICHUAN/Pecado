@@ -238,6 +238,7 @@
       detailLine.remove();
       lines.hidden = true;
       row.classList.remove('codx-chat-status');
+      row.style.marginBottom = '0';
       window.__codxThinkingRow = null;
     };
 
