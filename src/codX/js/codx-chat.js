@@ -125,12 +125,12 @@
     detailLine.className = 'codx-chat-log-line codx-chat-log-detail';
     detailLine.hidden = true;
 
-    lines.appendChild(historyLine);
     lines.appendChild(mainRow);
     lines.appendChild(detailLine);
 
     body.appendChild(lines);
     row.appendChild(body);
+
     window.CodXLiveStatus?.bindLines?.(historyLine, phaseLine, detailLine);
     return row;
   }
@@ -139,7 +139,6 @@
     if (!payload) return false;
 
     if (payload.phase === 'error') {
-      // SSE流断开：记录错误，供 sendMessage catch 块做续写处理
       window.__codxLastStreamError = payload.error || '流式响应中断';
       window.__codxStreamErrorTs = Date.now();
       return true;
@@ -259,10 +258,10 @@
     input.style.overflowY = input.scrollHeight > maxH ? 'auto' : 'hidden';
   }
 
-  async function sendMessage() {
+  async function sendMessage(forceText) {
     const input = $('codx-chat-input');
     const btn = $('codx-chat-send');
-    const text = String(input?.value || '').trim();
+    const text = String(forceText || input?.value || '').trim();
     if (!text) return;
 
     const isResuming = window.__isCodxResuming === true;
@@ -404,6 +403,9 @@
         input.value = resumePrompt;
         window.__isCodxResuming = true;
         window.__codxResumeTarget = { codePath: codePathResume };
+        unsub();
+        window.CodXLiveStatus?.clear?.();
+        if (btn) btn.disabled = false;
         return;
       }
 
@@ -513,7 +515,7 @@
     }
   }
 
-  window.CodXChat = { bind, resetHistory };
+  window.CodXChat = { bind, resetHistory, sendMessage };
 
   // ---- CodX UI 设计稿选择 ----
   (function () {

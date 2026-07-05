@@ -779,10 +779,41 @@
     const streamId = `git-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const assistantEntry = appendMessage('assistant', '', { streaming: true });
     let acc = '';
+    let thinkingAcc = '';
+    let thinkingEl = null;
+    /** @type {HTMLElement | null} */
+    let thinkingScroll = null;
+    let thinkingDetached = false;
     let unsubscribe = () => {};
     if (typeof api.onVolcArkStreamEvent === 'function') {
       unsubscribe = api.onVolcArkStreamEvent((payload) => {
         if (!payload || payload.streamId !== streamId) return;
+        if (payload.phase === 'reasoning_delta' && payload.text) {
+          thinkingAcc += payload.text;
+          if (!thinkingEl) {
+            thinkingEl = ensureThinkingSection(assistantEntry?.wrap);
+            if (thinkingEl) {
+              thinkingScroll = thinkingEl;
+              thinkingScroll.addEventListener('scroll', () => {
+                if (!thinkingScroll) return;
+                var nearBottom = thinkingScroll.scrollTop + thinkingScroll.clientHeight + 2 >= thinkingScroll.scrollHeight;
+                thinkingDetached = !nearBottom;
+              });
+            }
+          }
+          if (thinkingEl) {
+            thinkingEl.textContent = thinkingAcc;
+            const detail = thinkingEl.parentElement;
+            if (detail && detail instanceof HTMLDetailsElement) {
+              detail.hidden = false;
+              detail.open = true;
+            }
+            if (thinkingScroll && !thinkingDetached) {
+              thinkingScroll.scrollTop = thinkingScroll.scrollHeight;
+            }
+          }
+          return;
+        }
         if (payload.phase === 'delta' && payload.text) {
           acc += payload.text;
           if (assistantEntry?.body) scheduleStreamMarkdownRender(assistantEntry.body, () => acc);
@@ -800,6 +831,10 @@
         gitContext,
       });
       assistantEntry?.wrap?.classList.remove('streaming');
+      // 折叠思考内容
+      if (thinkingEl && thinkingAcc.trim()) {
+        collapseThinkingSection(assistantEntry?.wrap);
+      }
       if (res?.error) {
         assistantEntry?.wrap?.classList.add('git-chat-msg-error');
         if (assistantEntry?.body) {
@@ -816,6 +851,33 @@
     } finally {
       unsubscribe();
     }
+  }
+
+  function ensureThinkingSection(wrap) {
+    if (!wrap) return null;
+    let section = wrap.querySelector('.git-chat-thinking');
+    if (section) return section;
+    const detail = document.createElement('details');
+    detail.className = 'git-chat-thinking-details';
+    detail.hidden = true;
+    const summary = document.createElement('summary');
+    summary.className = 'git-chat-thinking-summary';
+    summary.textContent = '思考中…';
+    const content = document.createElement('div');
+    content.className = 'git-chat-thinking';
+    detail.appendChild(summary);
+    detail.appendChild(content);
+    wrap.insertBefore(detail, wrap.firstChild);
+    return content;
+  }
+
+  function collapseThinkingSection(wrap) {
+    if (!wrap) return;
+    const detail = wrap.querySelector('.git-chat-thinking-details');
+    if (!detail) return;
+    const summary = detail.querySelector('.git-chat-thinking-summary');
+    if (summary) summary.textContent = '思考过程';
+    detail.open = false;
   }
 
   async function sendMessage(text, opts = {}) {

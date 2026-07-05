@@ -780,6 +780,68 @@ body.git-focus-mode #panel-git {
     50% { opacity: 0; }
 }
 
+/* 思考过程 */
+.git-chat-thinking-details {
+  margin-bottom: 8px;
+  border: 1px solid #303038;
+  border-radius: 6px;
+  background: #141418;
+  overflow: hidden;
+}
+
+.git-chat-thinking-summary {
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #8a8a9e;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.git-chat-thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.git-chat-thinking-summary::before {
+  content: '▶ ';
+  font-size: 9px;
+}
+
+.git-chat-thinking-details[open] > .git-chat-thinking-summary::before {
+  content: '▼ ';
+}
+
+.git-chat-thinking {
+  padding: 6px 10px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #888896;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-top: 1px solid #22222a;
+  max-height: 88px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
+}
+
+.git-chat-thinking::-webkit-scrollbar {
+  width: 4px;
+}
+
+.git-chat-thinking::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.git-chat-thinking::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 2px;
+}
+
+.git-chat-msg.streaming .git-chat-thinking {
+  color: #7a7a8a;
+}
+
 .git-chat-input-wrap {
     display: flex;
     align-items: flex-end;

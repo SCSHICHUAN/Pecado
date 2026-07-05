@@ -370,6 +370,11 @@ if (!chatInput || !sendButton || !chatContent || !scrollAnchor || !workspaceScro
 
   sendButton.addEventListener('click', () => sendMessage());
   xcodeRunBtn?.addEventListener('click', () => {
+    // 在 CodX 面板中，Run 按钮应触发 CodX 对话
+    if (window.CodX?.isActive?.()) {
+      window.CodXChat?.sendMessage?.('xcode_run');
+      return;
+    }
     if (sendButton.disabled) return;
     sendMessage('xcode_run');
   });
