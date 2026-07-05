@@ -23,14 +23,16 @@ flowchart LR
 | **流式对话** | SSE 增量输出，渲染进程 Markdown 实时渲染（markdown-it + highlight.js） |
 | **四种对话模式** | plain / context / agent / **git** — 主进程 `selectChatMode` 自动选择 |
 | **Open Folder** | 菜单打开工程目录，拉起 MCP server-filesystem；主 Pecado 展示目录树气泡 |
-| **Agent 工具** | Open Folder 后向 LLM 提供 **26** 个 Function（macOS，含 MCP / Skill / CodX / Xcode / `finish_task`），见下文 |
+| **Agent 工具** | Open Folder 后向 LLM 提供 **27** 个 Function（macOS，含 MCP / Skill / CodX / Xcode / UI / `finish_task`），见下文 |
+| **Figma 设计稿 → 代码** | CodX 底栏 **UI** 按钮选取设计稿；`read_UI_layer` 分层读取压缩 JSON；编辑区生成对应 UI 代码 |
+| **多媒体识别** | `read_media_file` 读取图片/SVG 为 Base64 送入 LLM 多模态上下文 |
 | **Skill 注入** | Workflow 侧栏 **Skill** Tab（数据层历史名 `devDocs`）；勾选「加入 AI」**常驻 Layer 树** + Instructions；正文用 `read_skill_section` 按需读 — 见 [Skill 设计](#skill-开发文档分层读-markdown-的设计) |
 | **Token 策略** | LLM 自行编排多轮 tools，以 **`finish_task(summary)`** 结束；`write-guard` 改码前强制 read；无运行意图勿调 `xcode_run` — 见 [Token 消耗优化](#token-消耗优化) |
-| **Workflow** | 局域网**文件服务**、文件归类、PPT 大纲、定时任务 — 见 [src/workflow/README.md](src/workflow/README.md) |
-| **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`；build/run 工具与自动编译，见 Agent 工具 |
+| **Workflow** | 局域网**文件服务**、文件归类、PPT 大纲、定时任务、**Xcode 模拟器管理** — 见 [src/workflow/README.md](src/workflow/README.md) |
+| **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`；build/run 工具与自动编译；**模拟器持久化选择** |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
-| **Git 面板** | 自研 SVG 提交时间线 + 底部 status / log / Pecado 助手；Pull / Push / Commit、节点 Git 操作（见下文） |
-| **CodX 编辑区** | 底栏 **打开编程** → Monaco 全屏编辑；文件树 + Tab + AI 行级改码（`codx_edit_plan` / `codx_edit`）；**⌘S** / **↥** 同步 Xcode — 见 [src/codX/README.md](src/codX/README.md) |
+| **Git 面板** | 自研 SVG 提交时间线 + 底部 status / log / pecado 助手；Pull / Push / Commit、节点 Git 操作；**Pecado 思考流实时展示** |
+| **CodX 编辑区** | 底栏 **打开编程** → Monaco 全屏编辑；文件树 + Tab + AI 行级改码（`codx_edit_plan` / `codx_edit`）；**⌘S** / **↥** 同步 Xcode；**SSE 中断自动续写** — 见 [src/codX/README.md](src/codX/README.md) |
 
 ---
 
@@ -148,9 +150,10 @@ flowchart LR
 | **MCP server-filesystem** | **14** | Open Folder 后 `listTools()`（含已废弃 `read_file`，请用 `read_text_file`） |
 | **Workflow Skill** | **5** | `workflow/skill/agent/tools.js` |
 | **CodX 行级编辑** | **2** | `codx_edit_plan`、`codx_edit` |
+| **CodX UI 设计稿** | **1** | `read_UI_layer`（分层读取压缩 Figma JSON） |
 | **Pecado Xcode** | **4** | 仅 **macOS** |
-| **合计（macOS Agent）** | **26** | |
-| **合计（非 macOS）** | **22** | 无 Xcode 四工具 |
+| **合计（macOS Agent）** | **27** | |
+| **合计（非 macOS）** | **23** | 无 Xcode 四工具 |
 
 ### MCP 工具（14，来自 server-filesystem）
 
@@ -200,6 +203,14 @@ flowchart LR
 | `codx_edit_plan` | 第一轮：`path` + 各段 `line_start`（大行号在前），不含代码 |
 | `codx_edit` | 第二轮：同 path 流式 `text`，段末 `pecado_LLM_line_end`；编辑器实时显示 |
 
+### CodX UI 工具（1）
+
+定义于 `src/codX/ui/tools.js`，分层读取压缩后的 Figma 设计稿 JSON。
+
+| 工具名 | 用途 |
+|--------|------|
+| `read_UI_layer` | 分层读取 Figma JSON：默认返回骨架（前3层完整节点），传 `nodeId + layer` 可深入指定节点 |
+
 **落盘时机**（非空文件流式阶段只改 Monaco，不实时写盘）：
 
 ```mermaid
@@ -231,6 +242,7 @@ flowchart LR
 | `mcp_tool` | `mcp-filesystem/tool-executor.js` |
 | `dev_docs_tool` | `workflow/skill/agent/tools.js`（module: `skill`） |
 | `codx_tool` | `codX/agent/tools.js` |
+| `codx_ui_tool` | `codX/ui/tools.js` |
 | `xcode_tool` | `xcode/agent/tools.js` |
 
 `finish_task` 在 loop 内处理，不经过外部 EXEC 模块。
@@ -429,8 +441,8 @@ Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式
 | **llm-server** | `llm-server/` | HTTP/SSE、INFER、PARSE（`EXECUTE_*` / `FEED_*`） | 不依赖 pecado / mcp / xcode |
 | **mcp-filesystem** | `mcp-filesystem/` | MCP 连接、读写沙箱、工程上下文、`EXECUTE_execute_tool` | 不选对话模式、不注册 VOLC IPC |
 | **xcode** | `xcode/` | 流式写盘、pbxproj、创建确认、Agent build/run | 不注册 VOLC IPC |
-| **codX** | `codX/` | Monaco 编辑、底栏对话、Agent 工具实现与 IPC | 不含 loop 代码；**tools 由 agent-loop 调度** |
-| **workflow** | `workflow/` | Skill 面板、文件服务、归类/PPT/定时任务 | 不进 pecado 路由 |
+| **codX** | `codX/` | Monaco 编辑、底栏对话、Agent 工具实现与 IPC、**Figma 设计稿导入与分层读取** | 不含 loop 代码；**tools 由 agent-loop 调度** |
+| **workflow** | `workflow/` | Skill 面板、文件服务、归类/PPT/定时任务、**Xcode 模拟器管理**、**设计稿导入** | 不进 pecado 路由 |
 | **markdown** | `markdown/` | Skill Layer 树解析（`skill-layer.js`） | — |
 | **commands** | `commands/` | 回合结束后 JSON 本地指令 | 不进 Agent Loop |
 | **gitgraph** | `gitgraph/` | Git 时间线、Pull/Push/Commit、节点 Git 操作、工程路径栏 | 不进 Agent Loop |
@@ -483,7 +495,8 @@ flowchart TB
     TYPE{route_task by type}
     TYPE -->|mcp_tool| MCP[mcp-filesystem]
     TYPE -->|dev_docs_tool| SK[skill]
-    TYPE -->|codx_tool| CX[codX]
+    TYPE -->|codx_tool| CX[codX edit]
+    TYPE -->|codx_ui_tool| CXU[codX UI]
     TYPE -->|xcode_tool| XC[xcode]
   end
 
@@ -626,6 +639,8 @@ function route_task(parsedTask) {
   switch (parsedTask.type) {
     case 'mcp_tool':
       return { module: 'mcp-filesystem', task: parsedTask };
+    case 'codx_ui_tool':
+      return { module: 'codx-ui', task: parsedTask };
     // case 'git_op':
     //   return { module: 'gitgraph', task: parsedTask };
     default:
@@ -771,7 +786,8 @@ flowchart TB
     RT[route_task]
     RT -->|mcp_tool| MOD[mcp-filesystem]
     RT -->|dev_docs_tool| SK[skill]
-    RT -->|codx_tool| CX[codX]
+    RT -->|codx_tool| CX[codX edit]
+    RT -->|codx_ui_tool| CXU[codX UI]
     RT -->|xcode_tool| XC[xcode]
   end
 
@@ -1029,6 +1045,71 @@ git push origin main
 | Skill 执行日志 | `src/shared/agent-log.js`、`src/pecado/js/skill-log-panel.js` |
 | IPC 通道常量 | `src/shared/ipc-channels.js` |
 | Preload | `src/preload/preload.js` |
+
+---
+
+## 最近更新（本地未推送 — 14 commits, 44 files）
+
+### 1. Figma 设计稿 → UI 代码（`read_UI_layer`）
+
+| 文件 | 职责 |
+|------|------|
+| `src/codX/ui/compress-figma.js` | Figma JSON 裁剪（删空节点/空属性）+ 压缩（长key→短key `S0/S1/...`，输出 `shot-*.json`） |
+| `src/codX/ui/read-ui-layer.js` | 分层读取压缩 JSON：默认骨架（前3层完整节点），传入 `nodeId + layer` 可逐层深入 |
+| `src/codX/ui/tools.js` | `read_UI_layer` 工具定义，经 `codx_ui_tool` 分发 |
+| `src/codX/ui/index.js` | 模块门面 |
+| `src/workflow/design-import/copy.js` | Figma Framelink 导出目录→`DesignImports/`，检测 JSON + 生成 `review.md` |
+| `src/codX/css/index.css` | UI 选择按钮/列表/对话气泡样式（+608 行） |
+| `src/codX/js/codx-chat.js` | UI 设计稿选取逻辑（+433 行） |
+| `src/codX/js/index.js` | UI 按钮集成（+40 行） |
+| `src/main/html/index.html` | `codx-ui-pick-btn` 按钮 |
+| `src/main/js/main.js` | `WORKFLOW.DESIGN_IMPORT` IPC 注册 |
+| `src/preload/preload.js` | `designImport` API |
+| `src/shared/ipc-channels.js` | `DESIGN_IMPORT` 通道 |
+
+**工作流**：用户点击 CodX 底栏 **UI** 按钮 → 选取设计稿目录 → 气泡显示 icon+名称 → 发送时自动 `compressFigmaBundle` → LLM 通过 `read_UI_layer` 分层读取 JSON → 编辑区生成对应 UI 代码。
+
+### 2. 图片/多媒体识别（`read_media_file`）
+
+| 文件 | 职责 |
+|------|------|
+| `src/mcp-filesystem/read-media.js` | 新增文件：图片/SVG→Base64 多模态工具 |
+| `src/shared/media-utils.js` | 新增文件：图片/SVG 统一转码（双端通用） |
+| `src/mcp-filesystem/tool-executor.js` | 注册 `read_media_file` |
+| `src/llm-server/format.js` | 多模态 content 格式适配 |
+
+### 3. SSE 流中断自动续写
+
+| 文件 | 职责 |
+|------|------|
+| `src/agent-loop/app-agent-loop.js` | 流中断检测 + 重发策略（+84 行） |
+| `src/llm-server/stream.js` | SSE `[DONE]`/error 检测 |
+| `src/codX/js/codx-chat.js` | 续写后 edit 而非重写 |
+| `src/agent-loop/capability-prompt.js` | LLM 约束：截断不重写，用 `codx_edit` 追加 |
+
+### 4. Xcode 模拟器选择
+
+| 文件 | 职责 |
+|------|------|
+| `src/xcode/simulator-prefs.js` | 新增文件：模拟器 UDID 持久化（`xcode-simulator.json`） |
+| `src/workflow/js/panel.js` | Workflow 面板 **Xcode** 栏 — 模拟器列表 + 刷新 + 选择（+270 行） |
+| `src/workflow/html/panel.html` | Xcode 栏 HTML |
+| `src/workflow/css/index.css` | Xcode 栏样式（+179 行） |
+| `src/workflow/register.js` | `XCODE_SIMULATOR` IPC 注册（+185 行） |
+| `src/xcode/build-runner.js` | `xcode_run` 使用选中模拟器 |
+
+### 5. UI/UX 优化
+
+| 区域 | 改动 |
+|------|------|
+| **Git 面板** | Pecado 思考流实时展示（`gitgraph/js/git-chat.js` +62 行，`gitgraph/css/index.css` +62 行） |
+| **Git 面板** | 默认 tab 切为 pecado（`gitgraph/js/index.js`） |
+| **CodX 编辑器** | 同步按钮 pending 高亮（`codx/js/editor.js`） |
+| **CodX 编辑器** | 工具栏按钮风格统一（线型图标，28x22，`codx/css/index.css`） |
+| **CodX 编辑器** | 关闭按钮、panel toggle 风格优化 |
+| **主面板** | 侧栏新增 Coding 按钮（`main/html/index.html` + `pecado/js/index.js`） |
+| **Workflow** | 设计稿导入 IPC（`workflow/register.js`） |
+| **Pecado** | 路由 + Xcode run 按钮联动 CodX 面板 |
 
 ---
 
