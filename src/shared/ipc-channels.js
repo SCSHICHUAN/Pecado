@@ -90,6 +90,12 @@ module.exports = {
     LIST_UI_DESIGNS: 'workflow-list-ui-designs',
     OPEN_UI_DESIGN: 'workflow-open-ui-design',
     GET_UI_DESIGN_INFO: 'workflow-get-ui-design-info',
+    /** invoke → { projectRoot? } → { ok, simulators[] } */
+    LIST_SIMULATORS: 'workflow-list-simulators',
+    /** invoke → { projectRoot? } → { ok, simulator } */
+    GET_SIMULATOR: 'workflow-get-simulator',
+    /** invoke → { projectRoot?, udid, name, os } → { ok } */
+    SAVE_SIMULATOR: 'workflow-save-simulator',
   },
   SKILL: {
     /** main → renderer：Skill tool 执行日志 */

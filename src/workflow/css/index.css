@@ -1452,3 +1452,119 @@
   background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
 }
+
+/* -------- Xcode 模拟器面板 -------- */
+.wf-xcode-section {
+  margin-bottom: 16px;
+}
+
+.wf-xcode-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.wf-xcode-section-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: #ccc;
+}
+
+.wf-xcode-sim-list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.wf-xcode-sim-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: #666;
+  font-size: 13px;
+}
+
+.wf-xcode-sim-group {
+  margin-bottom: 12px;
+}
+
+.wf-xcode-sim-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 0;
+  border-bottom: 1px solid #333;
+  margin-bottom: 4px;
+}
+
+.wf-xcode-sim-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 13px;
+  color: #bbb;
+}
+
+.wf-xcode-sim-row:hover {
+  background: rgba(255,255,255,0.06);
+}
+
+.wf-xcode-sim-row.is-selected {
+  background: rgba(64, 156, 255, 0.15);
+  color: #fff;
+}
+
+.wf-xcode-sim-row .wf-xcode-sim-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wf-xcode-sim-row.is-selected .wf-xcode-sim-radio {
+  border-color: #409cff;
+}
+
+.wf-xcode-sim-row.is-selected .wf-xcode-sim-radio::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #409cff;
+}
+
+.wf-xcode-sim-row .wf-xcode-sim-state {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #333;
+  color: #888;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.wf-xcode-sim-row .wf-xcode-sim-state.is-booted {
+  background: rgba(64, 156, 255, 0.2);
+  color: #409cff;
+}
+
+.wf-xcode-ios-ver {
+  font-size: 13px;
+  color: #bbb;
+  padding: 8px 0;
+}
+
+#wf-xcode-log {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #888;
+}

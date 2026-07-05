@@ -93,6 +93,16 @@
     return head + lines.join('\n') + err;
   }
 
+  const WORKFLOW_TAB_KEY = 'workflow.lastTab';
+
+  function getDefaultTab() {
+    try {
+      return localStorage.getItem(WORKFLOW_TAB_KEY) || 'skill';
+    } catch {
+      return 'skill';
+    }
+  }
+
   function switchTab(tabId) {
     document.querySelectorAll('.workflow-tab').forEach((btn) => {
       const active = btn.dataset.wfTab === tabId;
@@ -118,6 +128,10 @@
     if (tabId === 'ui-import') {
       refreshUiImportList().catch(() => {});
     }
+    if (tabId === 'xcode') {
+      refreshXcodeSimList().catch(() => {});
+    }
+    try { localStorage.setItem(WORKFLOW_TAB_KEY, tabId); } catch {}
   }
 
   function getDownloadDir() {
@@ -1424,6 +1438,100 @@
     await refreshUiImportList();
   }
 
+  // ─── Xcode 模拟器 ───
+  /** @type {Array<{ udid:string, name:string, os:string, state:string }>} */
+  let simCandidates = [];
+  /** @type {{ udid:string, name:string, os:string }|null} */
+  let selectedSim = null;
+
+  async function refreshXcodeSimList() {
+    const api = getApi();
+    if (!api?.workflowListSimulators) {
+      const list = $('wf-xcode-sim-list');
+      if (list) list.innerHTML = '<div class="wf-xcode-sim-empty">API 不可用</div>';
+      return;
+    }
+    const list = $('wf-xcode-sim-list');
+    if (list) list.innerHTML = '<div class="wf-xcode-sim-empty">加载中…</div>';
+    const res = await getApi()?.workflowListSimulators?.();
+    if (!res?.ok) {
+      if (list) list.innerHTML = `<div class="wf-xcode-sim-empty">加载失败：${escapeHtml(res?.error || '未知错误')}</div>`;
+      return;
+    }
+    simCandidates = Array.isArray(res.simulators) ? res.simulators : [];
+    selectedSim = res.preferred || null;
+    renderXcodeSimList();
+  }
+
+  function renderXcodeSimList() {
+    const list = $('wf-xcode-sim-list');
+    if (!list) return;
+
+    if (!simCandidates.length) {
+      list.innerHTML = '<div class="wf-xcode-sim-empty">无可用模拟器，点击「刷新」重新获取</div>';
+      return;
+    }
+
+    // 按 iOS 版本分组
+    const versionMap = new Map();
+    for (const s of simCandidates) {
+      const v = s.os || '未知';
+      if (!versionMap.has(v)) versionMap.set(v, []);
+      versionMap.get(v).push(s);
+    }
+    const versions = [...versionMap.keys()].sort((a, b) => {
+      const aParts = a.split('.').map(Number);
+      const bParts = b.split('.').map(Number);
+      for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+        if ((aParts[i] || 0) !== (bParts[i] || 0)) return (bParts[i] || 0) - (aParts[i] || 0);
+      }
+      return 0;
+    });
+
+    let html = '';
+    for (const ver of versions) {
+      const devices = versionMap.get(ver) || [];
+      html += `<div class="wf-xcode-sim-group">`;
+      html += `<div class="wf-xcode-sim-group-label">iOS ${escapeHtml(ver)}</div>`;
+      for (const s of devices) {
+        const sel = selectedSim && selectedSim.udid === s.udid ? ' is-selected' : '';
+        const booted = s.state === 'Booted' ? ' is-booted' : '';
+        const stateLabel = s.state === 'Booted' ? '已启动' : '';
+        html += `<div class="wf-xcode-sim-row${sel}" data-udid="${escapeHtml(s.udid)}" data-name="${escapeHtml(s.name)}" data-os="${escapeHtml(ver)}">`;
+        html += `<span class="wf-xcode-sim-radio"></span>`;
+        html += `<span class="wf-xcode-sim-name">${escapeHtml(s.name)}</span>`;
+        if (stateLabel) {
+          html += `<span class="wf-xcode-sim-state${booted}">${stateLabel}</span>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+    list.innerHTML = html;
+
+    // 点击选择
+    list.querySelectorAll('.wf-xcode-sim-row').forEach((row) => {
+      row.addEventListener('click', () => {
+        selectXcodeSim(row.dataset.udid, row.dataset.name, row.dataset.os);
+      });
+    });
+  }
+
+  async function selectXcodeSim(udid, name, os) {
+    const res = await getApi()?.workflowSaveSimulator?.({ udid, name, os });
+    if (!res?.ok) {
+      const log = $('wf-xcode-log');
+      if (log) log.textContent = `保存失败：${res?.error || '未知错误'}`;
+      return;
+    }
+    selectedSim = { udid, name, os };
+    renderXcodeSimList();
+    const log = $('wf-xcode-log');
+    if (log) log.textContent = `已选择：${name} (iOS ${os})`;
+  }
+
+  // ─── DevDocs Storage ───
+
   async function openDevDocsStorageDir() {
     const res = await getApi()?.workflowDevDocsOpenDir?.();
     if (!res?.ok) {
@@ -1897,6 +2005,9 @@
     $('wf-ui-import-pick')?.addEventListener('click', () => {
       importUiDesignFromPicker().catch((e) => setUiImportStatus(String(e), 'error'));
     });
+    $('wf-xcode-refresh')?.addEventListener('click', () => {
+      refreshXcodeSimList().catch(() => {});
+    });
     $('wf-devdocs-list-edit')?.addEventListener('click', () => {
       setDevDocsListSelectMode(!devDocsListSelectMode);
     });
@@ -1987,7 +2098,7 @@
     if (!mount) return;
     await loadPanelHtml();
     bindUi();
-    switchTab('skill');
+    switchTab(getDefaultTab());
     setupProjectListener();
     await refreshState();
   }

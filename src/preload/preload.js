@@ -111,6 +111,9 @@ try {
       ipcRenderer.invoke(WORKFLOW.OPEN_UI_DESIGN, payload || {}),
     workflowGetUiDesignInfo: (payload) =>
       ipcRenderer.invoke(WORKFLOW.GET_UI_DESIGN_INFO, payload || {}),
+    workflowListSimulators: () => ipcRenderer.invoke(WORKFLOW.LIST_SIMULATORS),
+    workflowGetSimulator: () => ipcRenderer.invoke(WORKFLOW.GET_SIMULATOR),
+    workflowSaveSimulator: (payload) => ipcRenderer.invoke(WORKFLOW.SAVE_SIMULATOR, payload || {}),
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {

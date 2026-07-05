@@ -40,6 +40,8 @@ const { compressFigmaBundle, hasCompressed } = require('../codX/ui/compress-figm
 const { warmProjectTreeCache } = require('../mcp-filesystem/project-context');
 const { formatMcpTreeAscii } = require('../shared/format-tree');
 const { SKILL } = require('../shared/ipc-channels');
+const { listIosSimulatorCandidates } = require('../xcode/build-runner');
+const { saveSimulatorPref, loadSimulatorPref } = require('../xcode/simulator-prefs');
 
 const PANEL_HTML = path.join(__dirname, 'html', 'panel.html');
 
@@ -452,6 +454,73 @@ function register(ipcMain, getMainWindowFn) {
       const previewPaths = getDesignPreviewPaths(projectRoot, relPath);
 
       return { ok: true, relPath, treeAscii, previewPaths };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.LIST_SIMULATORS, async () => {
+    try {
+      if (process.platform !== 'darwin') {
+        return { ok: true, simulators: [] };
+      }
+      const candidates = await listIosSimulatorCandidates();
+      // 按 iOS 版本分组并排序（新版在前）
+      const versionMap = new Map();
+      for (const s of candidates) {
+        const v = s.os || '未知';
+        if (!versionMap.has(v)) versionMap.set(v, []);
+        versionMap.get(v).push(s);
+      }
+      const versions = [...versionMap.keys()].sort((a, b) => {
+        const aParts = a.split('.').map(Number);
+        const bParts = b.split('.').map(Number);
+        for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+          if ((aParts[i] || 0) !== (bParts[i] || 0)) return (bParts[i] || 0) - (aParts[i] || 0);
+        }
+        return 0;
+      });
+      const preferred = loadSimulatorPref();
+      return {
+        ok: true,
+        simulators: candidates,
+        versions,
+        versionMap: Object.fromEntries(versionMap),
+        preferred: preferred || null,
+      };
+    } catch (e) {
+      return { ok: false, error: e.message || String(e), simulators: [] };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.GET_SIMULATOR, async () => {
+    const preferred = loadSimulatorPref();
+    if (!preferred) return { ok: true, simulator: null };
+    // 验证模拟器仍存在
+    try {
+      const candidates = await listIosSimulatorCandidates();
+      const found = candidates.find(
+        (c) => c.udid.toLowerCase() === preferred.udid.toLowerCase()
+      );
+      if (!found) {
+        return { ok: true, simulator: null, hint: '上次选择的模拟器已不可用，请重新选择' };
+      }
+      return { ok: true, simulator: { udid: found.udid, name: found.name, os: found.os } };
+    } catch {
+      return { ok: true, simulator: preferred };
+    }
+  });
+
+  ipcMain.handle(WORKFLOW.SAVE_SIMULATOR, async (_evt, payload) => {
+    try {
+      const udid = String(payload?.udid || '').trim();
+      if (!udid) return { ok: false, error: '缺少 UDID' };
+      saveSimulatorPref({
+        udid,
+        name: String(payload?.name || '').trim(),
+        os: String(payload?.os || '').trim(),
+      });
+      return { ok: true };
     } catch (e) {
       return { ok: false, error: e.message || String(e) };
     }

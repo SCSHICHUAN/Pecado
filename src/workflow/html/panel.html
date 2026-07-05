@@ -13,6 +13,7 @@
   <nav class="workflow-tabs" role="tablist" aria-label="Workflow 功能">
     <button type="button" class="workflow-tab is-active" data-wf-tab="skill" role="tab" aria-selected="true">Skill</button>
     <button type="button" class="workflow-tab" data-wf-tab="ui-import" role="tab" aria-selected="false">UI</button>
+    <button type="button" class="workflow-tab" data-wf-tab="xcode" role="tab" aria-selected="false">Xcode</button>
     <button type="button" class="workflow-tab" data-wf-tab="download" role="tab" aria-selected="false">文件服务</button>
     <button type="button" class="workflow-tab" data-wf-tab="organize" role="tab" aria-selected="false">文件归类</button>
     <button type="button" class="workflow-tab" data-wf-tab="ppt" role="tab" aria-selected="false">写 PPT</button>
@@ -282,6 +283,22 @@
           <li class="wf-skill-empty">暂无设计稿</li>
         </ul>
       </div>
+    </section>
+
+    <section class="workflow-panel" data-wf-panel="xcode" role="tabpanel" hidden>
+      <p class="workflow-desc" id="wf-xcode-hint">
+        选择运行项目时使用的 <strong>iOS 模拟器</strong>；未选择时 Agent 将自动匹配。
+      </p>
+      <div class="wf-xcode-section">
+        <div class="wf-xcode-section-head">
+          <span class="wf-xcode-section-title">模拟器</span>
+          <button type="button" class="wf-btn wf-btn-sm" id="wf-xcode-refresh" title="从 Xcode 获取最新列表">刷新</button>
+        </div>
+        <div class="wf-xcode-sim-list" id="wf-xcode-sim-list">
+          <div class="wf-xcode-sim-empty">点击「刷新」获取模拟器列表</div>
+        </div>
+      </div>
+      <pre class="wf-log" id="wf-xcode-log"></pre>
     </section>
   </div>
 </div>

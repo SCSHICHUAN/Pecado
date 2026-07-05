@@ -51,6 +51,7 @@ function buildCapabilityAgentPrompt() {
       '【能力 · Xcode（macOS）】',
       '· xcode_project_status / xcode_build / xcode_run / xcode_test',
       '· 要在模拟器看最新 UI 效果 → xcode_run；仅验证编译 → xcode_build',
+      '· xcode_run 的 simulator 参数可选：用户在 Workflow → Xcode 面板选择的模拟器会自动生效',
       ''
     );
   }

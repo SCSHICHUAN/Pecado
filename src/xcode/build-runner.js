@@ -1972,4 +1972,5 @@ module.exports = {
   formatRunObservation,
   getProjectStatus,
   formatProjectStatusObservation,
+  listIosSimulatorCandidates,
 };

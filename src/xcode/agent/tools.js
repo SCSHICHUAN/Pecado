@@ -10,6 +10,7 @@ const {
   formatBuildObservation,
   formatRunObservation,
 } = require('../build-runner');
+const { loadSimulatorPref } = require('../simulator-prefs');
 const {
   publishXcodeProgress,
   formatStepElapsed,
@@ -300,10 +301,13 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
   const onLine = createXcodeLineLogger(name, execOpts);
 
   if (name === 'xcode_run') {
+    // 若用户未指定但已保存模拟器偏好，自动注入
+    const pref = loadSimulatorPref();
+    const effectiveSimulator = simulator || (pref ? pref.udid : '');
     const result = await runXcodeProject(projectRoot, {
       scheme: scheme || undefined,
       destination: destination || undefined,
-      simulator: simulator || undefined,
+      simulator: effectiveSimulator || undefined,
       onLine,
     });
     const text = formatRunObservation(result);
