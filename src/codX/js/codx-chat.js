@@ -265,6 +265,9 @@
     const text = String(input?.value || '').trim();
     if (!text) return;
 
+    const isResuming = window.__isCodxResuming === true;
+    window.__isCodxResuming = false;
+
     const api = window.electronAPI;
     if (!api?.volcArkBotsChatStream) {
       alert('对话 API 不可用');
@@ -295,7 +298,7 @@
       window.__codxClearDesign();
     }
 
-    addMessage('user', text, design);
+    addMessage('user', isResuming ? '（续写中…）' : text, design);
     history.push({ role: 'user', content: llmContent });
     input.value = '';
     syncInputHeight(input);
@@ -391,36 +394,17 @@
         thinking.remove();
         if (streamRow) { streamRow.classList.remove('codx-chat-streaming'); }
 
-        let editorContent = '';
-        try {
-          if (window.CodXEditor?.getCachedContent) {
-            const cached = window.CodXEditor.getCachedContent(codePathResume);
-            if (cached && typeof cached === 'object') editorContent = String(cached.content || '');
-            else if (cached) editorContent = String(cached);
-          }
-          if (!editorContent && api.mcpFsReadTextFile) {
-            const pr = window.CodX?.getProjectRoot?.() || '';
-            const readRes = await api.mcpFsReadTextFile({ path: codePathResume, projectRoot: pr });
-            if (readRes && readRes.ok) editorContent = readRes.content || '';
-          }
-        } catch (_) {}
-
-        if (editorContent) {
-          addMessage('assistant', `⚠️ 流式输出中断（${streamErrorResume || res?.error || '网络异常'}），正在自动续写…`);
-          const resumePrompt =
-            '【系统】上一轮流式输出意外中断。' +
-            '以下是当前编辑器中已写入的代码（可能不完整），请检查并补全剩余部分，确保代码完整可运行。' +
-            '使用 codx_edit 完成未写完的代码。\n\n' +
-            `文件：${codePathResume}\n\`\`\`\n${editorContent}\n\`\`\``;
-          history.push({ role: 'assistant', content: raw || '' });
-          history.push({ role: 'user', content: resumePrompt });
-          addMessage('user', '（自动续写：流中断，补全 ' + codePathResume + '）');
-          window.__codxResumeTarget = { codePath: codePathResume };
-        } else {
-          addMessage('assistant', `⚠️ 流式输出中断（${streamErrorResume || res?.error || '网络异常'}），无法读取 ${codePathResume} 内容，请手动重新发送。`);
-          history.push({ role: 'assistant', content: raw || '' });
-        }
-        return; // 跳过后续正常路径，由 finally 后的 resume 触发 sendMessage
+        addMessage('assistant', `⚠️ 流式输出中断（${streamErrorResume || res?.error || '网络异常'}），正在自动续写…`);
+        const resumePrompt =
+          '【系统】上一轮 codx_edit 写入被意外中断，代码已部分写入文件 `' + codePathResume + '`。' +
+          '请先用 read_text_file 读取该文件当前内容，确认截断位置。' +
+          '然后使用 codx_edit_plan → codx_edit 从截断处补全剩余代码。' +
+          '切勿重写已有代码，只补全末尾缺失部分。';
+        history.push({ role: 'assistant', content: '[codx_edit 流式写入被中断]' });
+        input.value = resumePrompt;
+        window.__isCodxResuming = true;
+        window.__codxResumeTarget = { codePath: codePathResume };
+        return;
       }
 
       const invokeContent = res?.content || (res?.error ? `错误：${res.error}` : '');
@@ -463,37 +447,16 @@
 
       window.__codxResumeTarget = null;
       if (codePath && (streamError || e && e.message)) {
-        // 尝试读取当前编辑器内容
-        let editorContent = '';
-        try {
-          if (window.CodXEditor?.getCachedContent) {
-            const cached = window.CodXEditor.getCachedContent(codePath);
-            if (cached && typeof cached === 'object') editorContent = String(cached.content || '');
-            else if (cached) editorContent = String(cached);
-          }
-          if (!editorContent && api.mcpFsReadTextFile) {
-            const pr = window.CodX?.getProjectRoot?.() || '';
-            const readRes = await api.mcpFsReadTextFile({ path: codePath, projectRoot: pr });
-            if (readRes && readRes.ok) editorContent = readRes.content || '';
-          }
-        } catch (_) {}
-
-        if (editorContent) {
-          addMessage('assistant', `⚠️ 流式输出中断（${streamError || e.message || '网络异常'}），正在自动续写…`);
-
-          const resumePrompt =
-            '【系统】上一轮流式输出意外中断。' +
-            '以下是当前编辑器中已写入的代码（可能不完整），请检查并补全剩余部分，确保代码完整可运行。' +
-            '使用 codx_edit 完成未写完的代码。\n\n' +
-            `文件：${codePath}\n\`\`\`\n${editorContent}\n\`\`\``;
-
-          history.push({ role: 'assistant', content: raw || '' });
-          history.push({ role: 'user', content: resumePrompt });
-          addMessage('user', '（自动续写：流中断，补全 ' + codePath + '）');
-          window.__codxResumeTarget = { codePath };
-        } else {
-          addMessage('assistant', `⚠️ 流式输出中断（${streamError || e.message || '网络异常'}），无法读取 ${codePath} 内容，请手动检查并重新发送。`);
-        }
+        addMessage('assistant', `⚠️ 流式输出中断（${streamError || e.message || '网络异常'}），正在自动续写…`);
+        const resumePrompt =
+          '【系统】上一轮 codx_edit 写入被意外中断，代码已部分写入文件 `' + codePath + '`。' +
+          '请先用 read_text_file 读取该文件当前内容，确认截断位置。' +
+          '然后使用 codx_edit_plan → codx_edit 从截断处补全剩余代码。' +
+          '切勿重写已有代码，只补全末尾缺失部分。';
+        history.push({ role: 'assistant', content: '[codx_edit 流式写入被中断]' });
+        input.value = resumePrompt;
+        window.__isCodxResuming = true;
+        window.__codxResumeTarget = { codePath };
       } else {
         addMessage('assistant', `异常：${e.message || String(e)}`);
       }

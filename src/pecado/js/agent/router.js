@@ -238,6 +238,7 @@ function register(ipcMain) {
           xcodeStreamPath: xcodeStreamPath || undefined,
           userText: String(userText || ''),
           codxChat: Boolean(codxChat),
+          sender,
         });
       } finally {
         unbindAgentLogSender();

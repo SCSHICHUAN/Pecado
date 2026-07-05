@@ -100,6 +100,7 @@ async function EXECUTE_call_llm(chatOpts, streamHooks = {}) {
         content: ev.content,
         toolCalls: ev.toolCalls,
         parseContext: { writeParsers, codxEditParsers },
+        doneReceived: ev.doneReceived !== false,
       };
     }
   }

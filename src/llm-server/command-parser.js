@@ -216,7 +216,9 @@ function EXECUTE_parse_command(inferRound) {
   const { finishReason, content, toolCalls, parseContext = {} } = inferRound;
   const { writeParsers = new Map(), codxEditParsers = new Map() } = parseContext;
 
-  if (finishReason !== 'tool_calls' || !toolCalls?.length) {
+  const isCodeWriting = finishReason === 'length' && Array.isArray(toolCalls) && toolCalls.length > 0;
+
+  if ((finishReason !== 'tool_calls' && !isCodeWriting) || !toolCalls?.length) {
     return {
       tasks: [],
       assistantMessage: null,
@@ -264,7 +266,7 @@ function EXECUTE_parse_command(inferRound) {
       content: content ? String(content) : '',
       tool_calls: toolCalls,
     },
-    finishReason,
+    finishReason: isCodeWriting ? 'tool_calls' : finishReason,
     content: content || '',
   };
 }

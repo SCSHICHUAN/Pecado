@@ -6,6 +6,8 @@
  * 【入口】EXECUTE_execute_tool — Loop 调用本模块时使用的执行方法
  * 【出口】FEED_tool_result    — 本模块向 Loop 反馈 tool 执行 Observation
  */
+const fs = require('fs');
+const path = require('path');
 const projectIo = require('./index');
 const { prepareMcpToolPath, resolveMcpDirectoryPath } = require('./read');
 const { getMainWindow } = require('./ipc');
@@ -126,6 +128,27 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
   const isCreateDir = name === 'create_directory';
   const isWriteFile = name === 'write_file';
   const isNewPath = relPath && !xcodeProject.pathExistsUnderRoot(projectRoot, relPath);
+
+  // 禁止 write_file 覆盖已有代码文件：文件存在且有内容时必须用 codx_edit
+  if (isWriteFile && !isNewPath && !execHints.skipPrompt && !execHints.codxDeferred) {
+    try {
+      const absPath = projectIo.resolveUnderProject(projectRoot, relPath);
+      if (fs.existsSync(absPath) && fs.statSync(absPath).isFile()) {
+        const existing = fs.readFileSync(absPath, 'utf8');
+        if (existing.trim().length > 0) {
+          return {
+            isError: true,
+            content: [{
+              type: 'text',
+              text:
+                `禁止 write_file 覆盖已有代码文件 ${args.path}（文件已有 ${existing.split('\n').length} 行）。` +
+                '请先 read_text_file 读取当前内容，然后使用 codx_edit_plan → codx_edit 精确修改。',
+            }],
+          };
+        }
+      }
+    } catch (_) {}
+  }
 
   let xcodeIntegrate = !!execHints.xcodeIntegrate;
   let xcodeMeta = execHints.xcodeMeta || null;

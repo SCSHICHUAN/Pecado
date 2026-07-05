@@ -52,6 +52,7 @@ async function postChatCompletion(opts) {
     model: opts.model,
     messages: sanitizeMessagesForVolcApi(opts.messages),
     stream: !!opts.stream,
+    max_tokens: opts.maxTokens || 8192,
   };
   if (opts.tools?.length) {
     body.tools = opts.tools;
