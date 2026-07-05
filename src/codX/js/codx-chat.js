@@ -99,6 +99,18 @@
     const body = document.createElement('div');
     body.className = 'codx-chat-msg-body codx-chat-thinking';
 
+    // history 折叠面板
+    const details = document.createElement('details');
+    details.className = 'codx-chat-thinking-details';
+    details.hidden = true;
+    const summary = document.createElement('summary');
+    summary.className = 'codx-chat-thinking-summary';
+    summary.textContent = 'history';
+    const histScroll = document.createElement('div');
+    histScroll.className = 'codx-chat-thinking-scroll';
+    details.appendChild(summary);
+    details.appendChild(histScroll);
+
     const lines = document.createElement('div');
     lines.className = 'codx-chat-live-lines';
 
@@ -128,8 +140,106 @@
     lines.appendChild(mainRow);
     lines.appendChild(detailLine);
 
+    body.appendChild(details);
     body.appendChild(lines);
     row.appendChild(body);
+
+    // history 滚动逻辑
+    let histDetached = false;
+    histScroll.addEventListener('scroll', function () {
+      var near = histScroll.scrollTop + histScroll.clientHeight + 2 >= histScroll.scrollHeight;
+      histDetached = !near;
+    });
+
+    let _callSeq = 0;
+    let _pendingKey = '';
+    let _pendingCount = 0;
+    let _pendingExtra = [];
+    let _pendingHead = null;
+
+    row._recordCall = function (name, path) {
+      _callSeq++;
+      var label = String(name || '?').trim();
+      var file = String(path || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
+      var key = label + '|' + file;
+
+      function build(seq, n, cnt) {
+        var line = document.createElement('div');
+        line.className = 'codx-chat-call-entry';
+        var idx = document.createElement('span');
+        idx.className = 'call-idx';
+        idx.textContent = seq;
+        var mod = document.createElement('span');
+        mod.className = 'call-mod';
+        mod.textContent = (/^xcode_/.test(n) ? 'Xcode' : /^codx_edit|^write_file|^create_directory/.test(n) ? 'CodX' : /^read_skill|^run_skill/.test(n) ? 'Skill' : 'MCP');
+        var sep = document.createElement('span');
+        sep.className = 'call-sep';
+        sep.textContent = '·';
+        var nameEl = document.createElement('span');
+        nameEl.className = 'call-name';
+        nameEl.textContent = n;
+        line.appendChild(idx);
+        line.appendChild(mod);
+        line.appendChild(sep);
+        line.appendChild(nameEl);
+        if (file) {
+          var sep2 = document.createElement('span');
+          sep2.className = 'call-sep';
+          sep2.textContent = '·';
+          var param = document.createElement('span');
+          param.className = 'call-param';
+          param.textContent = file;
+          line.appendChild(sep2);
+          line.appendChild(param);
+        }
+        if (cnt >= 5) {
+          var tag = document.createElement('span');
+          tag.className = 'call-batch';
+          tag.textContent = '[' + cnt + ' 次调用]';
+          line.appendChild(tag);
+        }
+        return line;
+      }
+
+      if (_pendingKey === key) {
+        _pendingCount++;
+        if (_pendingCount < 5) {
+          var ext = build(_callSeq, label, 0);
+          histScroll.appendChild(ext);
+          _pendingExtra.push(ext);
+        } else if (_pendingCount === 5) {
+          _pendingExtra.forEach(function (el) { el.remove(); });
+          _pendingExtra = [];
+          _pendingHead.replaceWith(build(_callSeq, label, _pendingCount));
+          _pendingHead = histScroll.lastElementChild;
+        } else {
+          _pendingHead.replaceWith(build(_callSeq, label, _pendingCount));
+          _pendingHead = histScroll.lastElementChild;
+        }
+        details.hidden = false;
+        if (!histDetached) histScroll.scrollTop = histScroll.scrollHeight;
+        return;
+      }
+
+      _pendingKey = key;
+      _pendingCount = 1;
+      _pendingExtra = [];
+      var line = build(_callSeq, label, 0);
+      histScroll.appendChild(line);
+      _pendingHead = line;
+      details.hidden = false;
+      if (!histDetached) histScroll.scrollTop = histScroll.scrollHeight;
+    };
+
+    row._finishThinking = function () {
+      _pendingKey = '';
+      details.open = false;
+      mainRow.remove();
+      detailLine.remove();
+      lines.hidden = true;
+      row.classList.remove('codx-chat-status');
+      window.__codxThinkingRow = null;
+    };
 
     window.CodXLiveStatus?.bindLines?.(historyLine, phaseLine, detailLine);
     return row;
@@ -172,17 +282,26 @@
       if (payload.phase === 'codx_edit_begin' || payload.phase === 'write_file_begin') {
         window.__codxLastCodePath = payload.path || '';
       }
+
+      var toolName =
+        payload.name ||
+        (payload.phase === 'codx_edit_plan'
+          ? 'codx_edit_plan'
+          : payload.phase === 'codx_edit_begin'
+            ? 'codx_edit'
+            : payload.phase === 'write_file_begin'
+              ? 'write_file'
+              : '');
+      var toolPath = payload.path || (payload.arguments && payload.arguments.path) || '';
+
+      if (toolName && toolName !== 'finish_task') {
+        var t = window.__codxThinkingRow;
+        if (t && typeof t._recordCall === 'function') t._recordCall(toolName, toolPath);
+      }
+
       window.CodXLiveStatus?.onStepStart?.({
         phase: payload.phase,
-        name:
-          payload.name ||
-          (payload.phase === 'codx_edit_plan'
-            ? 'codx_edit_plan'
-            : payload.phase === 'codx_edit_begin'
-              ? 'codx_edit'
-              : payload.phase === 'write_file_begin'
-                ? 'write_file'
-                : ''),
+        name: toolName,
         arguments: payload.arguments,
         path: payload.path,
         index: payload.index,
@@ -319,6 +438,7 @@
     };
 
     const thinking = createThinkingRow();
+    window.__codxThinkingRow = thinking;
     getScrollEl()?.appendChild(thinking);
     bindActiveTurnResizeFollow(thinking);
     maybeFollowScroll();
@@ -426,12 +546,12 @@
           streamBody.innerHTML = renderMarkdown(displayText);
         }
         streamRow?.classList.remove('codx-chat-streaming');
-        thinking.remove();
+        thinking._finishThinking?.();
       } else if (displayText) {
-        thinking.remove();
+        thinking._finishThinking?.();
         addMessage('assistant', displayText);
       } else {
-        thinking.remove();
+        thinking._finishThinking?.();
       }
       history.push({ role: 'assistant', content: displayText });
       if (shouldAutoScrollAfterTurn()) scrollChatToBottomForced({ streamFollow: true });
