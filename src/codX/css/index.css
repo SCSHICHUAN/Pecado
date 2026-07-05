@@ -1101,20 +1101,33 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
 
 /* history 面板 */
 .codx-chat-thinking-details {
-  margin-bottom: 6px;
-  border: 1px solid #303038;
-  border-radius: 6px;
-  background: #141418;
+  display: block;
+  margin: -10px 0 6px 12px;
+  border: 1px solid #333333;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  background: #222226;
   overflow: hidden;
+  max-width: calc(100% - 24px);
+}
+
+.codx-chat-thinking-details[hidden] {
+  display: none;
 }
 
 .codx-chat-thinking-summary {
-  padding: 4px 10px;
+  padding: 5px 12px;
   font-size: 11px;
-  color: #8a8a9e;
+  font-weight: 600;
+  color: #7a7a88;
   cursor: pointer;
   user-select: none;
   list-style: none;
+  letter-spacing: 0.02em;
+}
+
+.codx-chat-thinking-summary:hover {
+  color: #aaaab4;
 }
 
 .codx-chat-thinking-summary::-webkit-details-marker { display: none; }
@@ -1124,8 +1137,8 @@ body.app-view-codx #codx-bottom-bar-anchor.is-dock-collapsed .codx-dock {
 .codx-chat-thinking-details[open] > .codx-chat-thinking-summary::before { content: '▼ '; }
 
 .codx-chat-thinking-scroll {
-  padding: 4px 10px 6px;
-  border-top: 1px solid #22222a;
+  padding: 2px 12px 6px;
+  border-top: 1px solid #2a2a30;
   max-height: 152px;
   overflow-y: auto;
   scrollbar-width: thin;
