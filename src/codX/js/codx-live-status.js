@@ -264,7 +264,6 @@
       active.detailEl.textContent = active.curDetail;
       active.detailEl.hidden = false;
       active.detailEl.classList.add('is-live-shimmer');
-      active.detailScroll.style.display = 'block';
     }
     if (active.detailScroll) {
       active.detailScroll.addEventListener('scroll', function () {
@@ -311,14 +310,12 @@
       active.detailEl.textContent = '';
       active.detailEl.hidden = true;
       active.detailEl.classList.remove('is-live-shimmer', 'is-infer-stream');
-      if (active.detailScroll) active.detailScroll.style.display = 'none';
       return;
     }
     active.detailEl.hidden = false;
     active.detailEl.textContent = t;
     active.detailEl.classList.add('is-live-shimmer');
     active.detailEl.classList.toggle('is-infer-stream', Boolean(active.inferStreaming));
-    if (active.detailScroll) active.detailScroll.style.display = 'block';
     // 自动滚到底部
     if (active.detailScroll && !active.detailDetached) {
       active.detailScroll.scrollTop = active.detailScroll.scrollHeight;
