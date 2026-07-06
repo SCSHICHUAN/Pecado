@@ -138,8 +138,14 @@
     detailLog.className = 'codx-chat-log-line codx-chat-log-detail';
     detailLog.hidden = true;
 
+    // 包装滚动容器：超过6行可滚动
+    const detailScroll = document.createElement('div');
+    detailScroll.className = 'codx-chat-detail-scroll';
+    detailScroll.style.cssText = 'max-height:100px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#444 transparent';
+    detailScroll.appendChild(detailLog);
+
     liveLines.appendChild(phaseRow);
-    liveLines.appendChild(detailLog);
+    liveLines.appendChild(detailScroll);
 
     thinkingBody.appendChild(liveLines);
     thinkingRow.appendChild(thinkingBody);
@@ -240,7 +246,7 @@
 
     thinkingRow._historyPanel = historyPanel;
 
-    window.CodXLiveStatus?.bindLines?.(execLogLine, phaseLine, detailLog);
+    window.CodXLiveStatus?.bindLines?.(execLogLine, phaseLine, detailScroll);
     return thinkingRow;
   }
 

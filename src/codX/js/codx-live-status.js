@@ -215,7 +215,9 @@
   /** @type {{
    *   historyEl: HTMLElement | null,
    *   phaseEl: HTMLElement | null,
+   *   detailScroll: HTMLElement | null,
    *   detailEl: HTMLElement | null,
+   *   detailDetached: boolean,
    *   curPhase: string,
    *   curDetail: string,
    *   inferTextAcc: string,
@@ -225,7 +227,9 @@
   const active = {
     historyEl: null,
     phaseEl: null,
+    detailScroll: null,
     detailEl: null,
+    detailDetached: false,
     curPhase: '',
     curDetail: '',
     inferTextAcc: '',
@@ -237,10 +241,12 @@
     return active.turnActive;
   }
 
-  function bindLines(historyEl, phaseEl, detailEl) {
+  function bindLines(historyEl, phaseEl, detailScroll) {
     active.historyEl = historyEl || null;
     active.phaseEl = phaseEl || null;
-    active.detailEl = detailEl || null;
+    active.detailScroll = detailScroll || null;
+    active.detailEl = detailScroll ? (detailScroll.firstElementChild || null) : null;
+    active.detailDetached = false;
     active.curPhase = '思考';
     active.curDetail = '等待模型响应…';
     active.inferTextAcc = '';
@@ -258,6 +264,14 @@
       active.detailEl.textContent = active.curDetail;
       active.detailEl.hidden = false;
       active.detailEl.classList.add('is-live-shimmer');
+      active.detailScroll.style.display = 'block';
+    }
+    if (active.detailScroll) {
+      active.detailScroll.addEventListener('scroll', function () {
+        if (!active.detailScroll) return;
+        var near = active.detailScroll.scrollTop + active.detailScroll.clientHeight + 2 >= active.detailScroll.scrollHeight;
+        active.detailDetached = !near;
+      });
     }
   }
 
@@ -297,12 +311,18 @@
       active.detailEl.textContent = '';
       active.detailEl.hidden = true;
       active.detailEl.classList.remove('is-live-shimmer', 'is-infer-stream');
+      if (active.detailScroll) active.detailScroll.style.display = 'none';
       return;
     }
     active.detailEl.hidden = false;
     active.detailEl.textContent = t;
     active.detailEl.classList.add('is-live-shimmer');
     active.detailEl.classList.toggle('is-infer-stream', Boolean(active.inferStreaming));
+    if (active.detailScroll) active.detailScroll.style.display = 'block';
+    // 自动滚到底部
+    if (active.detailScroll && !active.detailDetached) {
+      active.detailScroll.scrollTop = active.detailScroll.scrollHeight;
+    }
   }
 
   function setInferDetail(text, streaming) {
@@ -414,7 +434,9 @@
   function clear() {
     active.historyEl = null;
     active.phaseEl = null;
+    active.detailScroll = null;
     active.detailEl = null;
+    active.detailDetached = false;
     active.curPhase = '';
     active.curDetail = '';
     active.inferTextAcc = '';
