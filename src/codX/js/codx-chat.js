@@ -427,6 +427,8 @@
     syncInputHeight(input);
     if (btn) btn.disabled = true;
 
+    chatScroll.prepareForNewTurn();
+
     const prior = [...history.slice(0, -1)];
     const streamId = `codx-${Date.now()}`;
     const activeRelPath = String(window.CodXEditor?.getActiveContent?.()?.relPath || '').trim();
@@ -562,6 +564,7 @@
       }
       history.push({ role: 'assistant', content: displayText });
       if (shouldAutoScrollAfterTurn()) scrollChatToBottomForced({ streamFollow: true });
+      chatScroll.endTurnFollow();
     } catch (e) {
       cancelStreamMarkdownRender(streamCtx);
       thinking.remove();
@@ -592,6 +595,7 @@
     } finally {
       unsub();
       window.CodXLiveStatus?.clear?.();
+      chatScroll.endTurnFollow();
       if (btn) btn.disabled = false;
     }
 
