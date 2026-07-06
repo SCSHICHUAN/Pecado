@@ -93,61 +93,61 @@
   }
 
   function createThinkingRow() {
-    const row = document.createElement('div');
-    row.className = 'codx-chat-msg codx-chat-msg-assistant codx-chat-status';
+    // history 折叠面板 — 独立于思考行，触发后保留在对话中
+    const historyPanel = document.createElement('details');
+    historyPanel.className = 'codx-chat-history-panel';
+    historyPanel.hidden = true;
+    const historySummary = document.createElement('summary');
+    historySummary.className = 'codx-chat-history-summary';
+    historySummary.textContent = 'history';
+    const historyScroll = document.createElement('div');
+    historyScroll.className = 'codx-chat-history-scroll';
+    historyPanel.appendChild(historySummary);
+    historyPanel.appendChild(historyScroll);
 
-    const body = document.createElement('div');
-    body.className = 'codx-chat-msg-body codx-chat-thinking';
+    // 思考行
+    const thinkingRow = document.createElement('div');
+    thinkingRow.className = 'codx-chat-msg codx-chat-msg-assistant codx-chat-status';
 
-    // history 折叠面板
-    const details = document.createElement('details');
-    details.className = 'codx-chat-thinking-details';
-    details.hidden = true;
-    const summary = document.createElement('summary');
-    summary.className = 'codx-chat-thinking-summary';
-    summary.textContent = 'history';
-    const histScroll = document.createElement('div');
-    histScroll.className = 'codx-chat-thinking-scroll';
-    details.appendChild(summary);
-    details.appendChild(histScroll);
+    const thinkingBody = document.createElement('div');
+    thinkingBody.className = 'codx-chat-msg-body codx-chat-thinking';
 
-    const lines = document.createElement('div');
-    lines.className = 'codx-chat-live-lines';
+    const liveLines = document.createElement('div');
+    liveLines.className = 'codx-chat-live-lines';
 
-    const historyLine = document.createElement('span');
-    historyLine.className = 'codx-chat-log-line codx-chat-log-history';
-    historyLine.hidden = true;
+    const execLogLine = document.createElement('span');
+    execLogLine.className = 'codx-chat-log-line codx-chat-log-exec';
+    execLogLine.hidden = true;
 
-    const mainRow = document.createElement('div');
-    mainRow.className = 'codx-chat-live-main';
+    const phaseRow = document.createElement('div');
+    phaseRow.className = 'codx-chat-live-main';
 
-    const dots = document.createElement('span');
-    dots.className = 'codx-chat-thinking-dots';
-    dots.setAttribute('aria-hidden', 'true');
-    dots.innerHTML = '<i></i><i></i><i></i>';
+    const thinkingDots = document.createElement('span');
+    thinkingDots.className = 'codx-chat-thinking-dots';
+    thinkingDots.setAttribute('aria-hidden', 'true');
+    thinkingDots.innerHTML = '<i></i><i></i><i></i>';
 
     const phaseLine = document.createElement('span');
     phaseLine.className = 'codx-chat-log-line codx-chat-log-phase';
     phaseLine.textContent = '思考';
 
-    mainRow.appendChild(dots);
-    mainRow.appendChild(phaseLine);
+    phaseRow.appendChild(thinkingDots);
+    phaseRow.appendChild(phaseLine);
 
-    const detailLine = document.createElement('span');
-    detailLine.className = 'codx-chat-log-line codx-chat-log-detail';
-    detailLine.hidden = true;
+    const detailLog = document.createElement('span');
+    detailLog.className = 'codx-chat-log-line codx-chat-log-detail';
+    detailLog.hidden = true;
 
-    lines.appendChild(mainRow);
-    lines.appendChild(detailLine);
+    liveLines.appendChild(phaseRow);
+    liveLines.appendChild(detailLog);
 
-    body.appendChild(details);
-    body.appendChild(lines);
-    row.appendChild(body);
+    thinkingBody.appendChild(liveLines);
+    thinkingRow.appendChild(thinkingBody);
 
     // history 滚动逻辑
     let histDetached = false;
-    histScroll.addEventListener('scroll', function () {
-      var near = histScroll.scrollTop + histScroll.clientHeight + 2 >= histScroll.scrollHeight;
+    historyScroll.addEventListener('scroll', function () {
+      var near = historyScroll.scrollTop + historyScroll.clientHeight + 2 >= historyScroll.scrollHeight;
       histDetached = !near;
     });
 
@@ -157,7 +157,7 @@
     let _pendingExtra = [];
     let _pendingHead = null;
 
-    row._recordCall = function (name, path) {
+    thinkingRow._recordCall = function (name, path) {
       _callSeq++;
       var label = String(name || '?').trim();
       var file = String(path || '').replace(/\\/g, '/').split('/').filter(Boolean).pop() || '';
@@ -205,19 +205,19 @@
         _pendingCount++;
         if (_pendingCount < 5) {
           var ext = build(_callSeq, label, 0);
-          histScroll.appendChild(ext);
+          historyScroll.appendChild(ext);
           _pendingExtra.push(ext);
         } else if (_pendingCount === 5) {
           _pendingExtra.forEach(function (el) { el.remove(); });
           _pendingExtra = [];
           _pendingHead.replaceWith(build(_callSeq, label, _pendingCount));
-          _pendingHead = histScroll.lastElementChild;
+          _pendingHead = historyScroll.lastElementChild;
         } else {
           _pendingHead.replaceWith(build(_callSeq, label, _pendingCount));
-          _pendingHead = histScroll.lastElementChild;
+          _pendingHead = historyScroll.lastElementChild;
         }
-        details.hidden = false;
-        if (!histDetached) histScroll.scrollTop = histScroll.scrollHeight;
+        historyPanel.hidden = false;
+        if (!histDetached) historyScroll.scrollTop = historyScroll.scrollHeight;
         return;
       }
 
@@ -225,25 +225,23 @@
       _pendingCount = 1;
       _pendingExtra = [];
       var line = build(_callSeq, label, 0);
-      histScroll.appendChild(line);
+      historyScroll.appendChild(line);
       _pendingHead = line;
-      details.hidden = false;
-      if (!histDetached) histScroll.scrollTop = histScroll.scrollHeight;
+      historyPanel.hidden = false;
+      if (!histDetached) historyScroll.scrollTop = historyScroll.scrollHeight;
     };
 
-    row._finishThinking = function () {
+    thinkingRow._finishThinking = function () {
       _pendingKey = '';
-      details.open = false;
-      mainRow.remove();
-      detailLine.remove();
-      lines.hidden = true;
-      row.classList.remove('codx-chat-status');
-      row.style.marginBottom = '0';
+      historyPanel.open = false;
+      thinkingRow.remove();
       window.__codxThinkingRow = null;
     };
 
-    window.CodXLiveStatus?.bindLines?.(historyLine, phaseLine, detailLine);
-    return row;
+    thinkingRow._historyPanel = historyPanel;
+
+    window.CodXLiveStatus?.bindLines?.(execLogLine, phaseLine, detailLog);
+    return thinkingRow;
   }
 
   function handleStreamPayload(payload) {
@@ -440,6 +438,8 @@
 
     const thinking = createThinkingRow();
     window.__codxThinkingRow = thinking;
+    // history 面板独立插入到思考行之前，触发后保留在对话中
+    getScrollEl()?.appendChild(thinking._historyPanel);
     getScrollEl()?.appendChild(thinking);
     bindActiveTurnResizeFollow(thinking);
     maybeFollowScroll();
