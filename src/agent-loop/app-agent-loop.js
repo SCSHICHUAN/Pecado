@@ -24,7 +24,7 @@ const {
   FEED_codx_tool_result,
   CODX_EDIT_TOOL_NAME,
 } = require('../codX/agent/tools');
-const { PECADO_LLM_LINE_END } = require('../shared/codx-edit-plan');
+const { PECADO_BLOCK_END } = require('../shared/codx-edit-plan');
 const { getReadMediaFileTool, getMediaCallbacks, isReadMediaFileToolName } = require('../mcp-filesystem/read-media');
 const {
   getFinishTaskTool,
@@ -194,7 +194,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
             role: 'user',
             content:
               `【系统】${pendingCodxEditPath} 的 codx_edit_plan 尚未完成 codx_edit。` +
-              `须调用 codx_edit path="${pendingCodxEditPath}"，段末 ${PECADO_LLM_LINE_END}。`,
+              `须调用 codx_edit path="${pendingCodxEditPath}"，段末 ${PECADO_BLOCK_END}。`,
           });
           chatOpts.messages = conv;
           continue;
@@ -389,7 +389,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
           role: 'user',
           content:
             `【系统】${pendingCodxEditPath} 已完成 plan，须在本轮调用 codx_edit，` +
-            `path="${pendingCodxEditPath}"，段末 ${PECADO_LLM_LINE_END}。`,
+            `path="${pendingCodxEditPath}"，段末 ${PECADO_BLOCK_END}。`,
         });
         chatOpts.messages = conv;
       }

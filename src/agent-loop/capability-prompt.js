@@ -2,7 +2,7 @@
  * @file capability-prompt.js
  * Agent 能力说明：LLM 理解意图、自行编排 tools、finish_task 结束。
  */
-const { PECADO_LLM_LINE_END } = require('../shared/codx-edit-plan');
+const { PECADO_BLOCK_END } = require('../shared/codx-edit-plan');
 const { AGENT_LANGUAGE_PREAMBLE } = require('../shared/prompt-language');
 const { IS_DARWIN } = require('../xcode/project');
 const { FINISH_TASK_NAME } = require('./finish-tool');
@@ -23,14 +23,20 @@ function buildCapabilityAgentPrompt() {
     '【能力 · 工程文件（MCP）】',
     '· read_text_file — 读文本文件（带 L 行号）',
     '· list_directory / directory_tree / search_files — 浏览、搜索（path 用 "." 或相对路径，见【工程锚点】）',
-    '· write_file — 仅限新建空文件；已有代码的文件禁止 write_file（系统会拒绝）',
+    '· write_file — 新建文件或 read 后内容为空的文件：一步流式写完整内容（macOS 直写磁盘）；已有非空代码禁止 write_file',
     '· create_directory / move_file / get_file_info',
     '',
+    '【写码路径（必守）】',
+    '· 文件不存在，或 read_text_file 返回空/仅空白 → write_file（禁止 codx_edit_plan / codx_edit）',
+    '· 文件已有代码 → codx_edit_plan → codx_edit；禁止 write_file 覆盖',
+    '',
     '【能力 · 改已有代码（CodX）】',
-    '· codx_edit_plan — path + edits[]（大行号在前）；每项含 line_start、op、line_end（delete/replace 必填）',
-    '· op：delete（删行）| replace（替换行）| insert_below（在 line_start 行末下方插入，仅写新代码）',
-    `· codx_edit — 流式写入（须先 plan）；段间 ${PECADO_LLM_LINE_END}；每段只写该 op 对应的新内容`,
-    '· 约束：codx_edit 前须有 read_text_file 与 codx_edit_plan',
+    '· codx_edit_plan — path + edits[]（大行号在前）；insert_code / edit_code / del_code / insert_blanks；均从 line_start 本行开始',
+    `· codx_edit — 流式 text，与 plan 段序一致，段末 ${PECADO_BLOCK_END}；编辑器实时显示`,
+    '· 有代码段：insert_code\\n代码\\npecado_block_end；edit_code\\n代码\\npecado_block_end',
+    `· 无代码段：del_code\\n${PECADO_BLOCK_END}；insert_blanks\\n${PECADO_BLOCK_END}（区间仅 plan 取）`,
+    '· edit_code 本地展开：先 del_code 删 plan 区间，再 insert_code 从 start 插入流代码',
+    '· 约束：codx_edit 前须有 read_text_file 与 codx_edit_plan；**空文件须 write_file，勿走 codx_edit**',
     '· ⚠️ 已有代码的文件严禁 write_file：系统会拒绝。修正代码必须用 codx_edit_plan → codx_edit',
     '· ⚠️ 如果 read_text_file 返回的文件内容不完整（被截断/未写完），严禁 write_file 全量重写。',
     '· ⚠️ 正确做法：对不完整内容用 codx_edit_plan → codx_edit 补全缺失部分，继续写完即可。',
@@ -63,6 +69,7 @@ function buildCapabilityAgentPrompt() {
     '· 【Workflow Skill】→ 按意图匹配；细节不够再 read_skill_section',
     '',
     '【编排示例（由你决定，非固定流程）】',
+    '· 「新建 ViewController」→ write_file → finish_task',
     '· 「背景改红」→ 你可能：read → plan → edit → finish_task',
     '· 「背景改红并运行」→ 你可能：read → plan → edit → xcode_run → finish_task',
     '· 「这段代码什么意思」→ read → finish_task',

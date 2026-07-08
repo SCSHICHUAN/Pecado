@@ -22,8 +22,9 @@ function buildCodxEditorContextForAi(relPath) {
   return [
     '【CodX 当前编辑文件】',
     `相对路径: ${p}`,
-    '用户说「当前文件」「这个文件」「此文件」「选中的文件」「打开的文件」时，',
-    'codx_edit_plan 与 codx_edit 的 path 须用上述相对路径。',
+    '用户说「当前文件」「这个文件」「此文件」「选中的文件」「打开的文件」时，path 须用上述相对路径。',
+    '若 read_text_file 后该文件为空或不存在 → 用 write_file 写完整内容；',
+    '若已有代码 → 用 codx_edit_plan → codx_edit，勿 write_file 覆盖。',
   ].join('\n');
 }
 

@@ -1111,80 +1111,15 @@
     return -1;
   }
 
-  function findCodxEditArrayIndex(state, editRef) {
-    if (!state?.codxEdits?.length) return -1;
-    if (typeof editRef === 'number' && editRef >= 0 && editRef < state.codxEdits.length) {
-      return editRef;
-    }
-    if (editRef != null) {
-      const open = state.codxEdits.findIndex(
-        (ed) => ed.toolIndex === editRef && !ed.complete
-      );
-      if (open >= 0) return open;
-      const any = state.codxEdits.findIndex((ed) => ed.toolIndex === editRef);
-      if (any >= 0) return any;
-    }
-    return state.codxEdits.findIndex((ed) => !ed.complete);
-  }
-
-  function isCodxSessionActive(state) {
-    if (!state) return false;
-    if (state.codxBeginLock) return true;
-    if (state.codxPlanReady && state.codxEdits?.some((ed) => !ed.complete)) return true;
-    if (!state.aiPending) return false;
-    return Boolean(state.codxEdits?.some((ed) => !ed.complete));
-  }
-
-  /** 同步注册 edit（在 await 之前），返回队列下标，避免并发 begin 覆盖 codxEdits */
-  function registerCodxLineEdit(relPath, opts = {}) {
-    let resolved = resolveRelPath(relPath);
-    if (!resolved) return -1;
-    if (activeRelPath && pathsReferToSameFile(activeRelPath, resolved)) {
-      resolved = activeRelPath;
-    }
-    const entry = createCodxEditEntry(opts);
-    let state = openFiles.get(resolved) || backgroundStreams.get(resolved);
-
-    if (isCodxSessionActive(state) || state?.codxBeginLock) {
-      if (!state.codxEdits) state.codxEdits = [];
-      state.codxEdits.push(entry);
-      state.aiPending = true;
-      state.writeMode = 'deferred';
-      state.pendingDiff = false;
-      return state.codxEdits.length - 1;
-    }
-
-    if (state?.codxEdits?.length) {
-      delete state.codxEdits;
-      delete state.codxStreamSession;
-      state.pendingDiff = false;
-      state.pendingDisk = false;
-    }
-
-    if (!state) {
-      state = {
-        relPath: resolved,
-        mode: 'text',
-        dirty: false,
-        aiPending: true,
-        writeMode: 'deferred',
-        pendingDisk: true,
-        pendingDiff: false,
-        original: '',
-        content: '',
-      };
-      openFiles.set(resolved, state);
-    }
-    state.codxEdits = [entry];
-    state.aiPending = true;
-    state.writeMode = 'deferred';
-    state.pendingDisk = true;
-    state.pendingDiff = false;
-    state.codxBeginLock = true;
-    state._codxSessionInitNeeded = true;
-    delete state.codxEdit;
-    resetCodxStreamSession(state);
-    return 0;
+  function createCodxEditEntry(opts = {}) {
+    const startLine = Math.max(1, Math.floor(Number(opts.startLine) || 1));
+    return {
+      op: opts.op || 'insert_code',
+      startLine,
+      endLine: opts.endLine,
+      streamText: '',
+      complete: false,
+    };
   }
 
   async function ensureCodxSessionReady(resolved) {
@@ -1192,7 +1127,6 @@
     if (!state) return null;
 
     if (!state._codxSessionInitNeeded) {
-      if (state.codxBeginLock) delete state.codxBeginLock;
       return state;
     }
     delete state._codxSessionInitNeeded;
@@ -1218,20 +1152,8 @@
       renderTabs();
     }
 
-    delete state.codxBeginLock;
     state.content = recomputeContentFromCodxEdits(state);
     return state;
-  }
-
-  function findCodxEditRoute(resolved, toolIndex) {
-    const state = openFiles.get(resolved) || backgroundStreams.get(resolved);
-    if (!state?.codxEdits?.length) return -1;
-    if (toolIndex == null) return getSerialLiveEditIndex(state);
-    const open = state.codxEdits.findIndex(
-      (ed) => ed.toolIndex === toolIndex && !ed.complete
-    );
-    if (open >= 0) return open;
-    return state.codxEdits.findIndex((ed) => ed.toolIndex === toolIndex);
   }
 
   /** @type {Map<string, Promise<object|null>>} */
@@ -1264,45 +1186,16 @@
     delete state.codxStreamSession;
   }
 
-  function createCodxEditEntry(opts = {}) {
-    const startLine = Math.max(1, Math.floor(Number(opts.startLine) || 1));
-    return {
-      op: opts.op || 'insert_below',
-      startLine,
-      endLine: opts.endLine,
-      streamText: '',
-      complete: false,
-      toolIndex: opts.toolIndex ?? 0,
-    };
-  }
-
   function distributeEditsFromRawStream(state) {
     if (!state?.codxEdits?.length) return;
     const raw = String(state.codxRawStream ?? '');
-    const planFn = window.CodXEditPlan?.distributeStream || window.CodXEditPlan?.distributeStreamByMarker;
-    if (planFn) {
-      const { edits } = planFn(raw, state.codxEdits);
-      state.codxEdits = edits;
-      return;
-    }
-    let pos = 0;
-    const marker = 'pecado_LLM_line_end';
-    for (let i = 0; i < state.codxEdits.length; i += 1) {
-      const ed = state.codxEdits[i];
-      const idx = raw.indexOf(marker, pos);
-      if (idx >= 0) {
-        ed.streamText = raw.slice(pos, idx);
-        ed.complete = true;
-        pos = idx + marker.length;
-      } else {
-        ed.streamText = raw.slice(pos);
-        ed.complete = false;
-        pos = raw.length;
-      }
-    }
+    const planFn = window.CodXEditPlan?.distributeStream;
+    if (!planFn) return;
+    const { edits } = planFn(raw, state.codxEdits);
+    state.codxEdits = edits;
   }
 
-  /** 第一轮 plan 登记（大行号优先，第二轮流按 pecado_LLM_line_end 切分） */
+  /** 第一轮 plan 登记（大行号优先，第二轮流按 pecado_block_end 切分） */
   function applyCodxEditPlan(relPath, rawEdits) {
     let resolved = resolveRelPath(relPath);
     if (!resolved || !Array.isArray(rawEdits) || !rawEdits.length) return null;
@@ -1337,7 +1230,7 @@
 
     state.codxEdits = rawEdits.map((ed) =>
       createCodxEditEntry({
-        op: ed.op || 'insert_below',
+        op: ed.op || 'insert_code',
         startLine: ed.startLine ?? ed.line_start,
         endLine: ed.endLine ?? ed.line_end,
       })
@@ -1440,7 +1333,7 @@
     const ed = state.codxEdits[editArrayIndex];
     if (!ed) return;
     const enriched = codxOps()?.enrichCodxEditForApply?.(ed) || ed;
-    const op = codxOps()?.inferCodxOp?.(enriched) || 'replace';
+    const op = codxOps()?.inferCodxOp?.(enriched) || 'insert_code';
 
     if (useFallback && fallbackTa) {
       fallbackTa.value = recomputeContentFromCodxEdits(state, { liveArrayIndex: editArrayIndex });
@@ -1462,8 +1355,13 @@
       return baseContent;
     }
 
-    if (op === 'insert_below') {
+    function streamInsertAtStartLine() {
       let session = state.codxStreamSession;
+      const text = ed.streamText || '';
+      if (session && session.editArrayIndex === editArrayIndex && session.streamedLen > text.length) {
+        resetCodxStreamSession(state);
+        session = null;
+      }
       if (!session || session.editArrayIndex !== editArrayIndex) {
         ensureModelWithBase();
         const anchorLine = codxOps().mapOriginalLineToCurrent(ed.startLine, state.codxEdits, {
@@ -1475,80 +1373,50 @@
           op,
           streamedLen: 0,
           anchorLine: Math.max(1, anchorLine),
-          anchorColumn: null,
-          needsNewline: true,
+          anchorColumn: 1,
         };
         session = state.codxStreamSession;
       }
-      const text = ed.streamText || '';
       const piece = text.slice(session.streamedLen);
       if (piece) {
         const line = session.anchorLine;
-        let col = session.anchorColumn;
-        if (col == null) {
-          const lineEnd = model.getLineLastNonWhitespacePosition(line);
-          col = lineEnd ? lineEnd.column : 1;
-          session.anchorColumn = col;
-        }
-        let insertText = piece;
-        if (session.needsNewline) {
-          insertText = `\n${piece}`;
-          session.needsNewline = false;
-        }
+        const col = session.anchorColumn;
         model.pushEditOperations(
           [],
           [{
             range: new monacoRef.Range(line, col, line, col),
-            text: insertText,
+            text: piece,
             forceMoveMarkers: true,
           }],
           () => null
         );
-        const parts = insertText.split('\n');
+        const parts = piece.split('\n');
         if (parts.length === 1) {
-          session.anchorColumn += insertText.length;
+          session.anchorColumn += piece.length;
         } else {
           session.anchorLine += parts.length - 1;
           session.anchorColumn = parts[parts.length - 1].length + 1;
         }
         session.streamedLen = text.length;
       }
-    } else if (op === 'replace') {
+    }
+
+    if (op === 'del_code' || op === 'insert_blanks') {
+      if (!ed.complete) return;
+      state.content = recomputeContentFromCodxEdits(state, { liveArrayIndex: editArrayIndex });
+      pushLiveContentToEditor(resolved, state);
+      resetCodxStreamSession(state);
+      return;
+    }
+
+    if (op === 'edit_code') {
       let session = state.codxStreamSession;
-      if (!session || session.editArrayIndex !== editArrayIndex) {
-        ensureModelWithBase();
-        state.codxStreamSession = {
-          editArrayIndex,
-          op,
-          streamedLen: 0,
-        };
-        session = state.codxStreamSession;
-      }
       const text = ed.streamText || '';
-      if (text.length !== session.streamedLen) {
-        const mappedStart = codxOps().mapOriginalLineToCurrent(enriched.startLine, state.codxEdits, {
-          completeOnly: true,
-          beforeArrayIndex: editArrayIndex,
-        });
-        const span = Math.max(0, enriched.endLine - enriched.startLine);
-        const mappedEnd = Math.min(model.getLineCount(), mappedStart + span);
-        const endCol = model.getLineMaxColumn(mappedEnd);
-        model.pushEditOperations(
-          [],
-          [{
-            range: new monacoRef.Range(mappedStart, 1, mappedEnd, endCol),
-            text,
-            forceMoveMarkers: true,
-          }],
-          () => null
-        );
-        session.streamedLen = text.length;
+      if (session && session.editArrayIndex === editArrayIndex && session.streamedLen > text.length) {
+        resetCodxStreamSession(state);
+        session = null;
       }
-    } else if (op === 'delete') {
-      let session = state.codxStreamSession;
-      if (session?.editArrayIndex === editArrayIndex && session.applied) {
-        // already applied
-      } else {
+      if (!session || session.editArrayIndex !== editArrayIndex) {
         ensureModelWithBase();
         const mappedStart = codxOps().mapOriginalLineToCurrent(enriched.startLine, state.codxEdits, {
           completeOnly: true,
@@ -1566,8 +1434,40 @@
           }],
           () => null
         );
-        state.codxStreamSession = { editArrayIndex, op, applied: true };
+        state.codxStreamSession = {
+          editArrayIndex,
+          op,
+          streamedLen: 0,
+          anchorLine: Math.max(1, mappedStart),
+          anchorColumn: 1,
+          deleteDone: true,
+        };
+        session = state.codxStreamSession;
       }
+      const piece = text.slice(session.streamedLen);
+      if (piece) {
+        const line = session.anchorLine;
+        const col = session.anchorColumn;
+        model.pushEditOperations(
+          [],
+          [{
+            range: new monacoRef.Range(line, col, line, col),
+            text: piece,
+            forceMoveMarkers: true,
+          }],
+          () => null
+        );
+        const parts = piece.split('\n');
+        if (parts.length === 1) {
+          session.anchorColumn += piece.length;
+        } else {
+          session.anchorLine += parts.length - 1;
+          session.anchorColumn = parts[parts.length - 1].length + 1;
+        }
+        session.streamedLen = text.length;
+      }
+    } else if (op === 'insert_code') {
+      streamInsertAtStartLine();
     } else {
       pushLiveContentToEditor(resolved, state);
       return;
@@ -1600,120 +1500,6 @@
       model.setValue(newContent);
     }
     if (editor.getModel() !== model) editor.setModel(model);
-  }
-
-  async function beginCodxLineEdit(relPath, opts = {}) {
-    const editArrayIndex = registerCodxLineEdit(relPath, opts);
-    if (editArrayIndex < 0) return null;
-    let resolved = resolveRelPath(relPath);
-    if (activeRelPath && pathsReferToSameFile(activeRelPath, resolved)) {
-      resolved = activeRelPath;
-    }
-    const state = await ensureCodxSessionReady(resolved);
-    if (!state) return null;
-    state.content = recomputeContentFromCodxEdits(state);
-    const liveIdx = getSerialLiveEditIndex(state);
-    if (isActiveRelPath(resolved) && liveIdx >= 0) {
-      focusEditorPane(resolved);
-      applyCodxLiveToMonaco(resolved, state, liveIdx);
-    }
-    syncToolbarUi();
-    return state;
-  }
-
-  function appendCodxLineEditText(relPath, fullText, editRef) {
-    if (useFallback && !fallbackTa) return;
-    if (!useFallback && (!editor || !monacoRef)) return;
-    let resolved = resolveRelPath(relPath);
-    if (!resolved) return;
-    if (activeRelPath && pathsReferToSameFile(activeRelPath, resolved)) {
-      resolved = activeRelPath;
-    }
-    const state = openFiles.get(resolved) || backgroundStreams.get(resolved);
-    if (!state?.codxEdits?.length) {
-      appendStreamDelta(relPath, '', fullText);
-      return;
-    }
-    const idx = findCodxEditArrayIndex(state, editRef);
-    if (idx < 0) return;
-    state.aiPending = true;
-    state.writeMode = 'deferred';
-    state.pendingDiff = false;
-    state.codxEdits[idx].streamText = String(fullText ?? '');
-    const liveIdx = getSerialLiveEditIndex(state);
-    state.content = recomputeContentFromCodxEdits(state, { liveArrayIndex: liveIdx });
-    const showLive = shouldShowLiveInEditor(state, resolved);
-    if (!showLive) {
-      syncToolbarUi();
-      return;
-    }
-    if (liveIdx < 0 || idx !== liveIdx) {
-      syncToolbarUi();
-      return;
-    }
-    focusEditorPane(resolved);
-    applyCodxLiveToMonaco(resolved, state, liveIdx);
-    syncMinimapToggleUi();
-    syncToolbarUi();
-  }
-
-  function finishCodxLineEdit(relPath, editRef) {
-    let resolved = resolveRelPath(relPath);
-    if (!resolved) return;
-    if (activeRelPath && pathsReferToSameFile(activeRelPath, resolved)) {
-      resolved = activeRelPath;
-    }
-    const state = openFiles.get(resolved) || backgroundStreams.get(resolved);
-    if (!state?.codxEdits?.length) {
-      finishAiStream(relPath);
-      return;
-    }
-    const idx = findCodxEditArrayIndex(state, editRef);
-    if (idx < 0) return;
-    if (state.codxEdits[idx]?.complete) return;
-    if (state.codxEdits[idx]) state.codxEdits[idx].complete = true;
-    if (state.codxStreamSession?.editArrayIndex === idx) {
-      resetCodxStreamSession(state);
-    }
-    delete state.codxEdit;
-    const anyPending = state.codxEdits.some((ed) => !ed.complete);
-    const liveIdx = getSerialLiveEditIndex(state);
-    state.content = anyPending
-      ? recomputeContentFromCodxEdits(state, { liveArrayIndex: liveIdx })
-      : recomputeContentFromCodxEdits(state);
-    state.aiPending = anyPending;
-    const changed = state.original !== state.content;
-    state.writeMode = 'deferred';
-
-    if (anyPending) {
-      state.pendingDiff = false;
-      if (isActiveRelPath(resolved) && liveIdx >= 0) {
-        focusEditorPane(resolved);
-        applyCodxLiveToMonaco(resolved, state, liveIdx);
-      }
-      updateTabDirty(resolved);
-      syncToolbarUi();
-      renderTabs();
-      layout();
-      return;
-    }
-
-    if (changed) {
-      state.dirty = true;
-      state.pendingDiff = true;
-      state.pendingDisk = true;
-      updateTabDirty(resolved);
-    } else {
-      state.pendingDiff = false;
-      state.pendingDisk = false;
-    }
-    if (isActiveRelPath(resolved) && changed) {
-      focusEditorPane(resolved);
-      applyEditorContent(resolved, state.content);
-    }
-    syncToolbarUi();
-    renderTabs();
-    layout();
   }
 
   async function beginAiStream(relPath, opts = {}) {
@@ -2100,13 +1886,9 @@
     resetAll,
     appendStreamDelta,
     beginAiStream,
-    registerCodxLineEdit,
     applyCodxEditPlan,
     initCodxLineEditSession,
-    beginCodxLineEdit,
-    appendCodxLineEditText,
     appendCodxContentStream,
-    finishCodxLineEdit,
     finishCodxContentStream,
     finishAiStream,
     getPendingWrites,
@@ -2134,7 +1916,6 @@
     openCachedFile,
     persistActiveEditorContent,
     resolveRelPath,
-    findCodxEditRoute,
     updateEmptyState,
     isFallback: () => useFallback,
   };

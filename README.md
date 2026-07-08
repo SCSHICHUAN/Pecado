@@ -200,8 +200,8 @@ flowchart LR
 
 | 工具名 | 用途 |
 |--------|------|
-| `codx_edit_plan` | 第一轮：`path` + 各段 `line_start`（大行号在前），不含代码 |
-| `codx_edit` | 第二轮：同 path 流式 `text`，段末 `pecado_LLM_line_end`；编辑器实时显示 |
+| `codx_edit_plan` | 第一轮：`path` + `edits[]`（`line_start`、`op`、`line_end`；大行号在前）；op 为 `insert_code` / `edit_code` / `del_code` / `insert_blanks` |
+| `codx_edit` | 第二轮：同 path 流式 `text`，段序与 plan 一致，段末 `pecado_block_end`；Monaco + 对话代码块实时显示 |
 
 ### CodX UI 工具（1）
 
@@ -1014,7 +1014,8 @@ git push origin main
 | CodX 编程视图 | `src/codX/js/index.js`、`src/codX/js/editor.js` |
 | CodX Agent 工具 | `src/codX/agent/tools.js` |
 | CodX 流式桥接 | `src/codX/js/stream-bridge.js` |
-| 行级编辑共享逻辑 | `src/shared/codx-edit-plan.js`、`src/shared/codx-edit-ops.js` |
+| 行级编辑共享逻辑 | `src/shared/codx-stream-ops.js`、`src/shared/codx-edit-plan.js`、`src/shared/codx-edit-ops.js` |
+| CodX 对话代码块 | `src/codX/js/codx-code-block.js` |
 | 对话 IPC + 模式路由 | `src/pecado/js/agent/router.js` |
 | 对话 UI（renderer） | `src/pecado/js/index.js` |
 | Agent 编排 | `src/agent-loop/app-agent-loop.js`（详见 [src/agent-loop/README.md](src/agent-loop/README.md)） |
@@ -1034,7 +1035,7 @@ git push origin main
 | Git CLI / 节点操作 | `src/gitgraph/js/git-runner.js` |
 | Git log 解析 | `src/gitgraph/js/log-parser.js` |
 | Git 主进程 IPC | `src/gitgraph/js/register.js` |
-| CodX 底栏对话 | `src/codX/js/codx-chat.js`、`src/codX/js/codx-live-status.js` |
+| CodX 底栏对话 | `src/codX/js/codx-chat.js`、`src/codX/js/codx-live-status.js`、`src/codX/js/codx-code-block.js` |
 | 流式正文渐显 | `src/shared/stream-text-reveal.js` |
 | 对话跟滚 | `src/shared/chat-scroll-follow.js` |
 | 工程上下文 | `src/mcp-filesystem/project-context.js` |

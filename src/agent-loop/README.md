@@ -73,7 +73,7 @@ flowchart LR
 |------|------|
 | `codx_edit` 成功后 | 尝试 flush 流式内容到磁盘 |
 | `xcode_build` / `xcode_run` 前 | 若仍有 pending plan，再 flush |
-| 流式进行中 | 非空文件只更新 Monaco（deferred） |
+| 流式进行中 | 非空文件只更新 Monaco + 对话代码块（deferred） |
 
 ---
 

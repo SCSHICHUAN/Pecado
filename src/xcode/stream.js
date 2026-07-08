@@ -91,6 +91,16 @@ function createLiveWriter(absPath) {
   };
 }
 
+function isEmptyFileForLiveStream(absPath) {
+  if (!fs.existsSync(absPath)) return true;
+  try {
+    if (!fs.statSync(absPath).isFile()) return false;
+    return fs.readFileSync(absPath, 'utf8').trim().length === 0;
+  } catch {
+    return fs.statSync(absPath).size === 0;
+  }
+}
+
 /**
  * Agent `write_file` 流式：解析到 path 后登记落盘目标（含新建弹窗）。
  * @param {string} projectRoot
@@ -133,7 +143,7 @@ function registerWriteFileStreamTarget(projectRoot, relPath) {
     }
 
     if (xcodeLiveStream) {
-      const fileEmpty = !fs.existsSync(absPath) || fs.statSync(absPath).size === 0;
+      const fileEmpty = isEmptyFileForLiveStream(absPath);
       if (fileEmpty) {
         projectIo.beginWriteSession(absPath, { preserveExisting: false });
       } else {

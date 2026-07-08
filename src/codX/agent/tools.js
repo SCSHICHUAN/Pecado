@@ -11,9 +11,11 @@ const {
 } = require('../../shared/codx-edit-ops');
 const {
   validateCodxEditPlan,
-  PECADO_LLM_LINE_END,
+  PECADO_BLOCK_END,
+  PLAN_OPS,
 } = require('../../shared/codx-edit-plan');
 const projectIo = require('../../mcp-filesystem');
+const fs = require('fs');
 const {
   isCodxUiToolName,
   getCodxUiTools,
@@ -37,11 +39,36 @@ function normalizeCodxRelPath(inputPath) {
 const CODX_EDIT_PLAN_TOOL_NAME = 'codx_edit_plan';
 const CODX_EDIT_TOOL_NAME = 'codx_edit';
 
+const OP_STREAM_HINT =
+  `段格式（与 plan 段序一致，段末 ${PECADO_BLOCK_END}）：` +
+  `insert_code\\n代码\\n${PECADO_BLOCK_END}；` +
+  `edit_code\\n代码\\n${PECADO_BLOCK_END}；` +
+  `del_code\\n${PECADO_BLOCK_END}（无代码，区间 plan 取）；` +
+  `insert_blanks\\n${PECADO_BLOCK_END}（无代码，区间 plan 取）。从 line_start 本行开始`;
+
+const EMPTY_FILE_WRITE_HINT =
+  '该文件为空或不存在，请改用 write_file 流式写入完整内容，勿用 codx_edit_plan / codx_edit。';
+
+function isEmptyCodeFile(relPath) {
+  const root = projectIo.getStatus()?.projectRoot;
+  if (!root || !relPath) return false;
+  try {
+    const absPath = projectIo.resolveUnderProject(root, relPath);
+    if (!fs.existsSync(absPath)) return true;
+    if (!fs.statSync(absPath).isFile()) return false;
+    return fs.readFileSync(absPath, 'utf8').trim().length === 0;
+  } catch {
+    return false;
+  }
+}
+
 const CODX_EDIT_PLAN_TOOL = {
   name: CODX_EDIT_PLAN_TOOL_NAME,
   description:
-    '【第一轮】提交修改计划（须先 read_text_file）。path + edits[]，大行号在前。' +
-    '每项：line_start、op（insert_below | replace | delete）、line_end（replace/delete 必填）。不含真实代码。',
+    '【第一轮】改已有非空代码（须先 read_text_file）。空文件/新文件请用 write_file，勿调本工具。' +
+    'path + edits[]，大行号在前。' +
+    `每项：line_start、op（${PLAN_OPS.join(' | ')}）、line_end（del_code/edit_code/insert_blanks 必填）。` +
+    '均从 line_start 本行开始。不含真实代码。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -52,15 +79,16 @@ const CODX_EDIT_PLAN_TOOL = {
         items: {
           type: 'object',
           properties: {
-            line_start: { type: 'integer', description: '锚点行号（从 1 开始）' },
+            line_start: { type: 'integer', description: '起始行号（从 1 开始）' },
             op: {
               type: 'string',
-              enum: ['insert_below', 'replace', 'delete'],
-              description: 'insert_below=行末下插入；replace=替换行块；delete=删除行块',
+              enum: PLAN_OPS,
+              description:
+                'insert_code=本行插入；edit_code=本行编辑；del_code=删行；insert_blanks=本行插空行',
             },
             line_end: {
               type: 'integer',
-              description: 'replace/delete 的结束行号（含）；insert_below 可省略',
+              description: 'del_code/edit_code/insert_blanks 的结束行号（含）',
             },
           },
           required: ['line_start', 'op'],
@@ -74,16 +102,18 @@ const CODX_EDIT_PLAN_TOOL = {
 const CODX_EDIT_TOOL = {
   name: CODX_EDIT_TOOL_NAME,
   description:
-    '【第二轮】流式写入真实修改内容（须先 codx_edit_plan）。仅 path + text。' +
-    `按 plan 顺序（大行号→小行号）写入各段，段末 ${PECADO_LLM_LINE_END}。` +
-    'insert_below 段只写新代码；replace 段只写替换后的新代码；delete 段可空或省略内容。',
+    '【第二轮】改已有非空代码（须先 codx_edit_plan）。空文件/新文件请用 write_file。path + text。' +
+    `与 plan 段序一致，段末 ${PECADO_BLOCK_END}。` +
+    OP_STREAM_HINT,
   inputSchema: {
     type: 'object',
     properties: {
       path: { type: 'string', description: '与 plan 相同路径' },
       text: {
         type: 'string',
-        description: `各段按 plan 顺序拼接，段间用 ${PECADO_LLM_LINE_END} 分隔`,
+        description:
+          `insert_code\\n代码\\n${PECADO_BLOCK_END}；edit_code\\n代码\\n${PECADO_BLOCK_END}；` +
+          `del_code\\n${PECADO_BLOCK_END}；insert_blanks\\n${PECADO_BLOCK_END}`,
       },
     },
     required: ['path', 'text'],
@@ -125,10 +155,16 @@ async function EXECUTE_codx_tool(routedTask, execOpts = {}) {
         content: [{ type: 'text', text: `codx_edit_plan：${validated.error}` }],
       };
     }
+    if (isEmptyCodeFile(relPath)) {
+      return {
+        isError: true,
+        content: [{ type: 'text', text: `codx_edit_plan：${EMPTY_FILE_WRITE_HINT}` }],
+      };
+    }
     const lines = validated.edits
       .map((ed) => {
         const end =
-          ed.endLine != null && ed.op !== 'insert_below' ? `-${ed.endLine}` : '';
+          ed.endLine != null && ed.op !== 'insert_code' ? `-${ed.endLine}` : '';
         return `L${ed.startLine}${end} ${ed.op}`;
       })
       .join(' → ');
@@ -138,7 +174,7 @@ async function EXECUTE_codx_tool(routedTask, execOpts = {}) {
           type: 'text',
           text:
             `plan OK：${relPath}（${validated.edits.length} 处：${lines}）。` +
-            `【必须】立刻调用 codx_edit，path="${relPath}"，text 按上述顺序流式写入，段末 ${PECADO_LLM_LINE_END}。`,
+            `【必须】立刻 codx_edit path="${relPath}"；${OP_STREAM_HINT}`,
         },
       ],
       codxPlan: { path: relPath, edits: validated.edits },
@@ -153,6 +189,12 @@ async function EXECUTE_codx_tool(routedTask, execOpts = {}) {
   }
 
   const relPath = normalizeCodxRelPath(args?.path);
+  if (isEmptyCodeFile(relPath)) {
+    return {
+      isError: true,
+      content: [{ type: 'text', text: `codx_edit：${EMPTY_FILE_WRITE_HINT}` }],
+    };
+  }
   const target = execOpts.streamContext?.codxEditTargets?.get(index ?? 0);
   const streamed = target?.streamed || (target?.textLen ?? 0) > 0;
 
@@ -196,7 +238,7 @@ function FEED_codx_tool_result(execRaw) {
 module.exports = {
   CODX_EDIT_PLAN_TOOL_NAME,
   CODX_EDIT_TOOL_NAME,
-  PECADO_LLM_LINE_END,
+  PECADO_BLOCK_END,
   normalizeCodxRelPath,
   isCodxToolName,
   getCodxTools,
