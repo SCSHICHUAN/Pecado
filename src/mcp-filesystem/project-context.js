@@ -117,7 +117,7 @@ async function buildProjectContextForAi(userText, opts = {}) {
   if (opts.agentAnchorOnly) return buildProjectAnchorLines().join('\n');
 
   const lines = [
-    '【本地工程上下文】来自本机 MCP filesystem（directory_tree + read_text_file），请结合以下内容理解并回答代码问题。',
+    '【工程上下文】',
     `工程根目录: ${cache.root}`,
     '',
     '【目录结构】',

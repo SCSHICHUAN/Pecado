@@ -1,26 +1,38 @@
 /**
  * @file codx-edit-ops.js
- * CodX 行级编辑：add / edit / delete，行号相对 read 原文，偏移由调用方累计。
+ * CodX 行级编辑：insert_below / replace / delete，行号相对 read 原文，偏移由调用方累计。
  */
 
 /**
+ * @param {string} [raw]
+ * @returns {'insert_below' | 'replace' | 'delete' | ''}
+ */
+function normalizeCodxOp(raw) {
+  const op = String(raw || '').toLowerCase();
+  if (op === 'insert_below' || op === 'add' || op === 'insert') return 'insert_below';
+  if (op === 'replace' || op === 'edit') return 'replace';
+  if (op === 'delete' || op === 'remove') return 'delete';
+  return op;
+}
+
+/**
  * @param {{ op?: string, startLine?: number, endLine?: number | null, text?: string, streamText?: string }} ed
- * @returns {'add' | 'edit' | 'delete'}
+ * @returns {'insert_below' | 'replace' | 'delete'}
  */
 function inferCodxOp(ed) {
-  const raw = String(ed?.op || '').toLowerCase();
-  if (raw === 'add' || raw === 'insert') return 'add';
-  if (raw === 'edit' || raw === 'replace') return 'edit';
-  if (raw === 'delete' || raw === 'remove') return 'delete';
+  const normalized = normalizeCodxOp(ed?.op);
+  if (normalized === 'insert_below' || normalized === 'replace' || normalized === 'delete') {
+    return normalized;
+  }
 
   const start = Math.max(1, Math.floor(Number(ed?.startLine) || 1));
   const end = ed?.endLine;
   const hasEnd = end != null && Number.isFinite(Number(end)) && Number(end) >= start;
   const text = ed?.streamText ?? ed?.text;
-  if (text != null && String(text).length > 0) return 'edit';
-  if (!hasEnd) return 'edit';
+  if (text != null && String(text).length > 0) return 'replace';
+  if (!hasEnd) return 'insert_below';
   if (text === '' || text == null) return 'delete';
-  return 'edit';
+  return 'replace';
 }
 
 /**
@@ -38,25 +50,26 @@ function applyCodxEditOpInner(content, ed) {
   const text = String(ed?.streamText ?? ed?.text ?? '');
 
   const lines = String(content ?? '').split('\n');
-  const si = Math.max(1, Math.floor(Number(startLine) || 1)) - 1;
+  const si = Math.max(1, Math.floor(Number(startLine) || 1));
 
-  if (op === 'add') {
+  if (op === 'insert_below') {
     const ins = text.split('\n');
     lines.splice(si, 0, ...ins);
     return lines.join('\n');
   }
 
+  const startIdx = si - 1;
   const hasEnd =
     endLine != null && Number.isFinite(Number(endLine)) && Number(endLine) >= Number(startLine);
-  const ei = hasEnd ? Math.max(si, Math.floor(Number(endLine)) - 1) : si;
+  const ei = hasEnd ? Math.max(startIdx, Math.floor(Number(endLine)) - 1) : startIdx;
 
   if (op === 'delete') {
-    lines.splice(si, ei - si + 1);
+    lines.splice(startIdx, ei - startIdx + 1);
     return lines.join('\n');
   }
 
   const ins = text.split('\n');
-  lines.splice(si, ei - si + 1, ...ins);
+  lines.splice(startIdx, ei - startIdx + 1, ...ins);
   return lines.join('\n');
 }
 
@@ -76,7 +89,7 @@ function computeCodxEditDeltaInner(ed) {
   const repLines = hasEnd ? Math.floor(Number(end)) - start + 1 : 0;
   const insLines = String(ed?.streamText ?? ed?.text ?? '').split('\n').length;
 
-  if (op === 'add') return insLines;
+  if (op === 'insert_below') return insLines;
   if (op === 'delete') return -repLines;
   return insLines - repLines;
 }
@@ -109,10 +122,11 @@ function mapOriginalLineToCurrent(originalLine, edits, opts = {}) {
     const end = ed.endLine;
     const hasEnd = end != null && Number.isFinite(Number(end)) && Number(end) >= start;
     const delta = computeCodxEditDeltaInner(ed);
-    const rangeEnd = op === 'add' ? start - 1 : hasEnd ? Math.floor(Number(end)) : start;
+    const rangeEnd =
+      op === 'insert_below' ? start : hasEnd ? Math.floor(Number(end)) : start;
 
     if (ol > rangeEnd) offset += delta;
-    else if (op !== 'add' && hasEnd && ol >= start && ol <= Math.floor(Number(end))) {
+    else if (op === 'replace' && hasEnd && ol >= start && ol <= Math.floor(Number(end))) {
       return start + offset;
     }
   }
@@ -120,33 +134,44 @@ function mapOriginalLineToCurrent(originalLine, edits, opts = {}) {
 }
 
 /**
- * 按 line_start + 流式 text 推断 replace 范围（写隔离：每段只改自己的行块）
+ * 按 line_start + 流式 text 推断 apply 范围
  * @param {{ startLine?: number, endLine?: number, streamText?: string, text?: string, complete?: boolean, op?: string }} ed
  */
 function enrichCodxEditForApply(ed) {
   const startLine = Math.max(1, Math.floor(Number(ed?.startLine) || 1));
   const text = String(ed?.streamText ?? ed?.text ?? '');
-  const explicitOp = String(ed?.op || '').toLowerCase();
-  if (explicitOp === 'delete' || explicitOp === 'remove') {
+  const op = inferCodxOp(ed);
+
+  if (op === 'delete') {
     const endLine =
       ed?.endLine != null && Number(ed.endLine) >= startLine
         ? Math.floor(Number(ed.endLine))
         : startLine;
     return { ...ed, op: 'delete', startLine, endLine };
   }
-  if (!text) {
-    return { ...ed, op: 'edit', startLine, endLine: startLine };
+
+  if (op === 'insert_below') {
+    return { ...ed, op: 'insert_below', startLine, endLine: startLine };
   }
-  const lineCount = text.split('\n').length;
-  return {
-    ...ed,
-    op: 'edit',
-    startLine,
-    endLine: startLine + lineCount - 1,
-  };
+
+  const explicitEnd =
+    ed?.endLine != null && Number(ed.endLine) >= startLine
+      ? Math.floor(Number(ed.endLine))
+      : null;
+  if (!text) {
+    return {
+      ...ed,
+      op: 'replace',
+      startLine,
+      endLine: explicitEnd ?? startLine,
+    };
+  }
+  const endLine = explicitEnd ?? startLine + text.split('\n').length - 1;
+  return { ...ed, op: 'replace', startLine, endLine };
 }
 
 module.exports = {
+  normalizeCodxOp,
   inferCodxOp,
   applyCodxEditOp,
   computeCodxEditDelta,

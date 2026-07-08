@@ -13,7 +13,6 @@ const { prepareMcpToolPath, resolveMcpDirectoryPath } = require('./read');
 const { getMainWindow } = require('./ipc');
 const { confirmCreateOperation, integrateAfterCreate } = require('../xcode/prompt');
 const xcodeProject = require('../xcode/project');
-const { formatWithLineNumbers } = require('../shared/line-numbers');
 
 const IS_DARWIN = process.platform === 'darwin';
 
@@ -129,6 +128,17 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
   const isWriteFile = name === 'write_file';
   const isNewPath = relPath && !xcodeProject.pathExistsUnderRoot(projectRoot, relPath);
 
+  if (name === 'edit_file') {
+    return {
+      isError: true,
+      content: [{
+        type: 'text',
+        text:
+          'edit_file 不可用。修改已有代码请使用 codx_edit_plan → codx_edit（经 CodX 编辑器流式写入）。',
+      }],
+    };
+  }
+
   // 禁止 write_file 覆盖已有代码文件：文件存在且有内容时必须用 codx_edit
   if (isWriteFile && !isNewPath && !execHints.skipPrompt && !execHints.codxDeferred) {
     try {
@@ -182,10 +192,6 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
           : prepareMcpToolPath(callArgs.path, projectRoot);
     }
     result = await projectIo.callTool(name, callArgs);
-  }
-
-  if ((name === 'read_text_file' || name === 'read_file') && result?.content?.[0]?.text != null) {
-    result.content[0].text = formatWithLineNumbers(result.content[0].text);
   }
 
   if (xcodeIntegrate && xcodeMeta && (isCreateDir || isWriteFile) && relPath) {

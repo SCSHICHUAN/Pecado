@@ -4,6 +4,7 @@
  */
 const projectIo = require('../mcp-filesystem');
 const { isDiskWriteTool } = require('./agent-reply');
+const { isReadTextFileToolName } = require('./read-text-file');
 
 function pathKey(projectRoot, filePath) {
   const raw = String(filePath || '').trim();
@@ -88,7 +89,7 @@ function planTasksWithWriteGuard(tasks, projectRoot, diskFreshReadPaths) {
   ];
   const readPathsInBatch = new Set(
     list
-      .filter((t) => t.name === 'read_text_file' || t.name === 'read_file')
+      .filter((t) => isReadTextFileToolName(t.name))
       .map((t) => pathKey(projectRoot, String(t.args?.path || '').trim()))
       .filter(Boolean)
   );
@@ -111,7 +112,7 @@ function planTasksWithWriteGuard(tasks, projectRoot, diskFreshReadPaths) {
     if (
       planned.some(
         (t) =>
-          (t.name === 'read_text_file' || t.name === 'read_file') &&
+          isReadTextFileToolName(t.name) &&
           pathKey(projectRoot, String(t.args?.path || '').trim()) === p
       )
     ) {
@@ -120,8 +121,8 @@ function planTasksWithWriteGuard(tasks, projectRoot, diskFreshReadPaths) {
     planned.unshift(createSyntheticReadTask(p, 9000 + planned.length));
   }
 
-  const reads = planned.filter((t) => t.name === 'read_text_file' || t.name === 'read_file');
-  const rest = planned.filter((t) => t.name !== 'read_text_file' && t.name !== 'read_file');
+  const reads = planned.filter((t) => isReadTextFileToolName(t.name));
+  const rest = planned.filter((t) => !isReadTextFileToolName(t.name));
   return { tasks: [...reads, ...rest], deferredWrites };
 }
 

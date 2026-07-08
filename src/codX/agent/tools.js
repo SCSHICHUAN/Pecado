@@ -40,22 +40,30 @@ const CODX_EDIT_TOOL_NAME = 'codx_edit';
 const CODX_EDIT_PLAN_TOOL = {
   name: CODX_EDIT_PLAN_TOOL_NAME,
   description:
-    '【第一轮】提交修改起始行（须先 read_text_file）。path + edits[]：每项仅 line_start（修改起始行号）。' +
-    'edits 按 line_start 从大到小排列（如 26、10、8）。不含真实代码。' +
-    '成功后下一轮再调 codx_edit 流式写入内容。',
+    '【第一轮】提交修改计划（须先 read_text_file）。path + edits[]，大行号在前。' +
+    '每项：line_start、op（insert_below | replace | delete）、line_end（replace/delete 必填）。不含真实代码。',
   inputSchema: {
     type: 'object',
     properties: {
       path: { type: 'string', description: '工程内相对路径（勿用绝对路径）' },
       edits: {
         type: 'array',
-        description: '修改点位列表，大行号在前；每项仅 line_start',
+        description: '修改点位列表，大行号在前',
         items: {
           type: 'object',
           properties: {
-            line_start: { type: 'integer', description: '修改起始行号（从 1 开始）' },
-            startLine: { type: 'integer', description: '同 line_start（兼容）' },
+            line_start: { type: 'integer', description: '锚点行号（从 1 开始）' },
+            op: {
+              type: 'string',
+              enum: ['insert_below', 'replace', 'delete'],
+              description: 'insert_below=行末下插入；replace=替换行块；delete=删除行块',
+            },
+            line_end: {
+              type: 'integer',
+              description: 'replace/delete 的结束行号（含）；insert_below 可省略',
+            },
           },
+          required: ['line_start', 'op'],
         },
       },
     },
@@ -67,8 +75,8 @@ const CODX_EDIT_TOOL = {
   name: CODX_EDIT_TOOL_NAME,
   description:
     '【第二轮】流式写入真实修改内容（须先 codx_edit_plan）。仅 path + text。' +
-    `从大行号到小行号依次写入各段：每段内容从对应 line_start 起追加，段末须加 ${PECADO_LLM_LINE_END} 结束该处改动，` +
-    '再写下一段。示例：L26内容 + pecado_LLM_line_end + L10内容 + pecado_LLM_line_end + …',
+    `按 plan 顺序（大行号→小行号）写入各段，段末 ${PECADO_LLM_LINE_END}。` +
+    'insert_below 段只写新代码；replace 段只写替换后的新代码；delete 段可空或省略内容。',
   inputSchema: {
     type: 'object',
     properties: {
@@ -117,7 +125,13 @@ async function EXECUTE_codx_tool(routedTask, execOpts = {}) {
         content: [{ type: 'text', text: `codx_edit_plan：${validated.error}` }],
       };
     }
-    const lines = validated.edits.map((ed) => `L${ed.startLine}`).join(' → ');
+    const lines = validated.edits
+      .map((ed) => {
+        const end =
+          ed.endLine != null && ed.op !== 'insert_below' ? `-${ed.endLine}` : '';
+        return `L${ed.startLine}${end} ${ed.op}`;
+      })
+      .join(' → ');
     return {
       content: [
         {

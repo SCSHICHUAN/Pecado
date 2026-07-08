@@ -39,60 +39,13 @@ const { resolveAbsInProject } = require('../xcode/stream');
 const { composeAgentReply } = require('./agent-reply');
 const { publishToolLog, buildAgentPhaseEntry, emitAgentLog, publishXcodeProgress, publishSkillProgress } = require('../shared/agent-log');
 const codxDiskSync = require('./codx-disk-sync');
+const { EXECUTE_read_text_file, isReadTextFileToolName } = require('./read-text-file');
 const { CODX_REASONING_ROUND_NUDGE } = require('../shared/prompt-language');
 
 const MAX_TOOL_ROUNDS = 12;
 
-/** CodX 多轮 INFER：追加 ephemeral 语言提醒，不污染 conv */
-/**
- * read_text_disk_file — 读磁盘（现有行为，走 MCP 子进程 fs.readFile）。
- * 这是 read_text_file 的底层实现之一，LLM 不可见。
- */
-async function read_text_disk_file(routed, execStreamContext) {
-  return await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
-}
-
-/**
- * read_text_cache_file — 读 CodX Monaco 缓存（编辑器内存）。
- * 这是 read_text_file 的底层实现之一，LLM 不可见。
- */
-async function read_text_cache_file(relPath, sender) {
-  if (!relPath || !sender || sender.isDestroyed()) return null;
-  try {
-    const cached = await sender.executeJavaScript(
-      `window.CodXEditor && window.CodXEditor.getCachedContent(${JSON.stringify(relPath)})`
-    );
-    if (cached?.isEdited && cached.content != null) {
-      return cached.content;
-    }
-  } catch (_) {}
-  return null;
-}
-
-/**
- * read_text_file 分发器：优先读 Monaco 缓存，未命中则读磁盘。
- * LLM 始终调用 read_text_file，本地无感分发。
- */
-async function read_text_file(parsedTask, routed, execStreamContext, { sender }) {
-  const readPath = parsedTask.args?.path != null
-    ? String(parsedTask.args.path).trim()
-    : '';
-
-  if (!readPath) {
-    return await read_text_disk_file(routed, execStreamContext);
-  }
-
-  // 尝试读 Monaco 缓存（getCachedContent 内部有 isEdited 防护）
-  if (sender && !sender.isDestroyed()) {
-    const cached = await read_text_cache_file(readPath, sender);
-    if (cached != null) {
-      return { content: [{ type: 'text', text: cached }] };
-    }
-  }
-
-  // 未命中缓存 → 读磁盘
-  return await read_text_disk_file(routed, execStreamContext);
-}
+/** MCP 工具不向 LLM 暴露（改已有代码走 codx_edit） */
+const MCP_HIDDEN_FROM_LLM = new Set(['edit_file']);
 
 function messagesForInfer(conv, { codxChat, round }) {
   if (!codxChat || round <= 0) return conv;
@@ -161,10 +114,11 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
   }
   if (!mcpTools.length) return { error: 'MCP 未返回可用 tools' };
 
+  const visibleMcpTools = mcpTools.filter((t) => !MCP_HIDDEN_FROM_LLM.has(t?.name));
   const allTools = [
     getFinishTaskTool(),
     getReadMediaFileTool(),
-    ...mcpTools,
+    ...visibleMcpTools,
     ...getDevDocTools(),
     ...getXcodeTools(),
     ...getCodxTools(),
@@ -350,17 +304,13 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
             execRaw = mediaResult.error
               ? { isError: true, content: [{ type: 'text', text: mediaResult.error }] }
               : { content: [{ type: 'text', text: mediaResult.toolResult || 'ok' }] };
+          } else if (isReadTextFileToolName(parsedTask.name)) {
+            execRaw = await EXECUTE_read_text_file(routed, {
+              streamContext: execStreamContext,
+              sender: loopOpts.sender,
+            });
           } else {
-            // read_text_file 分发：根据标记分发到 read_text_cache_file 或 read_text_disk_file
-            const isReadFile =
-              parsedTask.name === 'read_text_file' || parsedTask.name === 'read_file';
-            if (isReadFile) {
-              execRaw = await read_text_file(parsedTask, routed, execStreamContext, {
-                sender: loopOpts.sender,
-              });
-            } else {
-              execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
-            }
+            execRaw = await EXECUTE_execute_tool(routed, { streamContext: execStreamContext });
           }
         } catch (e) {
           execRaw = { isError: true, content: [{ type: 'text', text: e.message || String(e) }] };
@@ -403,10 +353,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
         feed_observation(conv, parsedTask, toolFeed);
         if (routed.module !== 'skill') publishToolLog(parsedTask, routed, execRaw, toolFeed);
 
-        if (
-          (parsedTask.name === 'read_text_file' || parsedTask.name === 'read_file') &&
-          !execRaw?.isError
-        ) {
+        if (isReadTextFileToolName(parsedTask.name) && !execRaw?.isError) {
           const readPath = parsedTask.args?.path != null ? String(parsedTask.args.path).trim() : '';
           if (readPath) diskFreshReadPaths.add(pathKey(projectRoot, readPath));
         }

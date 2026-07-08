@@ -2,7 +2,6 @@
  * @file codx-edit-plan.js
  * CodX 两轮编辑：第一轮 plan（line_start），第二轮按 pecado_LLM_line_end 切分流式 text。
  */
-const { inferCodxOp } = require('./codx-edit-ops');
 
 /** LLM 流式各段结束标记（不写入文件） */
 const PECADO_LLM_LINE_END = 'pecado_LLM_line_end';
@@ -19,19 +18,22 @@ function normalizePlanEdit(raw) {
   if (!Number.isFinite(startLine) || startLine < 1) return null;
 
   const opRaw = String(raw?.op || '').toLowerCase();
-  let op = 'add';
-  if (opRaw === 'add' || opRaw === 'insert') op = 'add';
-  else if (opRaw === 'edit' || opRaw === 'replace') op = 'edit';
+  let op = 'insert_below';
+  if (opRaw === 'insert_below' || opRaw === 'add' || opRaw === 'insert') op = 'insert_below';
+  else if (opRaw === 'replace' || opRaw === 'edit') op = 'replace';
   else if (opRaw === 'delete' || opRaw === 'remove') op = 'delete';
-  else if (raw?.endLine != null && Number.isFinite(Number(raw.endLine))) {
-    op = inferCodxOp({
-      startLine,
-      endLine: raw.endLine,
-      text: raw?.charCount === 0 ? '' : 'x',
-    });
+  else if (raw?.endLine != null || raw?.line_end != null) {
+    const endRaw = raw?.endLine ?? raw?.line_end;
+    const endLine =
+      endRaw != null && Number.isFinite(Number(endRaw)) ? Math.floor(Number(endRaw)) : undefined;
+    if (endLine != null && endLine >= startLine && raw?.charCount === 0) {
+      op = 'delete';
+    } else if (endLine != null && endLine >= startLine) {
+      op = 'replace';
+    }
   }
 
-  const endRaw = raw?.endLine;
+  const endRaw = raw?.endLine ?? raw?.line_end;
   const endLine =
     endRaw != null && Number.isFinite(Number(endRaw)) ? Math.floor(Number(endRaw)) : undefined;
 
@@ -40,6 +42,7 @@ function normalizePlanEdit(raw) {
     startLine,
     line_start: startLine,
     endLine: endLine != null && endLine >= startLine ? endLine : undefined,
+    line_end: endLine != null && endLine >= startLine ? endLine : undefined,
   };
 }
 
@@ -70,9 +73,10 @@ function validateCodxEditPlan(rawEdits) {
   const edits = sortPlanEditsDesc(normalized);
   for (let i = 0; i < edits.length; i += 1) {
     const ed = edits[i];
-    if (ed.op === 'edit' || ed.op === 'delete') {
-      if (ed.endLine == null || ed.endLine < ed.startLine) {
-        return { ok: false, error: `edits[${i}]：edit/delete 须含有效 endLine` };
+    if (ed.op === 'replace' || ed.op === 'delete') {
+      const end = ed.endLine ?? ed.line_end;
+      if (end == null || end < ed.startLine) {
+        return { ok: false, error: `edits[${i}]：${ed.op} 须含有效 line_end（≥ line_start）` };
       }
     }
   }

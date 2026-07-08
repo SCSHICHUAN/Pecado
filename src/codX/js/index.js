@@ -423,9 +423,9 @@
       return;
     }
 
-    // 文件已被 Monaco 编辑过（人 或 AI coding），直接用缓存内容，不走磁盘
+    // 文件已在 CodX 中（含仅打开未改），优先用编辑器内容打开
     const cached = window.CodXEditor?.getCachedContent?.(rel);
-    if (cached?.isEdited) {
+    if (cached) {
       if (cached.isBackground || cached.isClosedDirty) {
         // 后台AI编辑中的文件 / 已关闭但有未保存修改的文件，用专门方法打开保留所有编辑状态
         window.CodXEditor?.openCachedFile?.(rel);

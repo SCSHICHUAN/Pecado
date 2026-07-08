@@ -960,7 +960,7 @@
   }
 
   /**
-   * 获取 Monaco 缓存中某文件的编辑内容。
+   * 获取 Monaco 缓存中某文件的编辑内容（UI：文件树打开等）。
    * @returns {null|{ content: string, isEdited: boolean, isBackground: boolean, isClosedDirty: boolean }}
    */
   function getCachedContent(relPath) {
@@ -972,7 +972,36 @@
       content: state.content ?? '',
       isEdited: isFileEdited(state),
       isBackground: backgroundStreams.has(resolved) && !openFiles.has(resolved),
-      isClosedDirty: closedDirtyFiles.has(resolved) && !openFiles.has(resolved)
+      isClosedDirty: closedDirtyFiles.has(resolved) && !openFiles.has(resolved),
+    };
+  }
+
+  /**
+   * Agent read_text_file：CodX 已打开该文件则读 Monaco 最新内容（含未保存 / 流式编辑）。
+   * @returns {null|{ content: string, relPath: string }}
+   */
+  function readTextForAgent(relPath) {
+    const resolved = resolveRelPath(relPath);
+    if (!resolved) return null;
+    const state = openFiles.get(resolved) || backgroundStreams.get(resolved) || closedDirtyFiles.get(resolved);
+    if (!state) return null;
+
+    if (state.codxEdits?.length) {
+      state.content = recomputeContentFromCodxEdits(state);
+    } else if (isActiveRelPath(resolved)) {
+      if (useFallback && fallbackTa) {
+        state.content = fallbackTa.value;
+      } else if (editor && !useFallback) {
+        const model = models.get(resolved) || editor.getModel();
+        if (model && !model.isDisposed()) {
+          state.content = model.getValue();
+        }
+      }
+    }
+
+    return {
+      content: state.content ?? '',
+      relPath: resolved,
     };
   }
 
@@ -1238,7 +1267,7 @@
   function createCodxEditEntry(opts = {}) {
     const startLine = Math.max(1, Math.floor(Number(opts.startLine) || 1));
     return {
-      op: opts.op || 'edit',
+      op: opts.op || 'insert_below',
       startLine,
       endLine: opts.endLine,
       streamText: '',
@@ -1308,9 +1337,9 @@
 
     state.codxEdits = rawEdits.map((ed) =>
       createCodxEditEntry({
-        op: 'edit',
+        op: ed.op || 'insert_below',
         startLine: ed.startLine ?? ed.line_start,
-        endLine: ed.endLine,
+        endLine: ed.endLine ?? ed.line_end,
       })
     );
 
@@ -1411,11 +1440,10 @@
     const ed = state.codxEdits[editArrayIndex];
     if (!ed) return;
     const enriched = codxOps()?.enrichCodxEditForApply?.(ed) || ed;
-    const op = codxOps()?.inferCodxOp?.(enriched) || 'edit';
-    const newContent = recomputeContentFromCodxEdits(state, { liveArrayIndex: editArrayIndex });
+    const op = codxOps()?.inferCodxOp?.(enriched) || 'replace';
 
     if (useFallback && fallbackTa) {
-      fallbackTa.value = newContent;
+      fallbackTa.value = recomputeContentFromCodxEdits(state, { liveArrayIndex: editArrayIndex });
       return;
     }
     if (!editor || !monacoRef) return;
@@ -1423,16 +1451,21 @@
     let model = models.get(resolved);
     const lang = guessLanguage(resolved);
 
-    if (op === 'add') {
+    function ensureModelWithBase() {
+      const baseContent = recomputeContentBeforeEdit(state, editArrayIndex);
+      if (!model || model.isDisposed()) {
+        model = monacoRef.editor.createModel(baseContent, lang, fileUri(resolved));
+        models.set(resolved, model);
+      } else if (model.getValue() !== baseContent) {
+        model.setValue(baseContent);
+      }
+      return baseContent;
+    }
+
+    if (op === 'insert_below') {
       let session = state.codxStreamSession;
       if (!session || session.editArrayIndex !== editArrayIndex) {
-        const baseContent = recomputeContentBeforeEdit(state, editArrayIndex);
-        if (!model || model.isDisposed()) {
-          model = monacoRef.editor.createModel(baseContent, lang, fileUri(resolved));
-          models.set(resolved, model);
-        } else {
-          model.setValue(baseContent);
-        }
+        ensureModelWithBase();
         const anchorLine = codxOps().mapOriginalLineToCurrent(ed.startLine, state.codxEdits, {
           completeOnly: true,
           beforeArrayIndex: editArrayIndex,
@@ -1442,7 +1475,8 @@
           op,
           streamedLen: 0,
           anchorLine: Math.max(1, anchorLine),
-          anchorColumn: 1,
+          anchorColumn: null,
+          needsNewline: true,
         };
         session = state.codxStreamSession;
       }
@@ -1450,31 +1484,93 @@
       const piece = text.slice(session.streamedLen);
       if (piece) {
         const line = session.anchorLine;
-        const col = session.anchorColumn;
+        let col = session.anchorColumn;
+        if (col == null) {
+          const lineEnd = model.getLineLastNonWhitespacePosition(line);
+          col = lineEnd ? lineEnd.column : 1;
+          session.anchorColumn = col;
+        }
+        let insertText = piece;
+        if (session.needsNewline) {
+          insertText = `\n${piece}`;
+          session.needsNewline = false;
+        }
         model.pushEditOperations(
           [],
-          [{ range: new monacoRef.Range(line, col, line, col), text: piece }],
+          [{
+            range: new monacoRef.Range(line, col, line, col),
+            text: insertText,
+            forceMoveMarkers: true,
+          }],
           () => null
         );
-        const parts = piece.split('\n');
+        const parts = insertText.split('\n');
         if (parts.length === 1) {
-          session.anchorColumn += piece.length;
+          session.anchorColumn += insertText.length;
         } else {
           session.anchorLine += parts.length - 1;
           session.anchorColumn = parts[parts.length - 1].length + 1;
         }
         session.streamedLen = text.length;
       }
-    } else {
-      const baseContent = recomputeContentBeforeEdit(state, editArrayIndex);
-      const partial = codxOps().applyCodxEditOp(baseContent, ed);
-      if (!model || model.isDisposed()) {
-        model = monacoRef.editor.createModel(partial, lang, fileUri(resolved));
-        models.set(resolved, model);
-      } else if (model.getValue() !== partial) {
-        model.setValue(partial);
+    } else if (op === 'replace') {
+      let session = state.codxStreamSession;
+      if (!session || session.editArrayIndex !== editArrayIndex) {
+        ensureModelWithBase();
+        state.codxStreamSession = {
+          editArrayIndex,
+          op,
+          streamedLen: 0,
+        };
+        session = state.codxStreamSession;
       }
-      resetCodxStreamSession(state);
+      const text = ed.streamText || '';
+      if (text.length !== session.streamedLen) {
+        const mappedStart = codxOps().mapOriginalLineToCurrent(enriched.startLine, state.codxEdits, {
+          completeOnly: true,
+          beforeArrayIndex: editArrayIndex,
+        });
+        const span = Math.max(0, enriched.endLine - enriched.startLine);
+        const mappedEnd = Math.min(model.getLineCount(), mappedStart + span);
+        const endCol = model.getLineMaxColumn(mappedEnd);
+        model.pushEditOperations(
+          [],
+          [{
+            range: new monacoRef.Range(mappedStart, 1, mappedEnd, endCol),
+            text,
+            forceMoveMarkers: true,
+          }],
+          () => null
+        );
+        session.streamedLen = text.length;
+      }
+    } else if (op === 'delete') {
+      let session = state.codxStreamSession;
+      if (session?.editArrayIndex === editArrayIndex && session.applied) {
+        // already applied
+      } else {
+        ensureModelWithBase();
+        const mappedStart = codxOps().mapOriginalLineToCurrent(enriched.startLine, state.codxEdits, {
+          completeOnly: true,
+          beforeArrayIndex: editArrayIndex,
+        });
+        const span = Math.max(0, enriched.endLine - enriched.startLine);
+        const mappedEnd = Math.min(model.getLineCount(), mappedStart + span);
+        const endCol = model.getLineMaxColumn(mappedEnd);
+        model.pushEditOperations(
+          [],
+          [{
+            range: new monacoRef.Range(mappedStart, 1, mappedEnd, endCol),
+            text: '',
+            forceMoveMarkers: true,
+          }],
+          () => null
+        );
+        state.codxStreamSession = { editArrayIndex, op, applied: true };
+      }
+    } else {
+      pushLiveContentToEditor(resolved, state);
+      return;
     }
 
     if (editor.getModel() !== model) editor.setModel(model);
@@ -1744,7 +1840,7 @@
     const col = model.getLineMaxColumn(lc);
     model.pushEditOperations(
       [],
-      [{ range: new monacoRef.Range(lc, col, lc, col), text: piece }],
+      [{ range: new monacoRef.Range(lc, col, lc, col), text: piece, forceMoveMarkers: true }],
       () => null
     );
   }
@@ -2034,6 +2130,7 @@
     getEditorLineNumbers,
     getOpenFiles: () => openFiles,
     getCachedContent,
+    readTextForAgent,
     openCachedFile,
     persistActiveEditorContent,
     resolveRelPath,
