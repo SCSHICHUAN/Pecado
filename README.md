@@ -28,11 +28,11 @@ flowchart LR
 | **多媒体识别** | `read_media_file` 读取图片/SVG 为 Base64 送入 LLM 多模态上下文 |
 | **Skill 注入** | Workflow 侧栏 **Skill** Tab（数据层历史名 `devDocs`）；勾选「加入 AI」**常驻 Layer 树** + Instructions；正文用 `read_skill_section` 按需读 — 见 [Skill 设计](#skill-开发文档分层读-markdown-的设计) |
 | **Token 策略** | LLM 自行编排多轮 tools，以 **`finish_task(summary)`** 结束；`write-guard` 改码前强制 read；无运行意图勿调 `xcode_run` — 见 [Token 消耗优化](#token-消耗优化) |
-| **Workflow** | 局域网**文件服务**、文件归类、PPT 大纲、定时任务、**Xcode 模拟器管理** — 见 [src/workflow/README.md](src/workflow/README.md) |
-| **Xcode 集成**（macOS） | 新建文件流式落盘、弹窗加入 `.xcodeproj`；build/run 工具与自动编译；**模拟器持久化选择** |
+| **Workflow** | 局域网**文件服务**、文件归类、PPT 大纲、定时任务；**Xcode 模拟器管理（仅 macOS）** — 见 [src/workflow/README.md](src/workflow/README.md) |
+| **Xcode 集成**（仅 macOS） | 新建弹窗加入 `.xcodeproj`；`xcode_build` / `xcode_run` / `xcode_test`；模拟器偏好。Windows/Linux **不暴露**这些工具与 UI |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
 | **Git 面板** | 自研 SVG 提交时间线 + 底部 status / log / pecado 助手；Pull / Push / Commit、节点 Git 操作；**Pecado 思考流实时展示** |
-| **CodX 编辑区** | 底栏 **打开编程** → Monaco 全屏编辑；文件树 + Tab + AI 行级改码（`codx_edit_plan` / `codx_edit`）；**⌘S** / **↥** 同步 Xcode；**SSE 中断自动续写** — 见 [src/codX/README.md](src/codX/README.md) |
+| **CodX 编辑区** | 底栏 **打开编程** → Monaco 全屏编辑；文件树 + Tab + AI 行级改码；**⌘S** / **↥** 写磁盘；**SSE 中断自动续写** — 见 [src/codX/README.md](src/codX/README.md)。Windows 可用 |
 
 ---
 
@@ -57,6 +57,28 @@ HTTP/SSE 使用 Node/Electron 内置 **`fetch`**。
 |----|------|
 | [`electron`](https://www.npmjs.com/package/electron) | 桌面壳 |
 | [`electron-builder`](https://www.npmjs.com/package/electron-builder) | `npm run build` 打包 |
+
+---
+
+## 平台差异
+
+| 能力 | macOS | Windows / Linux |
+|------|-------|-----------------|
+| Open Folder / MCP / Agent / CodX / Git / Workflow 基础 | ✅ | ✅ |
+| `write_file` / `codx_edit` 写磁盘 | ✅ 流式 | ✅ 流式 |
+| Xcode 工具、▶ Run、Workflow「Xcode」Tab、加入 `.xcodeproj` | ✅ | 隐藏 / 不注册 |
+
+打包（本机可同时出 mac + Windows 解压目录）：
+
+```bash
+npm run build          # mac + win（x64 dir）
+npm run build:mac      # 仅 mac → release/mac/Pecado.app
+npm run build:win      # 仅 win → release/win-unpacked/Pecado.exe
+```
+
+Windows 配置了 `signAndEditExecutable: false`，避免在 macOS 上交叉打包时依赖 `winCodeSign`/`rcedit`（易因网络或二进制失败）。产物为未签名的 `dir`，可直接拷贝运行；正式签名建议在 Windows CI 上做。
+
+平台常量：`src/shared/platform.js`（`HAS_XCODE`）。
 
 ---
 

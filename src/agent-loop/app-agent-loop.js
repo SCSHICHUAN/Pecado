@@ -8,12 +8,6 @@ const { EXECUTE_parse_command, FEED_parsed_command } = require('../llm-server/co
 const { route_task } = require('./task-dispatcher');
 const { EXECUTE_execute_tool, FEED_tool_result } = require('../mcp-filesystem/tool-executor');
 const {
-  EXECUTE_execute_tool: EXECUTE_xcode_tool,
-  FEED_tool_result: FEED_xcode_tool_result,
-  getXcodeTools,
-  tryParseDirectXcodeTool,
-} = require('../xcode/agent/tools');
-const {
   getDevDocTools,
   EXECUTE_execute_tool: EXECUTE_dev_doc_tool,
   FEED_tool_result: FEED_dev_doc_tool_result,
@@ -41,8 +35,23 @@ const { publishToolLog, buildAgentPhaseEntry, emitAgentLog, publishXcodeProgress
 const codxDiskSync = require('./codx-disk-sync');
 const { EXECUTE_read_text_file, isReadTextFileToolName } = require('./read-text-file');
 const { CODX_REASONING_ROUND_NUDGE } = require('../shared/prompt-language');
+const { HAS_XCODE } = require('../shared/platform');
 
 const MAX_TOOL_ROUNDS = 12;
+
+function loadXcodeAgent() {
+  return require('../xcode/agent/tools');
+}
+
+function getXcodeTools() {
+  if (!HAS_XCODE) return [];
+  return loadXcodeAgent().getXcodeTools();
+}
+
+function tryParseDirectXcodeTool(userText) {
+  if (!HAS_XCODE) return null;
+  return loadXcodeAgent().tryParseDirectXcodeTool(userText);
+}
 
 /** MCP 工具不向 LLM 暴露（改已有代码走 codx_edit） */
 const MCP_HIDDEN_FROM_LLM = new Set(['edit_file']);
@@ -72,6 +81,7 @@ function shouldReturnPlainTextReply({ round, text, userText, textOnlyNudges }) {
 }
 
 async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
+  const xcode = loadXcodeAgent();
   uiSink.onTool?.({ name: parsedTask.name, arguments: parsedTask.args, index: parsedTask.index });
   logAgentPhase(uiSink, 'DISPATCH', { round: roundNo, status: 'start', method: parsedTask.name });
   const routed = route_task(parsedTask);
@@ -81,7 +91,7 @@ async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
   }
   let execRaw;
   try {
-    execRaw = await EXECUTE_xcode_tool(routed, {
+    execRaw = await xcode.EXECUTE_execute_tool(routed, {
       onProgress: ({ method, line, isError, elapsedMs }) => {
         publishXcodeProgress(method, line, { isError, elapsedMs });
       },
@@ -89,7 +99,7 @@ async function executeSoloXcodeTask(uiSink, parsedTask, roundNo) {
   } catch (e) {
     execRaw = { isError: true, content: [{ type: 'text', text: e.message || String(e) }] };
   }
-  const toolFeed = FEED_xcode_tool_result(execRaw);
+  const toolFeed = xcode.FEED_tool_result(execRaw);
   publishToolLog(parsedTask, routed, execRaw, toolFeed);
   return { content: composeAgentReply({ toolObservations: [toolFeed.observation] }) };
 }
@@ -268,7 +278,8 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
           }
 
           if (routed.module === 'xcode') {
-            execRaw = await EXECUTE_xcode_tool(routed, {
+            const xcode = loadXcodeAgent();
+            execRaw = await xcode.EXECUTE_execute_tool(routed, {
               onProgress: ({ method, line, isError, elapsedMs }) => {
                 publishXcodeProgress(method, line, { isError, elapsedMs });
               },
@@ -318,7 +329,7 @@ async function runAppAgentLoop(uiSink, llmOpts, messages, loopOpts = {}) {
 
         let toolFeed =
           routed.module === 'xcode'
-            ? FEED_xcode_tool_result(execRaw)
+            ? loadXcodeAgent().FEED_tool_result(execRaw)
             : routed.module === 'skill'
               ? FEED_dev_doc_tool_result(execRaw)
               : routed.module === 'codx'

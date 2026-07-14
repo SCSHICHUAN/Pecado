@@ -40,8 +40,7 @@ const { compressFigmaBundle, hasCompressed } = require('../codX/ui/compress-figm
 const { warmProjectTreeCache } = require('../mcp-filesystem/project-context');
 const { formatMcpTreeAscii } = require('../shared/format-tree');
 const { SKILL } = require('../shared/ipc-channels');
-const { listIosSimulatorCandidates } = require('../xcode/build-runner');
-const { saveSimulatorPref, loadSimulatorPref } = require('../xcode/simulator-prefs');
+const { HAS_XCODE } = require('../shared/platform');
 
 const PANEL_HTML = path.join(__dirname, 'html', 'panel.html');
 
@@ -461,9 +460,11 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.LIST_SIMULATORS, async () => {
     try {
-      if (process.platform !== 'darwin') {
+      if (!HAS_XCODE) {
         return { ok: true, simulators: [] };
       }
+      const { listIosSimulatorCandidates } = require('../xcode/build-runner');
+      const { loadSimulatorPref } = require('../xcode/simulator-prefs');
       const candidates = await listIosSimulatorCandidates();
       // 按 iOS 版本分组并排序（新版在前）
       const versionMap = new Map();
@@ -494,10 +495,13 @@ function register(ipcMain, getMainWindowFn) {
   });
 
   ipcMain.handle(WORKFLOW.GET_SIMULATOR, async () => {
+    if (!HAS_XCODE) return { ok: true, simulator: null };
+    const { loadSimulatorPref } = require('../xcode/simulator-prefs');
     const preferred = loadSimulatorPref();
     if (!preferred) return { ok: true, simulator: null };
     // 验证模拟器仍存在
     try {
+      const { listIosSimulatorCandidates } = require('../xcode/build-runner');
       const candidates = await listIosSimulatorCandidates();
       const found = candidates.find(
         (c) => c.udid.toLowerCase() === preferred.udid.toLowerCase()
@@ -513,6 +517,8 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(WORKFLOW.SAVE_SIMULATOR, async (_evt, payload) => {
     try {
+      if (!HAS_XCODE) return { ok: false, error: '仅 macOS 支持模拟器偏好' };
+      const { saveSimulatorPref } = require('../xcode/simulator-prefs');
       const udid = String(payload?.udid || '').trim();
       if (!udid) return { ok: false, error: '缺少 UDID' };
       saveSimulatorPref({

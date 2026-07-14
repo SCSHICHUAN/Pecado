@@ -1,28 +1,19 @@
 /**
  * @file stream.js
- * 【功能】macOS：LLM 流式输出写入磁盘，Xcode 打开的文件可实时刷新
+ * 【功能】LLM / Agent write_file 流式写入磁盘（跨平台）
  *   - createLiveWriter(absPath)：plain/context 下 assistant 正文流式写 @ 目标
- *   - registerWriteFileStreamTarget：agent write_file 解析到 path 后登记；新文件弹 confirmCreateOperation
- *   - writeDeltaToTarget：tool 参数 content delta → scheduleWriteDelta
- *   - resolveOpenProjectPath：MCP 已连接时把 relPath 转 abs（router plain 分支）
- *   非 darwin 或路径非法时各 API 降级为空操作
+ *   - registerWriteFileStreamTarget：agent write_file 解析到 path 后登记
+ *   - macOS：新建时可 confirmCreateOperation（加入 Xcode）
+ *   - 非空已有文件 → CodX deferred（只进编辑器）
  *
  * 【调用方】
  *   pecado/js/agent/router.js、plain-stream.js
  *   llm-server/llm-infer-service.js（INFER 节点流式写盘）
- *
- * 【对外能力】
- *   IS_DARWIN / resolveAbsInProject(projectRoot, relPath) / resolveOpenProjectPath(relPath)
- *   createLiveWriter(absPath) → { start, writeDelta, finish, active }
- *   registerWriteFileStreamTarget(projectRoot, relPath) → target | null
- *   writeDeltaToTarget(target, delta)
  */
 const fs = require('fs');
 const projectIo = require('../mcp-filesystem');
 const { getMainWindow } = require('../mcp-filesystem/ipc');
-const { confirmCreateOperation } = require('./prompt');
-
-const IS_DARWIN = process.platform === 'darwin';
+const { HAS_XCODE, IS_DARWIN } = require('../shared/platform');
 
 /**
  * @param {string} projectRoot
@@ -30,11 +21,11 @@ const IS_DARWIN = process.platform === 'darwin';
  * @returns {string | null}
  */
 function resolveAbsInProject(projectRoot, relPath) {
-  if (!IS_DARWIN || !projectRoot || !relPath) return null;
+  if (!projectRoot || !relPath) return null;
   try {
     return projectIo.resolveUnderProject(projectRoot, relPath);
   } catch (e) {
-    console.warn('[xcode-stream] ignore path:', e.message);
+    console.warn('[disk-stream] ignore path:', e.message);
     return null;
   }
 }
@@ -43,7 +34,7 @@ function resolveAbsInProject(projectRoot, relPath) {
 function resolveOpenProjectPath(relPath) {
   if (!relPath || !projectIo.getStatus().connected) return null;
   const abs = resolveAbsInProject(projectIo.getStatus().projectRoot, relPath);
-  if (abs) console.log('[xcode-stream] SSE target', abs);
+  if (abs) console.log('[disk-stream] SSE target', abs);
   return abs;
 }
 
@@ -57,7 +48,7 @@ function resolveOpenProjectPath(relPath) {
  * }}
  */
 function createLiveWriter(absPath) {
-  if (!absPath || !IS_DARWIN) {
+  if (!absPath) {
     return {
       active: false,
       start() {},
@@ -102,26 +93,25 @@ function isEmptyFileForLiveStream(absPath) {
 }
 
 /**
- * Agent `write_file` 流式：解析到 path 后登记落盘目标（含新建弹窗）。
+ * Agent `write_file` 流式：解析到 path 后登记落盘目标。
  * @param {string} projectRoot
  * @param {string} relPath
  */
 function registerWriteFileStreamTarget(projectRoot, relPath) {
-  if (!IS_DARWIN) return null;
-
   try {
     const absPath = projectIo.resolveUnderProject(projectRoot, relPath);
     const isNew = !fs.existsSync(absPath);
-    let xcodeLiveStream = true;
+    let liveStream = true;
     let cancelled = false;
     let xcodeIntegrate = false;
     let xcodeMeta = null;
 
-    if (isNew) {
+    if (isNew && HAS_XCODE) {
+      const { confirmCreateOperation } = require('./prompt');
       const confirm = confirmCreateOperation(getMainWindow(), 'write_file', projectRoot, relPath);
       if (!confirm.proceed) {
         cancelled = true;
-        xcodeLiveStream = false;
+        liveStream = false;
       } else {
         xcodeIntegrate = confirm.integrateXcode;
         xcodeMeta = confirm.xcodeMeta;
@@ -130,7 +120,7 @@ function registerWriteFileStreamTarget(projectRoot, relPath) {
     }
 
     if (cancelled) {
-      console.log('[xcode-stream] write_file cancelled:', relPath);
+      console.log('[disk-stream] write_file cancelled:', relPath);
       return {
         absPath,
         relPath,
@@ -142,37 +132,35 @@ function registerWriteFileStreamTarget(projectRoot, relPath) {
       };
     }
 
-    if (xcodeLiveStream) {
+    if (liveStream) {
       const fileEmpty = isEmptyFileForLiveStream(absPath);
       if (fileEmpty) {
         projectIo.beginWriteSession(absPath, { preserveExisting: false });
       } else {
-        xcodeLiveStream = false;
+        liveStream = false;
       }
     }
 
     console.log(
-      '[xcode-stream] write_file →',
+      '[disk-stream] write_file →',
       absPath,
-      xcodeLiveStream
-        ? isNew || !fs.existsSync(absPath)
-          ? '(live stream, new/empty → disk)'
-          : '(live stream, empty → disk)'
-        : '(CodX deferred → editor, Cmd+S / 确认写入)'
+      liveStream
+        ? '(live stream, new/empty → disk)'
+        : '(CodX deferred → editor)'
     );
 
     return {
       absPath,
       relPath,
       fileStarted: false,
-      xcodeLiveStream,
-      codxDeferred: !xcodeLiveStream && !cancelled,
+      xcodeLiveStream: liveStream,
+      codxDeferred: !liveStream && !cancelled,
       cancelled: false,
       xcodeIntegrate,
       xcodeMeta,
     };
   } catch (e) {
-    console.warn('[xcode-stream] path rejected:', e.message);
+    console.warn('[disk-stream] path rejected:', e.message);
     return null;
   }
 }

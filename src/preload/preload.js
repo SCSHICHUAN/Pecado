@@ -25,9 +25,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const { markdownToHtml } = require('../markdown/markdown-html');
 const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW, SKILL, CODX } = require('../shared/ipc-channels');
+const { platform, IS_DARWIN, HAS_XCODE } = require('../shared/platform');
 
 try {
   contextBridge.exposeInMainWorld('electronAPI', {
+    platform,
+    isDarwin: IS_DARWIN,
+    hasXcode: HAS_XCODE,
     volcArkBotsChatStream: (payload) => ipcRenderer.invoke(VOLC_ARK.BOTS_CHAT_COMPLETION, payload),
     handleBotCommand: (rawContent) =>
       ipcRenderer.invoke(QQ_MUSIC.HANDLE_BOT_COMMAND, { rawContent }),

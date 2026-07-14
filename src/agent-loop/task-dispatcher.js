@@ -5,7 +5,7 @@
  * 【节点】route_task — Loop 内部编排，非业务模块入口
  */
 const projectIo = require('../mcp-filesystem');
-const { IS_DARWIN } = require('../xcode/project');
+const { HAS_XCODE } = require('../shared/platform');
 const { isCodxToolName } = require('../codX/agent/tools');
 const { isReadMediaFileToolName } = require('../mcp-filesystem/read-media');
 
@@ -20,7 +20,7 @@ function route_task(parsedTask) {
 
   switch (parsedTask.type) {
     case 'xcode_tool': {
-      if (!IS_DARWIN) {
+      if (!HAS_XCODE) {
         return { error: 'DISPATCH：Xcode 工具仅支持 macOS' };
       }
       if (!projectIo.getStatus().connected) {

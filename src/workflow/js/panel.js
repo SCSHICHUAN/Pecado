@@ -95,12 +95,27 @@
 
   const WORKFLOW_TAB_KEY = 'workflow.lastTab';
 
+  function hasXcodeUi() {
+    return Boolean(getApi()?.hasXcode);
+  }
+
+  function hideMacOnlyWorkflowUi() {
+    if (hasXcodeUi()) return;
+    document.querySelectorAll('[data-wf-tab="xcode"], [data-wf-panel="xcode"]').forEach((el) => {
+      el.hidden = true;
+      el.style.display = 'none';
+    });
+  }
+
   function getDefaultTab() {
+    let tab = 'skill';
     try {
-      return localStorage.getItem(WORKFLOW_TAB_KEY) || 'skill';
+      tab = localStorage.getItem(WORKFLOW_TAB_KEY) || 'skill';
     } catch {
-      return 'skill';
+      tab = 'skill';
     }
+    if (tab === 'xcode' && !hasXcodeUi()) return 'skill';
+    return tab;
   }
 
   function switchTab(tabId) {
@@ -2097,6 +2112,7 @@
     const mount = $('panel-workflow');
     if (!mount) return;
     await loadPanelHtml();
+    hideMacOnlyWorkflowUi();
     bindUi();
     switchTab(getDefaultTab());
     setupProjectListener();

@@ -20,7 +20,8 @@
   },
   "win": {
     "target": "dir",
-    "icon": "assets/icons/icon.png"
+    "icon": "assets/icons/icon.png",
+    "signAndEditExecutable": false
   },
   "linux": {
     "target": "dir",

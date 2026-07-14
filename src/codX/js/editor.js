@@ -1823,7 +1823,9 @@
     btn.disabled = pending === 0;
     btn.setAttribute('aria-pressed', pending > 0 ? 'true' : 'false');
     btn.classList.toggle('is-pending', pending > 0);
-    btn.title = pending > 0 ? `同步 ${pending} 个待确认改动到 Xcode` : '没有待同步的改动';
+    const syncLabel = window.electronAPI?.hasXcode ? 'Xcode' : '磁盘';
+    btn.title =
+      pending > 0 ? `同步 ${pending} 个待确认改动到${syncLabel}` : '没有待同步的改动';
     btn.setAttribute('aria-label', btn.title);
   }
 

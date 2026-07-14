@@ -4,7 +4,7 @@
  */
 const { PECADO_BLOCK_END } = require('../shared/codx-edit-plan');
 const { AGENT_LANGUAGE_PREAMBLE } = require('../shared/prompt-language');
-const { IS_DARWIN } = require('../xcode/project');
+const { HAS_XCODE } = require('../shared/platform');
 const { FINISH_TASK_NAME } = require('./finish-tool');
 
 function buildCapabilityAgentPrompt() {
@@ -23,7 +23,7 @@ function buildCapabilityAgentPrompt() {
     '【能力 · 工程文件（MCP）】',
     '· read_text_file — 读文本文件（带 L 行号）',
     '· list_directory / directory_tree / search_files — 浏览、搜索（path 用 "." 或相对路径，见【工程锚点】）',
-    '· write_file — 新建文件或 read 后内容为空的文件：一步流式写完整内容（macOS 直写磁盘）；已有非空代码禁止 write_file',
+    '· write_file — 新建文件或 read 后内容为空的文件：一步流式写完整内容（直写磁盘）；已有非空代码禁止 write_file',
     '· create_directory / move_file / get_file_info',
     '',
     '【写码路径（必守）】',
@@ -53,9 +53,9 @@ function buildCapabilityAgentPrompt() {
     '',
   ];
 
-  if (IS_DARWIN) {
+  if (HAS_XCODE) {
     lines.push(
-      '【能力 · Xcode（macOS）】',
+      '【能力 · Xcode（仅 macOS）】',
       '· xcode_project_status / xcode_build / xcode_run / xcode_test',
       '· 要在模拟器看最新 UI 效果 → xcode_run；仅验证编译 → xcode_build',
       '· xcode_run 的 simulator 参数可选：用户在 Workflow → Xcode 面板选择的模拟器会自动生效',
@@ -63,17 +63,24 @@ function buildCapabilityAgentPrompt() {
     );
   }
 
-  lines.push(
+  const examples = [
     '【上下文】',
     '· 【CodX 当前编辑文件】→ 用户说「这个文件」时用该 path',
     '· 【Workflow Skill】→ 按意图匹配；细节不够再 read_skill_section',
     '',
     '【编排示例（由你决定，非固定流程）】',
-    '· 「新建 ViewController」→ write_file → finish_task',
+    '· 「新建文件/空文件写代码」→ write_file → finish_task',
     '· 「背景改红」→ 你可能：read → plan → edit → finish_task',
-    '· 「背景改红并运行」→ 你可能：read → plan → edit → xcode_run → finish_task',
     '· 「这段代码什么意思」→ read → finish_task',
-  );
+  ];
+  if (HAS_XCODE) {
+    examples.splice(
+      examples.length - 1,
+      0,
+      '· 「背景改红并运行」→ 你可能：read → plan → edit → xcode_run → finish_task'
+    );
+  }
+  lines.push(...examples);
 
   return lines.join('\n');
 }

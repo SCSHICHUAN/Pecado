@@ -11,13 +11,12 @@ const path = require('path');
 const projectIo = require('./index');
 const { prepareMcpToolPath, resolveMcpDirectoryPath } = require('./read');
 const { getMainWindow } = require('./ipc');
-const { confirmCreateOperation, integrateAfterCreate } = require('../xcode/prompt');
+const { HAS_XCODE } = require('../shared/platform');
 const xcodeProject = require('../xcode/project');
 
-const IS_DARWIN = process.platform === 'darwin';
-
 function appendXcodeIntegrateNote(result, kind, relPath, projectRoot, xcodeMeta) {
-  if (!xcodeMeta || !relPath) return result;
+  if (!HAS_XCODE || !xcodeMeta || !relPath) return result;
+  const { integrateAfterCreate } = require('../xcode/prompt');
   const r = integrateAfterCreate(xcodeMeta, kind, relPath, projectRoot);
   let suffix = '';
   if (r.ok && !r.already) suffix = `\n已加入 Xcode 工程（${r.path}）。`;
@@ -59,7 +58,6 @@ function resolveExecHints(task, streamContext = {}) {
   const alreadyStreamedToDisk =
     name === 'write_file' &&
     streamTarget?.absPath &&
-    IS_DARWIN &&
     streamTarget.xcodeLiveStream &&
     (streamTarget.fileStarted || (streamParser?.streamedContentLen ?? 0) > 0);
 
@@ -118,7 +116,7 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
       content: [
         {
           type: 'text',
-          text: `已在 CodX 编辑器生成 ${args.path}，请确认差异后同步到 Xcode。`,
+          text: `已在 CodX 编辑器生成 ${args.path}，请确认差异后 ⌘S / ↥ 写入磁盘。`,
         },
       ],
     };
@@ -163,7 +161,8 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
   let xcodeIntegrate = !!execHints.xcodeIntegrate;
   let xcodeMeta = execHints.xcodeMeta || null;
 
-  if ((isCreateDir || isWriteFile) && isNewPath && !execHints.skipPrompt) {
+  if (HAS_XCODE && (isCreateDir || isWriteFile) && isNewPath && !execHints.skipPrompt) {
+    const { confirmCreateOperation } = require('../xcode/prompt');
     const confirm = confirmCreateOperation(getMainWindow(), name, projectRoot, relPath);
     if (!confirm.proceed) {
       return {
@@ -177,7 +176,7 @@ async function EXECUTE_execute_tool(routedTask, execOpts = {}) {
   }
 
   let result;
-  if (IS_DARWIN && isWriteFile && relPath) {
+  if (isWriteFile && relPath) {
     const abs = projectIo.resolveUnderProject(projectRoot, relPath);
     await projectIo.writeWholeFileToDisk(abs, args.content);
     result = {

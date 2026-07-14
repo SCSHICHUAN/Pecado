@@ -203,7 +203,7 @@ async function EXECUTE_codx_tool(routedTask, execOpts = {}) {
       content: [
         {
           type: 'text',
-          text: `已在 CodX 编辑器更新 ${relPath}，请 ⌘S 保存或点 ↥ 同步到 Xcode。`,
+          text: `已在 CodX 编辑器更新 ${relPath}，请 ⌘S 保存或点 ↥ 写入磁盘。`,
         },
       ],
     };
