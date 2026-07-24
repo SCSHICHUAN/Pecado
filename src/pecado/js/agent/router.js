@@ -222,13 +222,19 @@ function register(ipcMain) {
 
     const { mode, messages, xcodeStreamPath, codxChat } = selected;
 
-    const { apiKey, model, apiMode, endpoint } = resolveVolcCredentials();
+    const { apiKey, model, apiMode, endpoint, baseUrl } = resolveVolcCredentials();
     if (!apiKey) {
       return { error: MISSING_KEY_ERROR };
     }
+    if (!endpoint) {
+      return {
+        error:
+          '未配置 Base URL。请打开 Preferences → LLM 配置，填写 OpenAI 兼容 Base URL 并保存。',
+      };
+    }
 
     const sender = event.sender;
-    const llmOpts = { apiKey, model, apiMode, endpoint };
+    const llmOpts = { apiKey, model, apiMode, endpoint, baseUrl };
 
     if (isAgentMode(mode)) {
       const uiSink = createUiStreamSink(sender, streamId);

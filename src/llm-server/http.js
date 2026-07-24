@@ -1,21 +1,15 @@
 /**
  * @file http.js
  *
- * 【功能】火山方舟 Bots Chat Completions HTTP 传输层（不含 SSE 解析、不含 tools schema 转换）。
- *   - Bots：POST …/api/v3/bots/chat/completions
- *   - Coding Plan：POST …/api/coding/v3/chat/completions
- *   - 请求体：model、messages（经 format.sanitizeMessagesForVolcApi）、stream、tools + tool_choice=auto
- *   - 流式时附加 stream_options.include_usage；Accept 为 text/event-stream 或 application/json
- *   - Authorization: Bearer {apiKey}
- *
- * 【调用方】llm-server/stream.js  exclusively
- *
- * 【对外能力】（内部模块，经 stream.js 间接使用）
- *   - postChatCompletion({ apiKey, model, messages, stream?, tools? }) → fetch Response
- *   - parseApiError(res)：解析 JSON/text 错误体为可读 message
+ * OpenAI 兼容 Chat Completions 传输：POST `{baseUrl}{path}`，Bearer apiKey。
+ * 由 llm-server/stream.js 调用。
  */
 const { sanitizeMessagesForVolcApi } = require('./format');
-const { resolveVolcApiEndpoint, VOLC_API_MODES } = require('../settings/js/volc-user-config');
+const {
+  resolveVolcApiEndpoint,
+  resolveChatCompletionsUrl,
+  VOLC_API_MODES,
+} = require('../settings/js/volc-user-config');
 
 /**
  * @param {Response} res
@@ -38,6 +32,7 @@ async function parseApiError(res) {
  *   apiKey: string,
  *   model: string,
  *   apiMode?: string,
+ *   baseUrl?: string,
  *   endpoint?: string,
  *   messages: Array<Record<string, unknown>>,
  *   stream?: boolean,
@@ -47,7 +42,13 @@ async function parseApiError(res) {
 async function postChatCompletion(opts) {
   const url =
     opts.endpoint ||
-    resolveVolcApiEndpoint(opts.apiMode || VOLC_API_MODES.BOTS);
+    (opts.baseUrl || opts.path
+      ? resolveChatCompletionsUrl(opts.baseUrl || '', opts.path || '')
+      : '') ||
+    resolveVolcApiEndpoint(opts.apiMode || VOLC_API_MODES.CHAT);
+  if (!url) {
+    throw new Error('未配置 LLM Base URL / endpoint');
+  }
   const body = {
     model: opts.model,
     messages: sanitizeMessagesForVolcApi(opts.messages),

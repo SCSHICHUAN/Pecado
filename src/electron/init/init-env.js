@@ -2,7 +2,7 @@
  * @file init-env.js
  *
  * 【功能】开发环境初始化 CLI：从 .env.example 复制生成项目根 .env。
- *   - 火山 API 凭证请在 Preferences → 火山设置 中配置，不由 .env 提供
+ *   - LLM 凭证请在 Preferences → LLM 配置 中填写，不由 .env 提供
  *
  * 【调用方】package.json scripts `"env:init": "node src/electron/init/init-env.js"`
  */
@@ -25,4 +25,4 @@ if (!fs.existsSync(examplePath)) {
 
 fs.copyFileSync(examplePath, envPath);
 console.log('[env:init] 已创建', envPath);
-console.log('[env:init] 火山 API 请在应用 Preferences → 火山设置 中填写并保存。');
+console.log('[env:init] LLM 请在应用 Preferences → LLM 配置 中填写并保存。');

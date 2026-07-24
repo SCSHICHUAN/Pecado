@@ -105,6 +105,12 @@ function parseLlmMetaResponse(content, opts = {}) {
 async function callLlmForMeta(systemPrompt, userContent, parseOpts = {}) {
   const { apiKey, model, apiMode, endpoint } = resolveVolcCredentials();
   if (!apiKey) return { ok: false, error: MISSING_KEY_ERROR };
+  if (!endpoint) {
+    return {
+      ok: false,
+      error: '未配置 Base URL。请打开 Preferences → LLM 配置并保存。',
+    };
+  }
 
   const out = await collectPlainChat({
     apiKey,

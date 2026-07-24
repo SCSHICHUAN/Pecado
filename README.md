@@ -1,6 +1,6 @@
 # Pecado
 
-基于 Electron 的桌面 AI 编程助手：对接**火山方舟 Bots** 流式对话，支持本地工程 **MCP 文件系统**、**Function Calling 多轮 Agent**，以及在 macOS 上将生成代码**实时写入磁盘并集成 Xcode 工程**。
+基于 Electron 的桌面 AI 编程助手：对接 **OpenAI 兼容 LLM**（火山 / DeepSeek / 通用模型等）流式对话，支持本地工程 **MCP 文件系统**、**Function Calling 多轮 Agent**，以及在 macOS 上将生成代码**实时写入磁盘并集成 Xcode 工程**。
 
 ```mermaid
 flowchart LR
@@ -140,10 +140,9 @@ npm run build      # 产物在 release/
 
 国内 Electron 镜像：`ELECTRON_MIRROR`（见 `package.json` → `config.electron_mirror`）。
 
-配置 API 密钥：**Preferences → 火山设置**（`~/Library/Application Support/pecado/volc-user-config.json`）。
+配置 LLM：**Preferences → LLM 配置**（`~/Library/Application Support/pecado/volc-user-config.json`）。
 
-- **Coding Plan**（套餐）：Model 填 `ark-code-latest` 或 `doubao-seed-2.0-code` 等，**勿填** `bot-` 开头的 Bots ID。
-- **Bots**：Model 填 `bot-…` Bot ID。
+OpenAI 兼容多厂商：预制 **火山** / **DeepSeek** / **通用模型**；每厂商含 Base URL、多路径、`pathModels`（路径对应模型）、API Key。请求地址为 `{Base URL}{路径}`。
 
 ---
 

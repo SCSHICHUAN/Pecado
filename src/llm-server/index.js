@@ -2,7 +2,7 @@
  * @file index.js
  * @module llm-server
  *
- * 【职责】火山方舟 Bots Chat Completions：HTTP/SSE、消息格式化、单轮/多轮流式聚合。
+ * 【职责】OpenAI 兼容 Chat Completions：HTTP/SSE、消息格式化、单轮/多轮流式聚合。
  *   · streamChat / collectPlainChat — 底层流（plain 模式直接用 collectPlainChat）
  *   · EXECUTE_call_llm / FEED_infer_round — INFER 节点（agent-loop 调用）
  *   · EXECUTE_parse_command / FEED_parsed_command — PARSE 节点（agent-loop 调用）

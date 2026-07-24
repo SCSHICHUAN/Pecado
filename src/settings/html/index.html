@@ -9,7 +9,7 @@
   <div class="settings">
     <aside class="sidebar">
       <div class="sidebar-title">设置</div>
-      <button type="button" class="nav-item active" data-panel="volc">火山设置</button>
+      <button type="button" class="nav-item active" data-panel="llm">LLM 配置</button>
       <button type="button" class="nav-item" data-panel="general">通用</button>
       <button type="button" class="nav-item" data-panel="appearance">外观</button>
       <button type="button" class="nav-item" data-panel="shortcuts">快捷键</button>
@@ -20,30 +20,56 @@
       <header class="detail-header">
         <div class="detail-header-row">
           <div class="detail-header-text">
-            <h1 id="detail-title">火山设置</h1>
-            <p id="detail-desc">配置火山方舟 API 密钥、Coding Plan / Bots 接口与模型。</p>
+            <h1 id="detail-title">LLM 配置</h1>
+            <p id="detail-desc">配置 OpenAI 兼容的 Base URL、路径、Model 与密钥（可添加多套配置）。</p>
           </div>
-          <button type="button" class="action save" id="save-btn">保存</button>
+          <div class="header-actions" id="header-actions">
+            <button type="button" class="action ghost" id="add-btn">添加</button>
+            <button type="button" class="action ghost" id="cancel-btn" hidden>取消</button>
+            <button type="button" class="action save" id="save-btn">保存</button>
+          </div>
         </div>
       </header>
 
       <div class="detail-body">
-        <div class="panel active" id="panel-volc">
-          <div class="field-group">
-            <label for="api-mode">API 类型</label>
-            <select id="api-mode">
-              <option value="coding_plan">Coding Plan（套餐订阅）</option>
-              <option value="bots">方舟 Bots（在线 Bot）</option>
-            </select>
+        <div class="panel active" id="panel-llm">
+          <div class="field-group" id="llm-vendor-name-group">
+            <label for="llm-vendor-name">厂商</label>
+            <div class="combo" data-combo="vendor">
+              <input id="llm-vendor-name" type="text" autocomplete="off" spellcheck="false" placeholder="火山 / DeepSeek">
+              <button type="button" class="combo-toggle" tabindex="-1" aria-label="打开选项">▾</button>
+              <ul class="combo-menu" id="llm-vendor-menu" hidden></ul>
+            </div>
           </div>
           <div class="field-group">
-            <label for="api-key">API Key</label>
-            <input id="api-key" type="text" autocomplete="off" spellcheck="false">
+            <label for="llm-base-url">Base URL</label>
+            <div class="combo combo-base-url" data-combo="baseUrl">
+              <input id="llm-base-url" type="text" autocomplete="off" spellcheck="false" placeholder="https://api.deepseek.com">
+              <span id="llm-base-url-vendor" class="combo-vendor-badge" hidden></span>
+              <button type="button" class="combo-toggle" tabindex="-1" aria-label="打开选项">▾</button>
+              <ul class="combo-menu" id="llm-base-url-menu" hidden></ul>
+            </div>
           </div>
           <div class="field-group">
-            <label for="model">Model</label>
-            <input id="model" type="text" autocomplete="off" spellcheck="false">
-            <p class="field-hint" id="model-hint"></p>
+            <label for="llm-path">路径</label>
+            <div class="combo" data-combo="path">
+              <input id="llm-path" type="text" autocomplete="off" spellcheck="false" placeholder="/v1/chat/completions">
+              <button type="button" class="combo-toggle" tabindex="-1" aria-label="打开选项">▾</button>
+              <ul class="combo-menu" id="llm-path-menu" hidden></ul>
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="llm-model">Model</label>
+            <div class="combo" data-combo="model">
+              <input id="llm-model" type="text" autocomplete="off" spellcheck="false" placeholder="模型 ID">
+              <button type="button" class="combo-toggle" tabindex="-1" aria-label="打开选项">▾</button>
+              <ul class="combo-menu" id="llm-model-menu" hidden></ul>
+            </div>
+            <p class="field-hint" id="llm-hint"></p>
+          </div>
+          <div class="field-group">
+            <label for="llm-api-key">API Key</label>
+            <input id="llm-api-key" type="password" autocomplete="off" spellcheck="false">
           </div>
           <p class="config-path">
             配置目录：
@@ -190,7 +216,7 @@
           <div class="placeholder-card">
             <strong>Pecado</strong><br><br>
             桌面 AI 编程助手<br>
-            支持火山方舟、MCP 文件系统与 Xcode 集成。<br><br>
+            支持 OpenAI 兼容 LLM、MCP 文件系统与 Xcode 集成。<br><br>
             版本 1.0.0
           </div>
         </div>

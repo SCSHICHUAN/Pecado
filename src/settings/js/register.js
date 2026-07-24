@@ -1,21 +1,7 @@
 /**
  * @file register.js
  *
- * 【功能】settings 模块主进程入口：Preferences 窗口、IPC、Volc 用户配置、应用菜单。
- *
- * 【目录】
- *   - register.js           窗口 + IPC 注册
- *   - index.html/css/js   Preferences UI（html/、css/、js/ 目录）
- *   - preload.js          Preferences 窗口 preload
- *   - app-menu.js         应用菜单栏
- *   - volc-user-config.js   Volc 配置读写
- *
- * 【注册】main/js/main.js → register(ipcMain)、setupApplicationMenu(getMainWindowFn)
- *
- * 【对外能力】
- *   - register(ipcMain)
- *   - openSettings(parentWindow?)
- *   - setupApplicationMenu(getMainWindowFn)
+ * Preferences 窗口、SETTINGS IPC、LLM 配置读写入口；并 re-export 应用菜单。
  */
 const fs = require('fs');
 const path = require('path');
@@ -26,6 +12,8 @@ const {
   writeUserVolcConfig,
   getUserVolcConfigPath,
   getUserConfigDir,
+  LLM_PRESETS,
+  validateVolcConfig,
 } = require('./volc-user-config');
 
 const PRELOAD_SCRIPT = path.join(__dirname, 'preload.js');
@@ -42,8 +30,8 @@ function openSettings() {
 
   const win = new BrowserWindow({
     title: 'Preferences',
-    width: 720,
-    height: 480,
+    width: 760,
+    height: 560,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -75,38 +63,34 @@ function openSettings() {
 function register(ipcMain, getMainWindowFn) {
   ipcMain.handle(SETTINGS.GET, async () => {
     try {
-      const {
-        apiKey,
-        model,
-        volcApiMode,
-        gitGraphCommitLimit,
-        codxEditorTheme,
-        codxEditorLineHeight,
-        codxEditorLetterSpacing,
-        codxEditorSpaceWidth,
-        codxEditorTabSize,
-        codxEditorFontSize,
-        codxEditorLineNumbers,
-        codxEditorLineNumberMinChars,
-        codxEditorLineNumberFontSize,
-        codxEditorLineNumberFontWeight,
-      } = readUserVolcConfig();
+      const cfg = readUserVolcConfig();
       return {
         ok: true,
-        volcArkApiKey: apiKey,
-        volcArkModel: model,
-        volcApiMode,
-        gitGraphCommitLimit,
-        codxEditorTheme,
-        codxEditorLineHeight,
-        codxEditorLetterSpacing,
-        codxEditorSpaceWidth,
-        codxEditorTabSize,
-        codxEditorFontSize,
-        codxEditorLineNumbers,
-        codxEditorLineNumberMinChars,
-        codxEditorLineNumberFontSize,
-        codxEditorLineNumberFontWeight,
+        llmProviders: cfg.llmProviders,
+        activeLlmProviderId: cfg.activeLlmProviderId,
+        llmProfiles: cfg.llmProfiles,
+        activeLlmProfileId: cfg.activeLlmProfileId,
+        llmBaseUrl: cfg.llmBaseUrl,
+        llmPath: cfg.llmPath,
+        llmApiType: cfg.llmPath,
+        llmModel: cfg.model,
+        llmApiKey: cfg.apiKey,
+        llmName: cfg.llmName,
+        llmPaths: cfg.llmPaths,
+        llmModels: cfg.llmModels,
+        llmPresets: LLM_PRESETS,
+        gitGraphCommitLimit: cfg.gitGraphCommitLimit,
+        codxEditorTheme: cfg.codxEditorTheme,
+        codxEditorLineHeight: cfg.codxEditorLineHeight,
+        codxEditorLetterSpacing: cfg.codxEditorLetterSpacing,
+        codxEditorSpaceWidth: cfg.codxEditorSpaceWidth,
+        codxEditorTabSize: cfg.codxEditorTabSize,
+        codxEditorFontSize: cfg.codxEditorFontSize,
+        codxEditorLineNumbers: cfg.codxEditorLineNumbers,
+        codxEditorLineNumberMinChars: cfg.codxEditorLineNumberMinChars,
+        codxEditorLineNumberFontSize: cfg.codxEditorLineNumberFontSize,
+        codxEditorLineNumberFontWeight: cfg.codxEditorLineNumberFontWeight,
+        codxDesignDepth: cfg.codxDesignDepth,
         configPath: getUserVolcConfigPath(),
         configDir: getUserConfigDir(),
       };
@@ -118,7 +102,15 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(SETTINGS.SAVE, async (_event, payload) => {
     try {
-      const saved = writeUserVolcConfig(payload || {});
+      const body = payload || {};
+      const mode = String(body.llmSaveMode || '').trim();
+      const isDelete =
+        mode === 'delete-provider' || mode === 'delete-path' || mode === 'delete-model';
+      if (!isDelete && (mode === 'add' || body.llmBaseUrl != null || body.llmApiKey != null)) {
+        const check = validateVolcConfig(body);
+        if (!check.ok) return check;
+      }
+      const saved = writeUserVolcConfig(body);
       console.log('[settings] saved:', saved.configPath);
       const mainWin = typeof getMainWindowFn === 'function' ? getMainWindowFn() : null;
       if (mainWin && !mainWin.isDestroyed()) {
@@ -146,11 +138,16 @@ function register(ipcMain, getMainWindowFn) {
 
   ipcMain.handle(SETTINGS.OPEN_CONFIG_DIR, async () => {
     try {
-      const dir = getUserConfigDir();
+      const filePath = getUserVolcConfigPath();
+      const dir = path.dirname(filePath);
       fs.mkdirSync(dir, { recursive: true });
-      const err = await shell.openPath(dir);
-      if (err) return { ok: false, error: err };
-      return { ok: true, configDir: dir };
+      if (fs.existsSync(filePath)) {
+        shell.showItemInFolder(filePath);
+      } else {
+        const err = await shell.openPath(dir);
+        if (err) return { ok: false, error: err };
+      }
+      return { ok: true, configDir: dir, configPath: filePath };
     } catch (e) {
       console.error('[settings] OPEN_CONFIG_DIR failed:', e);
       return { ok: false, error: e.message || String(e) };

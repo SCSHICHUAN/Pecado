@@ -112,9 +112,27 @@ html, body {
   line-height: 1.5;
 }
 
-.detail-header .action.save {
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+.detail-header .action.save,
+.detail-header .action.ghost {
+  flex-shrink: 0;
+}
+
+.action.ghost {
+  background: #333;
+  color: #ddd;
+}
+
+.action.ghost:hover {
+  background: #3e3e3e;
+  color: #fff;
 }
 
 .detail-body {
@@ -162,6 +180,182 @@ input:focus, select:focus {
   color: #888;
   line-height: 1.5;
   max-width: 520px;
+}
+
+.combo {
+  position: relative;
+  width: 100%;
+  max-width: 520px;
+  margin-bottom: 14px;
+}
+
+.combo input {
+  width: 100%;
+  max-width: none;
+  margin-bottom: 0;
+  padding-right: 36px;
+}
+
+.combo-base-url input {
+  padding-right: 120px;
+}
+
+.combo-vendor-badge {
+  position: absolute;
+  top: 50%;
+  right: 40px;
+  transform: translateY(-50%);
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5c5c5c;
+  pointer-events: none;
+  user-select: none;
+}
+
+.combo input[readonly] {
+  cursor: pointer;
+  color: #e8e8e8;
+}
+
+.combo input[readonly]:focus {
+  border-color: #5a8dee;
+}
+
+#llm-api-key[readonly] {
+  cursor: default;
+  opacity: 0.95;
+}
+
+.combo-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-left: 1px solid #3a3a3a;
+  border-radius: 0 6px 6px 0;
+  background: #323232;
+  color: #bbb;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.combo-toggle:hover {
+  color: #fff;
+  background: #3a3a3a;
+}
+
+.combo-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  background: #242424;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.combo-menu[hidden] {
+  display: none !important;
+}
+
+.combo-menu li {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: #ddd;
+  cursor: pointer;
+}
+
+.combo-menu li.combo-opt-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.combo-menu li .combo-opt-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.combo-menu li .combo-opt-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e8e8e8;
+}
+
+.combo-menu li .combo-opt-vendor {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #5c5c5c;
+}
+
+.combo-menu li .combo-opt-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combo-opt-delete {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 8px;
+  border: 1px solid #5a3030;
+  border-radius: 4px;
+  background: #3a2222;
+  color: #e09090;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.combo-opt-delete:hover {
+  background: #5a3030;
+  color: #ffc0c0;
+}
+
+.combo-menu li:hover,
+.combo-menu li.active {
+  background: #3a4a66;
+  color: #fff;
+}
+
+.combo-menu li:hover .combo-opt-url,
+.combo-menu li.active .combo-opt-url {
+  color: #fff;
+}
+
+.combo-menu li:hover .combo-opt-vendor,
+.combo-menu li.active .combo-opt-vendor {
+  color: #9a9a9a;
+}
+
+.combo-menu li.muted {
+  color: #777;
+  cursor: default;
 }
 
 select {

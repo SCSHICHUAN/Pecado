@@ -91,7 +91,7 @@ function loadEnvFromSearchRoots(rootDirs) {
     console.log(`[env] 已合并 ${total} 项环境变量，来自：\n  ${loadedFiles.join('\n  ')}`);
   } else {
     console.warn(
-      `[env] 未找到 .env / env 等文件。已检查（节选）：\n  ${tried.slice(0, 10).join('\n  ')}${tried.length > 10 ? '\n  …' : ''}\n火山 API 请在 Preferences → 火山设置 中配置。`
+      `[env] 未找到 .env / env 等文件。已检查（节选）：\n  ${tried.slice(0, 10).join('\n  ')}${tried.length > 10 ? '\n  …' : ''}\nLLM 请在 Preferences → LLM 配置 中填写。`
     );
   }
 }
