@@ -27,6 +27,7 @@ function emptyConfig() {
     treeExpanded: [], // 已展开远程目录绝对路径
     selectedPath: '',
     selectedIsDir: true,
+    treeWidth: 0, // 树/预览分屏宽度（px），0 表示用默认
   };
 }
 
@@ -93,6 +94,12 @@ function legacyUploadItems(j) {
   return [];
 }
 
+function normalizeTreeWidth(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 200) return 0;
+  return Math.round(Math.min(2400, n));
+}
+
 function readConfig() {
   try {
     const p = getStorePath();
@@ -117,6 +124,7 @@ function readConfig() {
       treeExpanded: normalizeTreeExpanded(j.treeExpanded),
       selectedPath: j.selectedPath ? String(j.selectedPath).trim() : '',
       selectedIsDir: j.selectedIsDir !== false,
+      treeWidth: normalizeTreeWidth(j.treeWidth),
     };
   } catch {
     const cfg = emptyConfig();
@@ -147,6 +155,8 @@ function writeConfig(data) {
     selectedPath:
       data?.selectedPath != null ? String(data.selectedPath).trim() : prev.selectedPath,
     selectedIsDir: data?.selectedIsDir != null ? Boolean(data.selectedIsDir) : prev.selectedIsDir,
+    treeWidth:
+      data?.treeWidth != null ? normalizeTreeWidth(data.treeWidth) : prev.treeWidth,
   };
   const p = getStorePath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
@@ -171,4 +181,5 @@ module.exports = {
   defaultLocalDir,
   normalizeUploadItems,
   normalizeTreeExpanded,
+  normalizeTreeWidth,
 };

@@ -191,30 +191,74 @@
   flex: 0 0 auto;
 }
 
-.rs-path-bar-input {
+.rs-transfer-btn {
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+/* 下载到 / 文件：纯文本路径展示（非 input） */
+.rs-path-bar-value {
   flex: 1;
   min-width: 0;
-  background: #252526;
-  border: 1px solid #3c3c3c;
-  border-radius: 6px;
-  color: #bbb;
-  padding: 5px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.rs-path-bar-text {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  color: #9a9a9a;
   font-size: 12px;
+  line-height: 1.5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: default;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.rs-path-bar-text:not(.is-empty) {
+  color: #a8a8a8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+.rs-path-bar-text.is-empty::before {
+  content: attr(data-placeholder);
+  color: #5c5c5c;
+  font-family: inherit;
 }
 
 .rs-upload-path-wrap {
   position: relative;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
 }
 
-.rs-upload-path-wrap .rs-path-bar-input {
-  width: 100%;
+.rs-upload-path-wrap .rs-path-bar-text {
   overflow-x: auto;
   text-overflow: clip;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.rs-upload-path-wrap .rs-path-bar-text::-webkit-scrollbar {
+  width: var(--scrollbar-w);
+  height: var(--scrollbar-h);
+}
+
+.rs-upload-path-wrap .rs-path-bar-text::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rs-upload-path-wrap .rs-path-bar-text::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
 }
 
 .rs-upload-drop-hint {
@@ -235,7 +279,7 @@
   display: flex;
 }
 
-.rs-upload-path-wrap.is-dragover .rs-path-bar-input {
+.rs-upload-path-wrap.is-dragover .rs-path-bar-text {
   opacity: 0.35;
 }
 
@@ -260,7 +304,6 @@
 
 .rs-field input,
 .rs-path-row input,
-.rs-path-bar-input,
 #rs-editor {
   background: #252526;
   border: 1px solid #3c3c3c;
@@ -357,6 +400,77 @@
   overflow-y: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rs-footer-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rs-footer-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #3c3c3c;
+  border-top-color: #0b5fff;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  animation: rs-tree-spin 0.7s linear infinite;
+}
+
+.rs-footer-spinner.hidden {
+  display: none;
+}
+
+.rs-progress {
+  height: 3px;
+  width: 100%;
+  background: #2a2a2a;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rs-progress.hidden {
+  display: none;
+}
+
+.rs-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #0b5fff, #4d8dff);
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.rs-progress.is-indeterminate .rs-progress-fill {
+  width: 35% !important;
+  animation: rs-progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+@keyframes rs-progress-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.rs-footer .rs-msg {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+  text-overflow: clip;
 }
 
 .rs-footer::-webkit-scrollbar {
@@ -374,17 +488,6 @@
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
-}
-
-.rs-footer .rs-msg {
-  display: block;
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
-  white-space: nowrap;
-  word-break: normal;
-  overflow-wrap: normal;
-  text-overflow: clip;
 }
 
 .rs-browser {
@@ -452,6 +555,39 @@
   min-width: 200px;
   max-width: 68%;
   min-height: 0;
+  position: relative;
+}
+
+.rs-tree-panel-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(30, 30, 30, 0.62);
+  pointer-events: none;
+  font-size: 12px;
+  color: #c8c8c8;
+}
+
+.rs-tree-panel-loading.hidden {
+  display: none;
+}
+
+.rs-tree-panel.is-loading .rs-tree {
+  pointer-events: none;
+}
+
+.rs-item.is-locating {
+  opacity: 0.82;
+}
+
+.rs-item.is-locating .rs-twist-spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
 }
 
 .rs-split-resizer {
@@ -547,6 +683,33 @@ body.rs-split-resizing * {
 
 .rs-item.is-selected {
   background: #094771;
+}
+
+.rs-item.is-busy {
+  opacity: 0.72;
+  pointer-events: none;
+  cursor: default;
+}
+
+.rs-item.is-busy .rs-twist-spinner {
+  width: 10px;
+  height: 10px;
+  border-width: 2px;
+}
+
+.rs-tree.is-locked {
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.rs-browser.rs-transfer-busy .rs-toolbar .rs-btn:not(#rs-upload) {
+  pointer-events: none;
+}
+
+.rs-upload-path-wrap.is-disabled,
+.rs-upload-bar.is-disabled {
+  pointer-events: none;
+  opacity: 0.55;
 }
 
 .rs-item .rs-twist {
@@ -720,37 +883,29 @@ body.rs-split-resizing * {
 /* 滚动条：与 main / workflow 一致 */
 .rs-tree,
 #rs-editor,
-.rs-media,
-.rs-upload-path-wrap .rs-path-bar-input {
+.rs-media {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .rs-tree::-webkit-scrollbar,
 #rs-editor::-webkit-scrollbar,
-.rs-media::-webkit-scrollbar,
-.rs-upload-path-wrap .rs-path-bar-input::-webkit-scrollbar {
+.rs-media::-webkit-scrollbar {
   width: var(--scrollbar-w);
   height: var(--scrollbar-h);
 }
 
 .rs-tree::-webkit-scrollbar-track,
 #rs-editor::-webkit-scrollbar-track,
-.rs-media::-webkit-scrollbar-track,
-.rs-upload-path-wrap .rs-path-bar-input::-webkit-scrollbar-track {
+.rs-media::-webkit-scrollbar-track {
   background: var(--scrollbar-track);
   border-radius: 999px;
   margin: 6px 0;
 }
 
-.rs-upload-path-wrap .rs-path-bar-input::-webkit-scrollbar-track {
-  margin: 4px 0;
-}
-
 .rs-tree::-webkit-scrollbar-thumb,
 #rs-editor::-webkit-scrollbar-thumb,
-.rs-media::-webkit-scrollbar-thumb,
-.rs-upload-path-wrap .rs-path-bar-input::-webkit-scrollbar-thumb {
+.rs-media::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 999px;
   border: 2px solid transparent;
@@ -759,8 +914,7 @@ body.rs-split-resizing * {
 
 .rs-tree::-webkit-scrollbar-thumb:hover,
 #rs-editor::-webkit-scrollbar-thumb:hover,
-.rs-media::-webkit-scrollbar-thumb:hover,
-.rs-upload-path-wrap .rs-path-bar-input::-webkit-scrollbar-thumb:hover {
+.rs-media::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
   background-clip: padding-box;
 }

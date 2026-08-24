@@ -6,7 +6,7 @@
  */
 (function () {
   /** 与 mount.dataset.loaded 对齐；改 html/panel.html 时 +1 */
-  const PANEL_VERSION = '20';
+  const PANEL_VERSION = '25';
   let currentDir = '/';
   let selectedPath = '';
   let selectedIsDir = false;
@@ -19,13 +19,16 @@
   let pendingUploadEntries = [];
   let expandedDirs = new Set();
   let uploadRunning = false;
+  /** 上传/删除进行中：锁定树与工具栏，父目录显示菊花 */
+  let transferState = null;
   /** Monaco 实例；代码文件预览高亮；失败则回退 textarea */
   let codeEditor = null;
   let monacoRef = null;
   let editorUseFallback = false;
   let monacoLayoutBound = false;
   let editorLoading = false;
-  let sftpLogBound = false;
+  let splitResizeCtx = null;
+  let savedTreeWidthFromState = 0;
 
   /** 树/预览左右分割宽度（localStorage） */
   const RS_TREE_WIDTH_KEY = 'remoteServer.treeWidth';
@@ -290,18 +293,148 @@
 
   function setMsg(el, text, kind) {
     if (!el) return;
+    if (el.id === 'rs-browser-msg') {
+      setFooterMsg(text, { kind, loading: false });
+      return;
+    }
     el.textContent = text || '';
     el.classList.toggle('is-error', kind === 'error');
     el.classList.toggle('is-ok', kind === 'ok');
-    // 单行底栏：过长时滚到末尾，便于看到最新完整路径
-    if (el.id === 'rs-browser-msg') {
-      const foot = el.closest?.('.rs-footer');
-      if (foot) {
-        requestAnimationFrame(() => {
-          foot.scrollLeft = foot.scrollWidth;
-        });
+  }
+
+  function formatProgressLabel(progress) {
+    if (!progress || !progress.total) return '';
+    const done = Math.max(0, Number(progress.done) || 0);
+    const total = Math.max(0, Number(progress.total) || 0);
+    if (!total) return '';
+    const pct = Math.min(100, Math.round((done / total) * 100));
+    return ` · ${done}/${total}（${pct}%）`;
+  }
+
+  function setFooterMsg(text, opts = {}) {
+    const msg = $('rs-browser-msg');
+    const spinner = $('rs-footer-spinner');
+    const progressWrap = $('rs-progress');
+    const progressFill = $('rs-progress-fill');
+    if (!msg) return;
+
+    const kind = opts.kind;
+    const loading = Boolean(opts.loading);
+    const progress = opts.progress;
+
+    if (spinner) spinner.classList.toggle('hidden', !loading);
+
+    let display = String(text || '');
+    if (loading && progress && progress.total > 0 && !display.includes('/')) {
+      display += formatProgressLabel(progress);
+    }
+    msg.textContent = display;
+    msg.classList.toggle('is-error', kind === 'error');
+    msg.classList.toggle('is-ok', kind === 'ok' && !loading);
+
+    if (progressWrap && progressFill) {
+      const showBar = loading && progress && (progress.total > 0 || progress.indeterminate);
+      progressWrap.classList.toggle('hidden', !showBar);
+      progressWrap.classList.toggle('is-indeterminate', Boolean(showBar && progress.indeterminate));
+      if (showBar && progress.total > 0) {
+        const done = Math.max(0, Number(progress.done) || 0);
+        const total = Math.max(1, Number(progress.total) || 1);
+        const pct = Math.min(100, Math.round((done / total) * 100));
+        progressFill.style.width = `${pct}%`;
+        progressWrap.setAttribute('aria-valuenow', String(pct));
+      } else if (showBar) {
+        progressFill.style.width = '';
+        progressWrap.removeAttribute('aria-valuenow');
+      } else {
+        progressFill.style.width = '0%';
+        progressWrap.removeAttribute('aria-valuenow');
       }
     }
+
+    const foot = msg.closest?.('.rs-footer');
+    if (foot) {
+      requestAnimationFrame(() => {
+        foot.scrollLeft = foot.scrollWidth;
+      });
+    }
+  }
+
+  function defaultTwistForRow(row) {
+    if (!row) return '▸';
+    if (row.dataset.isDir !== '1') {
+      return isMediaPath(row.dataset.path) ? '◉' : ' ';
+    }
+    const children = row.nextElementSibling;
+    const open = children && children.classList?.contains('rs-children') && !children.hidden;
+    return open ? '▾' : '▸';
+  }
+
+  function setTreeNodeBusy(dirPath, busy) {
+    const row = findTreeRow(dirPath) || findTreeItemRow(dirPath);
+    if (!row) return;
+    const twist = row.querySelector('.rs-twist');
+    if (busy) {
+      row.classList.add('is-busy');
+      if (twist && !twist.querySelector('.rs-tree-spinner')) {
+        twist.dataset.prevTwist = twist.textContent || defaultTwistForRow(row);
+        twist.innerHTML = '<span class="rs-tree-spinner rs-twist-spinner" aria-hidden="true"></span>';
+      }
+    } else {
+      row.classList.remove('is-busy');
+      if (twist) {
+        twist.textContent = twist.dataset.prevTwist || defaultTwistForRow(row);
+        delete twist.dataset.prevTwist;
+      }
+    }
+  }
+
+  function setTransferLock(locked) {
+    const tree = $('rs-tree');
+    if (tree) tree.classList.toggle('is-locked', locked);
+    $('rs-browser')?.classList.toggle('rs-transfer-busy', locked);
+    const lockIds = [
+      'rs-refresh',
+      'rs-up',
+      'rs-download',
+      'rs-mkdir',
+      'rs-delete',
+      'rs-pick-download-dir',
+      'rs-pick-upload-files',
+    ];
+    for (const id of lockIds) {
+      const btn = $(id);
+      if (btn) btn.disabled = locked || (id === 'rs-delete' && !selectedPath) || (id === 'rs-download' && !selectedPath);
+    }
+    const pathInput = $('rs-path');
+    if (pathInput) pathInput.disabled = locked;
+    const uploadDrop = $('rs-upload-drop');
+    const uploadBar = $('rs-upload-bar');
+    if (uploadDrop) uploadDrop.classList.toggle('is-disabled', locked);
+    if (uploadBar) uploadBar.classList.toggle('is-disabled', locked);
+  }
+
+  function beginTransfer(opts = {}) {
+    const parentPath = normalizeRemotePath(opts.parentPath || activeDir() || '/');
+    transferState = {
+      phase: opts.phase || 'upload',
+      parentPath,
+    };
+    setTransferLock(true);
+    setTreeNodeBusy(parentPath, true);
+    setFooterMsg(opts.message || '处理中…', {
+      loading: true,
+      progress: opts.progress || { done: 0, total: 0, indeterminate: true, phase: transferState.phase },
+    });
+  }
+
+  function endTransfer() {
+    if (transferState?.parentPath) setTreeNodeBusy(transferState.parentPath, false);
+    transferState = null;
+    setTransferLock(false);
+    updateSelectionUi();
+    const spinner = $('rs-footer-spinner');
+    spinner?.classList.add('hidden');
+    $('rs-progress')?.classList.add('hidden');
   }
 
   function setConnectedUi(connected, meta) {
@@ -323,19 +456,20 @@
     }
   }
 
+  function setPathBarText(el, text, placeholderWhenEmpty) {
+    if (!el) return;
+    const s = String(text || '').trim();
+    el.textContent = s;
+    el.title = s || placeholderWhenEmpty || '';
+    el.classList.toggle('is-empty', !s);
+  }
+
   function setDownloadDirUi(dir) {
-    const input = $('rs-download-dir');
-    if (input) input.value = dir || '';
-    if (input && dir) input.title = dir;
+    setPathBarText($('rs-download-dir'), dir, '点击「下载到」选择目录');
   }
 
   function setUploadPathUi(text) {
-    const input = $('rs-upload-dir');
-    const s = String(text || '');
-    if (input) {
-      input.value = s;
-      input.title = s;
-    }
+    setPathBarText($('rs-upload-dir'), text, '点击「文件」或拖拽到此处');
   }
 
   function folderRootFromEntries(entries) {
@@ -464,6 +598,92 @@
     return row?.classList?.contains('is-dir') ? row : null;
   }
 
+  /** 将树节点滚到可见区域，默认停在视口上方 1/3 处（便于看上下文） */
+  function scrollTreeItemIntoView(row, ratio) {
+    const tree = $('rs-tree');
+    if (!row || !tree) return Promise.resolve();
+    const r = Math.min(0.9, Math.max(0.05, Number(ratio) || 1 / 3));
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const treeRect = tree.getBoundingClientRect();
+          const rowRect = row.getBoundingClientRect();
+          const targetDelta = tree.clientHeight * r;
+          const delta = rowRect.top - treeRect.top;
+          const maxScroll = Math.max(0, tree.scrollHeight - tree.clientHeight);
+          tree.scrollTop = Math.min(maxScroll, Math.max(0, tree.scrollTop + delta - targetDelta));
+          resolve();
+        });
+      });
+    });
+  }
+
+  function waitForPaint() {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  }
+
+  function showTreePanelLoading(text) {
+    const panel = $('rs-tree-panel');
+    if (!panel) return;
+    let overlay = panel.querySelector('.rs-tree-panel-loading');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'rs-tree-panel-loading';
+      overlay.innerHTML =
+        '<span class="rs-tree-spinner" aria-hidden="true"></span><span class="rs-tree-panel-loading-text"></span>';
+      panel.appendChild(overlay);
+    }
+    const textEl = overlay.querySelector('.rs-tree-panel-loading-text');
+    if (textEl) textEl.textContent = text || '加载中…';
+    overlay.classList.remove('hidden');
+    panel.classList.add('is-loading');
+  }
+
+  function hideTreePanelLoading() {
+    const panel = $('rs-tree-panel');
+    panel?.classList.remove('is-loading');
+    panel?.querySelector('.rs-tree-panel-loading')?.classList.add('hidden');
+  }
+
+  function setTreeRowLocating(row, locating) {
+    if (!row) return;
+    row.classList.toggle('is-locating', Boolean(locating));
+    const twist = row.querySelector('.rs-twist');
+    if (locating) {
+      if (twist && !twist.querySelector('.rs-tree-spinner')) {
+        twist.dataset.prevTwist = twist.textContent || defaultTwistForRow(row);
+        twist.innerHTML = '<span class="rs-tree-spinner rs-twist-spinner" aria-hidden="true"></span>';
+      }
+    } else if (twist) {
+      twist.textContent = twist.dataset.prevTwist || defaultTwistForRow(row);
+      delete twist.dataset.prevTwist;
+    }
+  }
+
+  /** 定位前显示菊花，滚到视口 1/3 后再结束 */
+  async function scrollToSelectionWithLoading(activeRow, selectPath) {
+    if (!activeRow) return;
+    const itemPath = normalizeRemotePath(selectPath);
+    const containerDir = parentPath(itemPath);
+    setTreeNodeBusy(containerDir, true);
+    setTreeRowLocating(activeRow, true);
+    showTreePanelLoading('定位选中项…');
+    if (transferState) {
+      setFooterMsg(`定位 ${itemPath}…`, {
+        loading: true,
+        progress: { indeterminate: true, phase: transferState.phase || 'upload' },
+      });
+    }
+    await waitForPaint();
+    await scrollTreeItemIntoView(activeRow, 1 / 3);
+    await waitForPaint();
+    setTreeRowLocating(activeRow, false);
+    setTreeNodeBusy(containerDir, false);
+    hideTreePanelLoading();
+  }
+
   // —— 文件树：展开 / 恢复 / 内联加载 ——
 
   async function expandTreeDir(dirPath) {
@@ -499,7 +719,117 @@
     }
   }
 
-  async function restoreTreeView(targetPath, expandedList, selection) {
+  async function ensureRootLoaded() {
+    const tree = $('rs-tree');
+    if (!tree) return;
+    if (tree.querySelector('.rs-item')) return;
+    await loadDirInto(tree, '/', 0);
+  }
+
+  /** 确保目录在树中可见（展开各级祖先，不重建整树） */
+  async function ensureDirReachable(dirPath) {
+    const dir = normalizeRemotePath(dirPath);
+    await ensureRootLoaded();
+    if (dir === '/') return;
+    const chain = ancestorChain(dir);
+    for (let i = 1; i < chain.length; i++) {
+      const parent = chain[i - 1];
+      if (parent === '/') continue;
+      await expandTreeDir(parent);
+    }
+  }
+
+  function getDirChildrenContainer(dirPath) {
+    const dir = normalizeRemotePath(dirPath);
+    const tree = $('rs-tree');
+    if (!tree) return null;
+    if (dir === '/') {
+      return { container: tree, depth: 0, row: null };
+    }
+    const row = findTreeRow(dir);
+    if (!row) return null;
+    const children = row.nextElementSibling;
+    if (!children?.classList?.contains('rs-children')) return null;
+    return { container: children, depth: rowDepth(row) + 1, row };
+  }
+
+  /**
+   * 仅刷新指定目录节点的子列表（上传/删除后），不重建整棵树。
+   * @param {string} parentDir 要刷新的目录（上传目标目录或删除项的父目录）
+   */
+  async function refreshParentDirNode(parentDir, selection, opts = {}) {
+    const skipPreview = opts.skipPreview;
+    const locateSelection = Boolean(opts.locateSelection);
+    const rethrow = opts.rethrow;
+    const dir = normalizeRemotePath(parentDir || '/');
+    const selectPath = normalizeRemotePath(selection?.path || dir);
+    selectedIsDir = selection?.isDir !== undefined ? Boolean(selection.isDir) : true;
+
+    currentDir = dir;
+    if ($('rs-path')) $('rs-path').value = dir;
+    ancestorChain(dir).forEach((p) => expandedDirs.add(p));
+
+    let panelLoadingShown = false;
+    try {
+      if (locateSelection) {
+        showTreePanelLoading('刷新目录…');
+        panelLoadingShown = true;
+      }
+
+      await ensureDirReachable(dir);
+      let slot = getDirChildrenContainer(dir);
+      if (!slot && dir !== '/') {
+        await ensureDirReachable(dir);
+        slot = getDirChildrenContainer(dir);
+      }
+      if (!slot) {
+        throw new Error(`无法刷新目录：${dir}`);
+      }
+
+      if (slot.row) {
+        const twist = slot.row.querySelector('.rs-twist');
+        slot.container.hidden = false;
+        if (twist) twist.textContent = '▾';
+        expandedDirs.add(dir);
+      }
+
+      setTreeNodeBusy(dir, true);
+      try {
+        await loadDirInto(slot.container, dir, slot.depth);
+      } finally {
+        setTreeNodeBusy(dir, false);
+      }
+
+      markSelected(selectPath);
+      const activeRow = findTreeItemRow(selectPath);
+      if (activeRow) {
+        selectedIsDir = activeRow.dataset.isDir === '1';
+        updateSelectionUi();
+      }
+      await persistTreeState();
+
+      if (locateSelection) {
+        await scrollToSelectionWithLoading(activeRow, selectPath);
+        panelLoadingShown = false;
+      } else if (activeRow) {
+        await scrollTreeItemIntoView(activeRow, 1 / 3);
+      }
+
+      if (!skipPreview) {
+        await previewSelection(selectPath, selectedIsDir);
+      }
+    } catch (e) {
+      setMsg($('rs-browser-msg'), e.message || String(e), 'error');
+      if (rethrow) throw e;
+    } finally {
+      if (panelLoadingShown) hideTreePanelLoading();
+    }
+  }
+
+  async function restoreTreeView(targetPath, expandedList, selection, opts) {
+    const skipStatus = opts && opts.skipStatus;
+    const skipPreview = opts && opts.skipPreview;
+    const locateSelection = Boolean(opts && opts.locateSelection);
     const tree = $('rs-tree');
     if (!tree) return;
     const target = normalizeRemotePath(targetPath || '/');
@@ -516,10 +846,18 @@
       ancestorChain(selectPath).forEach((p) => expandedDirs.add(p));
     }
 
+    let panelLoadingShown = false;
     try {
+      if (locateSelection) {
+        showTreePanelLoading('刷新目录树…');
+        panelLoadingShown = true;
+      }
+
       tree.innerHTML = '';
       showTreeLoading(tree, 0);
       await loadDirInto(tree, '/', 0);
+
+      if (locateSelection) showTreePanelLoading('展开路径…');
 
       const expandChain = ancestorChain(selectPath);
       for (let i = 0; i < expandChain.length; i++) {
@@ -541,13 +879,25 @@
       }
       await persistTreeState();
 
-      activeRow?.scrollIntoView?.({ block: 'nearest' });
+      if (locateSelection) {
+        await scrollToSelectionWithLoading(activeRow, selectPath);
+        panelLoadingShown = false;
+      } else if (activeRow) {
+        await scrollTreeItemIntoView(activeRow, 1 / 3);
+      }
 
-      await previewSelection(selectPath, selectedIsDir);
+      if (!skipPreview) {
+        await previewSelection(selectPath, selectedIsDir);
+      }
 
-      setMsg($('rs-browser-msg'), `已恢复 ${selectPath}`, 'ok');
+      if (!skipStatus) {
+        setMsg($('rs-browser-msg'), `已恢复 ${selectPath}`, 'ok');
+      }
     } catch (e) {
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
+      if (opts && opts.rethrow) throw e;
+    } finally {
+      if (panelLoadingShown) hideTreePanelLoading();
     }
   }
 
@@ -570,7 +920,7 @@
     const delBtn = $('rs-delete');
     const dlBtn = $('rs-download');
     if (delBtn) delBtn.disabled = !selectedPath;
-    if (dlBtn) dlBtn.disabled = !selectedPath || selectedIsDir;
+    if (dlBtn) dlBtn.disabled = !selectedPath;
   }
 
   function markSelected(path) {
@@ -649,6 +999,7 @@
 
       row.addEventListener('click', async (e) => {
         e.stopPropagation();
+        if (transferState) return;
         selectedIsDir = Boolean(item.isDir);
         markSelected(item.path);
         if (item.isDir) {
@@ -884,7 +1235,9 @@
     return currentDir || '/';
   }
 
-  function askModal({ title, desc, placeholder, defaultValue, okText }) {
+  let modalEnterEnabled = true;
+
+  function askModal({ title, desc, placeholder, defaultValue, okText, enterToConfirm }) {
     return new Promise((resolve) => {
       const modal = $('rs-modal');
       const titleEl = $('rs-modal-title');
@@ -900,6 +1253,7 @@
         modalResolver = null;
       }
       modalResolver = resolve;
+      modalEnterEnabled = enterToConfirm !== false;
       if (titleEl) titleEl.textContent = title || '确认';
       if (descEl) descEl.textContent = desc || '';
       if (okBtn) okBtn.textContent = okText || '确定';
@@ -934,15 +1288,22 @@
       placeholder: 'del',
       defaultValue: '',
       okText: '删除',
+      enterToConfirm: false,
     });
     if (typed == null) return;
     if (String(typed).trim() !== 'del') {
       setMsg($('rs-browser-msg'), '已取消：未输入 del', 'error');
       return;
     }
-    setMsg($('rs-browser-msg'), '删除中…');
+    const deletedPath = selectedPath;
+    const parent = parentPath(deletedPath);
+    beginTransfer({
+      phase: 'delete',
+      parentPath: parent,
+      message: `[SFTP] 删除中 ${deletedPath}`,
+      progress: { done: 0, total: 1, indeterminate: true, phase: 'delete' },
+    });
     try {
-      const deletedPath = selectedPath;
       const res = await a.remoteServerDelete({ path: deletedPath, confirm: 'del' });
       if (!res?.ok) throw new Error(res?.error || '删除失败');
       if (openFilePath === deletedPath) {
@@ -953,7 +1314,6 @@
         if ($('rs-editor-path')) $('rs-editor-path').textContent = '未打开文件';
         if ($('rs-save')) $('rs-save').disabled = true;
       }
-      const parent = parentPath(deletedPath);
       expandedDirs.delete(deletedPath);
       // 删掉自身后选中并预览上一级目录
       selectedPath = parent;
@@ -962,11 +1322,33 @@
       if ($('rs-path')) $('rs-path').value = parent;
       const expanded = [...expandedDirs].filter((p) => p !== deletedPath && !p.startsWith(`${deletedPath}/`));
       expandedDirs = new Set(expanded);
-      await restoreTreeView(parent, expanded, { path: parent, isDir: true });
-      setMsg($('rs-browser-msg'), '已删除', 'ok');
+      await refreshParentDirNode(parent, { path: parent, isDir: true }, { locateSelection: true });
+      setFooterMsg('已删除', { kind: 'ok', loading: false });
     } catch (e) {
-      setMsg($('rs-browser-msg'), e.message || String(e), 'error');
+      setFooterMsg(e.message || String(e), { kind: 'error', loading: false });
+    } finally {
+      endTransfer();
     }
+  }
+
+  function formatUploadSuccessMsg(res, target, sel) {
+    const warn = res.warning ? `；部分失败：${res.warning}` : '';
+    const dest = normalizeRemotePath(target);
+    const itemPath = normalizeRemotePath(sel?.path || dest);
+    if (sel?.isDir) {
+      const count =
+        res.fileCount != null
+          ? `${res.fileCount} 个文件${res.dirCount ? `、${res.dirCount} 个文件夹` : ''}`
+          : '';
+      return `[SFTP] 上传成功：${itemPath}${count ? `（${count}）` : ''} → ${dest}${warn}`;
+    }
+    return `[SFTP] 上传成功：${itemPath} → ${dest}${warn}`;
+  }
+
+  async function clearUploadStaging() {
+    pendingUploadEntries = [];
+    setUploadPathUi('');
+    await persistUploadPath([]);
   }
 
   async function handleUploadResult(res, dir) {
@@ -1049,9 +1431,10 @@
         const sel = pickUploadedSelection();
         selectedPath = sel.path;
         selectedIsDir = sel.isDir;
-        const expanded = expandedDirs.size > 0 ? [...expandedDirs] : [];
-        await restoreTreeView(target, expanded, sel);
-        setMsg($('rs-browser-msg'), res.warning || '上传已中断', 'error');
+        const msg = formatUploadSuccessMsg(res, target, sel);
+        setMsg($('rs-browser-msg'), `${msg} · 已中断`, 'error');
+        await refreshParentDirNode(target, sel, { locateSelection: true });
+        await clearUploadStaging();
       } else {
         setMsg($('rs-browser-msg'), res.error || '上传已取消', 'error');
       }
@@ -1059,33 +1442,40 @@
     }
     if (!res?.ok) throw new Error(res?.error || '上传失败');
     if (res.cancelled) {
-      setMsg($('rs-browser-msg'), '已取消上传');
+      setMsg($('rs-browser-msg'), '已取消上传', 'error');
       return;
     }
 
     const sel = pickUploadedSelection();
     selectedPath = sel.path;
     selectedIsDir = sel.isDir;
-    const expanded = expandedDirs.size > 0 ? [...expandedDirs] : [];
-    // 展开到目标并选中：文件选文件，文件夹选文件夹
-    await restoreTreeView(target, expanded, sel);
+    const successMsg = formatUploadSuccessMsg(res, target, sel);
+    const successKind = res.warning ? 'error' : 'ok';
+    // 立刻反馈成功并清空暂存，避免等待树刷新时界面无反应
+    await clearUploadStaging();
+    setFooterMsg(successMsg, { kind: successKind, loading: false });
 
-    const paths = (res.uploaded || []).join('，');
-    const warn = res.warning ? `；部分失败：${res.warning}` : '';
-    const countHint =
-      res.fileCount != null
-        ? `${res.fileCount} 文件${res.dirCount ? `、${res.dirCount} 文件夹` : ''} · `
-        : '';
-    const detail = (res.details || [])
-      .filter((d) => d.kind !== 'dir')
-      .map((d) => `${d.realPath || d.path} (${d.size}B)`)
-      .join('，');
-    const summary = detail || paths || '(无)';
-    setMsg(
-      $('rs-browser-msg'),
-      `[SFTP] 完成 ${countHint}${target}：${summary}${warn}`,
-      res.warning ? 'error' : 'ok'
-    );
+    try {
+      await refreshParentDirNode(target, sel, {
+        skipPreview: true,
+        rethrow: true,
+        locateSelection: true,
+      });
+      setFooterMsg(successMsg, { kind: successKind, loading: false });
+      void previewSelection(sel.path, sel.isDir).catch((e) => {
+        setMsg(
+          $('rs-browser-msg'),
+          `${successMsg} · 预览失败：${e.message || String(e)}`,
+          'error'
+        );
+      });
+    } catch (e) {
+      setMsg(
+        $('rs-browser-msg'),
+        `${successMsg} · 刷新目录失败：${e.message || String(e)}`,
+        'error'
+      );
+    }
   }
 
   function parseFileUri(uri) {
@@ -1176,7 +1566,12 @@
     const dir = activeDir();
     currentDir = dir;
     if ($('rs-path')) $('rs-path').value = dir;
-    setMsg($('rs-browser-msg'), `[SFTP] 准备上传到 ${dir}`);
+    beginTransfer({
+      phase: 'upload',
+      parentPath: dir,
+      message: `[SFTP] 准备上传到 ${dir}`,
+      progress: { done: 0, total: list.length, indeterminate: list.length <= 0, phase: 'upload' },
+    });
     setUploadBtnState(true);
     try {
       const hasRelative = list.some((ent) => ent.relativePath);
@@ -1186,8 +1581,9 @@
       const res = await a.remoteServerUpload(payload);
       await handleUploadResult(res, dir);
     } catch (e) {
-      setMsg($('rs-browser-msg'), e.message || String(e), 'error');
+      setFooterMsg(e.message || String(e), { kind: 'error', loading: false });
     } finally {
+      endTransfer();
       setUploadBtnState(false);
     }
   }
@@ -1196,7 +1592,7 @@
     const a = api();
     if (uploadRunning) {
       await a?.remoteServerCancelUpload?.();
-      setMsg($('rs-browser-msg'), '正在取消上传…');
+      setFooterMsg('正在取消上传…', { loading: true, progress: { indeterminate: true, phase: 'upload' } });
       return;
     }
     if (!pendingUploadEntries.length) {
@@ -1291,21 +1687,30 @@
   async function downloadSelected() {
     const a = api();
     if (!a?.remoteServerDownload || !selectedPath) return;
-    if (selectedIsDir) {
-      setMsg($('rs-browser-msg'), '请选择文件，暂不支持下载文件夹', 'error');
-      return;
-    }
-    setMsg($('rs-browser-msg'), '下载中…');
+    setMsg(
+      $('rs-browser-msg'),
+      selectedIsDir
+        ? `[SFTP] 正在下载文件夹 ${selectedPath} …`
+        : `[SFTP] 正在下载 ${selectedPath} …`
+    );
     const dlBtn = $('rs-download');
     if (dlBtn) dlBtn.disabled = true;
     try {
       const res = await a.remoteServerDownload({ path: selectedPath });
       if (!res?.ok) throw new Error(res?.error || '下载失败');
-      setMsg(
-        $('rs-browser-msg'),
-        `已下载到 ${res.localPath}（${formatSize(res.size)}）`,
-        'ok'
-      );
+      if (res.isDir) {
+        setMsg(
+          $('rs-browser-msg'),
+          `[SFTP] 文件夹已下载到 ${res.localPath}（${res.fileCount} 个文件，${formatSize(res.size)}）`,
+          'ok'
+        );
+      } else {
+        setMsg(
+          $('rs-browser-msg'),
+          `[SFTP] 已下载到 ${res.localPath}（${formatSize(res.size)}）`,
+          'ok'
+        );
+      }
     } catch (e) {
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
     } finally {
@@ -1372,7 +1777,9 @@
       restoreUploadFromState(state);
       const startPath = state?.lastPath || currentDir || '/';
       const expanded = state?.treeExpanded || state?.saved?.treeExpanded || [];
-      await restoreTreeView(startPath, expanded, treeSelectionFromState(state));
+      await restoreTreeView(startPath, expanded, treeSelectionFromState(state), {
+        locateSelection: true,
+      });
     } catch (e) {
       setConnectedUi(false);
       setMsg($('rs-login-msg'), e.message || String(e), 'error');
@@ -1390,6 +1797,26 @@
     setMsg($('rs-login-msg'), '已断开');
   }
 
+  function bindSftpLog() {
+    const a = api();
+    if (!a?.onRemoteServerLog) return;
+    if (bindSftpLog._off) {
+      try {
+        bindSftpLog._off();
+      } catch (_) {}
+    }
+    bindSftpLog._off = a.onRemoteServerLog((payload) => {
+      const msg = payload?.message != null ? String(payload.message) : '';
+      if (!msg) return;
+      const kind =
+        payload?.kind === 'error' ? 'error' : payload?.kind === 'ok' ? 'ok' : undefined;
+      const progress = payload?.progress;
+      const loading = Boolean(transferState) && kind !== 'error';
+      setFooterMsg(msg, { kind, loading, progress });
+    });
+    sftpLogBound = true;
+  }
+
   function bindUi() {
     const mount = document.getElementById('panel-remote-server');
     if (!mount || mount.dataset.eventsBound === '1') return;
@@ -1401,19 +1828,7 @@
     }
     mount.dataset.eventsBound = '1';
     bindUploadPathDrop();
-    if (!sftpLogBound) {
-      const a = api();
-      if (a?.onRemoteServerLog) {
-        sftpLogBound = true;
-        a.onRemoteServerLog((payload) => {
-          const msg = payload?.message != null ? String(payload.message) : '';
-          if (!msg) return;
-          const kind =
-            payload?.kind === 'error' ? 'error' : payload?.kind === 'ok' ? 'ok' : undefined;
-          setMsg($('rs-browser-msg'), msg, kind);
-        });
-      }
-    }
+    bindSftpLog();
     connectBtn.addEventListener('click', () => connect(false));
     $('rs-disconnect')?.addEventListener('click', () => disconnect());
     $('rs-refresh')?.addEventListener('click', () => refreshTree($('rs-path')?.value || currentDir));
@@ -1442,7 +1857,9 @@
       closeModal($('rs-modal-input')?.value ?? '');
     });
     $('rs-modal-input')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') closeModal($('rs-modal-input')?.value ?? '');
+      if (e.key === 'Enter' && modalEnterEnabled) {
+        closeModal($('rs-modal-input')?.value ?? '');
+      }
       if (e.key === 'Escape') closeModal(null);
     });
     $('rs-modal')?.addEventListener('click', (e) => {
@@ -1451,26 +1868,26 @@
     setupSplitResizer();
   }
 
-  /** 树与预览左右拖动；宽度写在 .rs-shell 的 --rs-tree-width */
-  function setupSplitResizer() {
-    const mount = document.getElementById('panel-remote-server');
-    if (!mount || mount.dataset.splitResizerBound === '1') return;
-    const handle = $('rs-split-resizer');
-    const body = mount.querySelector('.rs-body');
-    const treePanel = $('rs-tree-panel');
-    const shell = mount.querySelector('.rs-shell');
-    if (!handle || !body || !treePanel || !shell) return;
-    mount.dataset.splitResizerBound = '1';
-
-    function readTreeWidth() {
-      try {
-        const n = Number(localStorage.getItem(RS_TREE_WIDTH_KEY));
-        if (Number.isFinite(n) && n >= RS_TREE_WIDTH_MIN) return n;
-      } catch (_) {
-        /* ignore */
-      }
-      return 320;
+  function readTreeWidthPref() {
+    const fromCfg = Number(savedTreeWidthFromState);
+    if (Number.isFinite(fromCfg) && fromCfg >= RS_TREE_WIDTH_MIN) return fromCfg;
+    try {
+      const n = Number(localStorage.getItem(RS_TREE_WIDTH_KEY));
+      if (Number.isFinite(n) && n >= RS_TREE_WIDTH_MIN) return n;
+    } catch (_) {
+      /* ignore */
     }
+    return 320;
+  }
+
+  function ensureSplitResizeCtx() {
+    if (splitResizeCtx) return splitResizeCtx;
+    const mount = document.getElementById('panel-remote-server');
+    const handle = $('rs-split-resizer');
+    const body = mount?.querySelector('.rs-body');
+    const treePanel = $('rs-tree-panel');
+    const shell = mount?.querySelector('.rs-shell');
+    if (!mount || !handle || !body || !treePanel || !shell) return null;
 
     function clampTreeWidth(px) {
       const bodyW = body.clientWidth || mount.clientWidth || 0;
@@ -1481,28 +1898,61 @@
       return Math.min(maxW, Math.max(RS_TREE_WIDTH_MIN, px));
     }
 
-    function applyTreeWidth(px) {
-      const w = clampTreeWidth(px);
-      shell.style.setProperty('--rs-tree-width', `${w}px`);
+    async function persistTreeWidth(w) {
+      const rounded = Math.round(w);
       try {
-        localStorage.setItem(RS_TREE_WIDTH_KEY, String(Math.round(w)));
+        localStorage.setItem(RS_TREE_WIDTH_KEY, String(rounded));
       } catch (_) {
         /* ignore */
       }
+      const a = api();
+      if (!a?.remoteServerSaveTreeState) return;
+      try {
+        await a.remoteServerSaveTreeState({ treeWidth: rounded });
+      } catch (e) {
+        console.error('[remote-server-ui] save tree width', e);
+      }
+    }
+
+    function applyTreeWidth(px, persist) {
+      const w = clampTreeWidth(px);
+      shell.style.setProperty('--rs-tree-width', `${w}px`);
+      if (persist) void persistTreeWidth(w);
       try {
         codeEditor?.layout?.();
       } catch (_) {
         /* ignore */
       }
+      return w;
     }
 
-    applyTreeWidth(readTreeWidth());
+    splitResizeCtx = { mount, handle, body, treePanel, shell, clampTreeWidth, applyTreeWidth, persistTreeWidth };
+    return splitResizeCtx;
+  }
+
+  function applySavedTreeWidth() {
+    const ctx = ensureSplitResizeCtx();
+    if (!ctx) return;
+    ctx.applyTreeWidth(readTreeWidthPref(), false);
+  }
+
+  /** 树与预览左右拖动；宽度写在 .rs-shell 的 --rs-tree-width */
+  function setupSplitResizer() {
+    const mount = document.getElementById('panel-remote-server');
+    if (!mount || mount.dataset.splitResizerBound === '1') return;
+    const ctx = ensureSplitResizeCtx();
+    if (!ctx) return;
+    mount.dataset.splitResizerBound = '1';
+
+    const { handle, body, treePanel, applyTreeWidth, persistTreeWidth } = ctx;
+
+    applyTreeWidth(readTreeWidthPref(), false);
 
     let startX = 0;
     let startW = 0;
 
     const onMove = (e) => {
-      applyTreeWidth(startW + (e.clientX - startX));
+      applyTreeWidth(startW + (e.clientX - startX), false);
     };
 
     const onUp = () => {
@@ -1510,6 +1960,8 @@
       document.body.classList.remove('rs-split-resizing');
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
+      const w = treePanel.getBoundingClientRect().width || readTreeWidthPref();
+      void persistTreeWidth(applyTreeWidth(w, false));
       try {
         codeEditor?.layout?.();
       } catch (_) {
@@ -1521,7 +1973,7 @@
       if (e.button !== 0) return;
       e.preventDefault();
       startX = e.clientX;
-      startW = treePanel.getBoundingClientRect().width || readTreeWidth();
+      startW = treePanel.getBoundingClientRect().width || readTreeWidthPref();
       handle.classList.add('is-dragging');
       document.body.classList.add('rs-split-resizing');
       document.addEventListener('mousemove', onMove);
@@ -1530,8 +1982,8 @@
 
     if (typeof ResizeObserver !== 'undefined') {
       const ro = new ResizeObserver(() => {
-        const current = treePanel.getBoundingClientRect().width || readTreeWidth();
-        applyTreeWidth(current);
+        const current = treePanel.getBoundingClientRect().width || readTreeWidthPref();
+        applyTreeWidth(current, false);
       });
       ro.observe(body);
     }
@@ -1558,6 +2010,8 @@
     mount.dataset.loaded = PANEL_VERSION;
     mount.dataset.eventsBound = '';
     mount.dataset.splitResizerBound = '';
+    sftpLogBound = false;
+    splitResizeCtx = null;
   }
 
   async function init() {
@@ -1576,6 +2030,8 @@
         setMsg($('rs-login-msg'), state?.error || '读取配置失败', 'error');
         return;
       }
+      savedTreeWidthFromState = state?.treeWidth || state?.saved?.treeWidth || 0;
+      applySavedTreeWidth();
       fillForm(state.saved);
       if (state.downloadDir) setDownloadDirUi(state.downloadDir);
       restoreUploadFromState(state);
@@ -1583,7 +2039,9 @@
         setConnectedUi(true, state);
         const startPath = state.lastPath || '/';
         const expanded = state.treeExpanded || state.saved?.treeExpanded || [];
-        await restoreTreeView(startPath, expanded, treeSelectionFromState(state));
+        await restoreTreeView(startPath, expanded, treeSelectionFromState(state), {
+        locateSelection: true,
+      });
         return;
       }
       setConnectedUi(false);

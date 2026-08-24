@@ -32,6 +32,7 @@ flowchart LR
 | **Xcode 集成**（仅 macOS） | 新建弹窗加入 `.xcodeproj`；`xcode_build` / `xcode_run` / `xcode_test`；模拟器偏好。Windows/Linux **不暴露**这些工具与 UI |
 | **本地指令** | `commands/` — 助手 JSON 指令（如打开 QQ 音乐），与 Agent Loop 无关 |
 | **Git 面板** | 自研 SVG 提交时间线 + 底部 status / log / pecado 助手；Pull / Push / Commit、节点 Git 操作；**Pecado 思考流实时展示** |
+| **RemoteServer** | 侧栏 **SSH/SFTP** 远程文件管理：目录树、Monaco 编辑、上传下载（tar 快速传文件夹）、媒体预览 — 见 [src/remoteServer/README.md](src/remoteServer/README.md) |
 | **CodX 编辑区** | 底栏 **打开编程** → Monaco 全屏编辑；文件树 + Tab + AI 行级改码；**⌘S** / **↥** 写磁盘；**SSE 中断自动续写** — 见 [src/codX/README.md](src/codX/README.md)。Windows 可用 |
 
 ---
@@ -47,7 +48,8 @@ flowchart LR
 | [`markdown-it`](https://www.npmjs.com/package/markdown-it) | Preload 内 Markdown 渲染 |
 | [`highlight.js`](https://www.npmjs.com/package/highlight.js) | 代码块语法高亮 |
 | [`xcode`](https://www.npmjs.com/package/xcode) | 解析/修改 `project.pbxproj` |
-| [`monaco-editor`](https://www.npmjs.com/package/monaco-editor) | CodX 编程视图 Monaco 编辑区 |
+| [`monaco-editor`](https://www.npmjs.com/package/monaco-editor) | CodX / RemoteServer 编程视图 Monaco 编辑区 |
+| [`ssh2`](https://www.npmjs.com/package/ssh2) | RemoteServer SSH/SFTP 连接与文件传输 |
 
 HTTP/SSE 使用 Node/Electron 内置 **`fetch`**。
 
@@ -65,6 +67,7 @@ HTTP/SSE 使用 Node/Electron 内置 **`fetch`**。
 | 能力 | macOS | Windows / Linux |
 |------|-------|-----------------|
 | Open Folder / MCP / Agent / CodX / Git / Workflow 基础 | ✅ | ✅ |
+| **RemoteServer**（SSH/SFTP 远程文件） | ✅ | ✅ |
 | `write_file` / `codx_edit` 写磁盘 | ✅ 流式 | ✅ 流式 |
 | Xcode 工具、▶ Run、Workflow「Xcode」Tab、加入 `.xcodeproj` | ✅ | 隐藏 / 不注册 |
 
@@ -103,6 +106,7 @@ Pecado/
 │   ├── xcode/                 # macOS 流式写盘、pbxproj、确认对话框
 │   ├── commands/js/           # 本地 JSON 后置指令
 │   ├── gitgraph/              # Git 面板（自研 SVG 时间线，见 gitgraph/README.md）
+│   ├── remoteServer/          # RemoteServer SSH/SFTP 远程文件（见 remoteServer/README.md）
 │   ├── codX/                  # Monaco 编程视图（见 codX/README.md）
 │   ├── markdown/              # Skill Layer 树解析（skill-layer.js）
 │   ├── workflow/              # Workflow 面板（文件服务、归类、PPT、定时任务，见 workflow/README.md）
@@ -122,6 +126,7 @@ Pecado/
 |------|------|
 | [src/agent-loop/README.md](src/agent-loop/README.md) | Agent 多轮编排（INFER / PARSE / DISPATCH / EXEC / FEED） |
 | [src/gitgraph/README.md](src/gitgraph/README.md) | Git 提交图谱 UI、SVG 布局、节点菜单、IPC |
+| [src/remoteServer/README.md](src/remoteServer/README.md) | RemoteServer：SSH/SFTP 连接、目录树、上传下载、Monaco 预览 |
 | [src/workflow/README.md](src/workflow/README.md) | Workflow 面板：Skill、文件服务、归类、PPT、定时任务 |
 | [src/workflow/skill/README.md](src/workflow/skill/README.md) | Skill 模块：保存、Layer 树、资源脚本执行 |
 | [src/codX/README.md](src/codX/README.md) | CodX 编程视图：Monaco、文件树、AI 行级改码、Preferences |
@@ -467,6 +472,7 @@ Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式
 | **markdown** | `markdown/` | Skill Layer 树解析（`skill-layer.js`） | — |
 | **commands** | `commands/` | 回合结束后 JSON 本地指令 | 不进 Agent Loop |
 | **gitgraph** | `gitgraph/` | Git 时间线、Pull/Push/Commit、节点 Git 操作、工程路径栏 | 不进 Agent Loop |
+| **remoteServer** | `remoteServer/` | SSH/SFTP 会话、远端文件 CRUD、上传下载、媒体流预览 | 不进 Agent Loop |
 | **settings** | `settings/` | Volc 配置、菜单、Preferences 窗口 | — |
 
 ### 主进程模块注册
@@ -481,10 +487,42 @@ Layer 树 **已在 system** 中作为导航。正文不在 system，Agent 模式
 | 4 | mcp-filesystem | `mcp-filesystem/ipc.js` | `MCP_FS.*` + Open Folder |
 | 5 | gitgraph | `gitgraph/js/register.js` | `GIT.*`（含 `NODE_ACTION`） |
 | 6 | workflow | `workflow/register.js` | `WORKFLOW.*`（文件服务等） |
-| 7 | codX | `codX/ipc.js` | 语法检查等 |
-| 8 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
+| 7 | remoteServer | `remoteServer/register.js` | `REMOTE_SERVER.*`（SSH/SFTP） |
+| 8 | codX | `codX/ipc.js` | 语法检查等 |
+| 9 | settings | `settings/js/app-menu.js` | 应用菜单栏 |
 
-渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`；CodX 激活时加载 `codX/js/*`。
+渲染进程脚本（`main/html/index.html`）：`pecado/js/index.js`、`gitgraph/js/git-chat.js`、`gitgraph/js/index.js`、`remoteServer/js/panel.js`；CodX 激活时加载 `codX/js/*`。
+
+---
+
+## RemoteServer 面板（remoteServer 模块）
+
+侧栏 **RemoteServer** 提供 **SSH/SFTP** 远程文件管理（图形化 FTP 式交互）。详细说明见 **[src/remoteServer/README.md](src/remoteServer/README.md)**。
+
+### 打开方式
+
+1. 侧栏点击 **RemoteServer**（与 Pecado / Git / Workflow 同级，全页切换）
+2. 首次使用填写 SSH 主机、用户名、密码后 **登录**；配置保存在 `userData/remote-server.json`
+
+### 主要能力
+
+| 区域 | 功能 |
+|------|------|
+| **传输栏** | **下载到** / **文件** 按钮选择本机路径；右侧只读显示路径；文件区支持拖拽 |
+| **工具栏** | 远程路径跳转、刷新、上传、下载、新建文件夹、删除 |
+| **目录树** | 展开/选中；与 Monaco/媒体预览左右分屏（宽度可记忆） |
+| **预览区** | 代码 Monaco 高亮编辑保存；图片/音视频/PDF 预览 |
+| **底栏** | SFTP 操作日志与上传进度 |
+
+### 传输特性
+
+- **上传**：暂存 → 上传到当前远程目录；文件夹优先 **tar + SSH 管道**；可撤销；完成后刷新父目录节点并选中上传项
+- **下载**：递归下载文件/文件夹到「下载到」目录
+- **删除**：弹窗输入 `del` 后点击删除；优先远端 `rm -rf`；完成后选中上级目录
+
+### IPC（`REMOTE_SERVER.*`）
+
+`CONNECT` / `DISCONNECT` / `LIST_DIR` / `READ_FILE` / `WRITE_FILE` / `DELETE` / `UPLOAD` / `DOWNLOAD` / `PREVIEW_MEDIA` / `SAVE_TREE_STATE` / `LOG` 等 — 见 `shared/ipc-channels.js` 与模块 README。
 
 ---
 
@@ -1056,6 +1094,9 @@ git push origin main
 | Git CLI / 节点操作 | `src/gitgraph/js/git-runner.js` |
 | Git log 解析 | `src/gitgraph/js/log-parser.js` |
 | Git 主进程 IPC | `src/gitgraph/js/register.js` |
+| RemoteServer UI | `src/remoteServer/js/panel.js` |
+| RemoteServer SSH/SFTP | `src/remoteServer/ssh-session.js` |
+| RemoteServer IPC | `src/remoteServer/register.js` |
 | CodX 底栏对话 | `src/codX/js/codx-chat.js`、`src/codX/js/codx-live-status.js`、`src/codX/js/codx-code-block.js` |
 | 流式正文渐显 | `src/shared/stream-text-reveal.js` |
 | 对话跟滚 | `src/shared/chat-scroll-follow.js` |

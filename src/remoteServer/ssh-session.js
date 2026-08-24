@@ -5,6 +5,7 @@
  * 【调用】register.js；媒体流式预览经 getSftpHandle → media-stream-server
  */
 const fs = require('fs');
+const { spawn } = require('child_process');
 const { Client } = require('ssh2');
 const path = require('path');
 
@@ -14,6 +15,36 @@ let client = null;
 let sftp = null;
 /** @type {{ host: string, port: number, username: string } | null} */
 let connectedMeta = null;
+/** @type {(() => void) | null} */
+let activeUploadAbort = null;
+
+function cancelActiveUpload() {
+  if (activeUploadAbort) {
+    try {
+      activeUploadAbort();
+    } catch (_) {}
+    activeUploadAbort = null;
+  }
+}
+
+function walkLocalFilesSync(localDir, onFile, relBase = '') {
+  let entries;
+  try {
+    entries = fs.readdirSync(localDir, { withFileTypes: true });
+  } catch (_) {
+    return;
+  }
+  for (const ent of entries) {
+    if (ent.isSymbolicLink()) continue;
+    const rel = relBase ? `${relBase}/${ent.name}` : ent.name;
+    const abs = path.join(localDir, ent.name);
+    if (ent.isDirectory()) {
+      walkLocalFilesSync(abs, onFile, rel);
+    } else if (ent.isFile()) {
+      onFile(abs, rel.replace(/\\/g, '/'));
+    }
+  }
+}
 
 // —— 连接状态 ——
 
@@ -48,6 +79,49 @@ function withSftp() {
     throw err;
   }
   return sftp;
+}
+
+function withClient() {
+  if (!client || !connectedMeta) {
+    const err = new Error('未连接服务器');
+    err.code = 'NOT_CONNECTED';
+    throw err;
+  }
+  return client;
+}
+
+/** POSIX shell 单引号转义，供 rm 等远程命令使用 */
+function shellQuotePosix(p) {
+  return `'${String(p).replace(/'/g, `'\\''`)}'`;
+}
+
+/** 在远端执行 shell 命令（比 SFTP 逐文件删目录快得多） */
+function execRemote(command) {
+  const c = withClient();
+  return new Promise((resolve, reject) => {
+    c.exec(command, (err, stream) => {
+      if (err) return reject(err);
+      let stderr = '';
+      let stdout = '';
+      stream.on('close', (code) => {
+        if (code !== 0) {
+          const msg = stderr.trim() || stdout.trim() || `命令失败 (exit ${code})`;
+          const e = new Error(msg);
+          e.code = 'EXEC_FAILED';
+          e.exitCode = code;
+          reject(e);
+        } else {
+          resolve({ stdout, stderr });
+        }
+      });
+      stream.stderr.on('data', (d) => {
+        stderr += d.toString();
+      });
+      stream.stdout.on('data', (d) => {
+        stdout += d.toString();
+      });
+    });
+  });
 }
 
 function sftpStat(remotePath) {
@@ -213,45 +287,63 @@ function writeFile(remotePath, content) {
   });
 }
 
-function removePath(remotePath) {
+/** SFTP 逐层递归删除（exec 不可用时的回退） */
+function removePathSftp(p, isDir) {
   const s = withSftp();
-  const p = normalizeRemotePath(remotePath);
-  if (p === '/') return Promise.reject(new Error('不能删除根目录'));
-  return new Promise((resolve, reject) => {
-    s.stat(p, (err, st) => {
-      if (err) return reject(err);
-      const isDir = (st.mode & 0o170000) === 0o040000;
-      if (!isDir) {
-        return s.unlink(p, (e2) => (e2 ? reject(e2) : resolve({ ok: true, path: p })));
-      }
-      const rmdirRecursive = (dir) =>
-        new Promise((res, rej) => {
-          s.readdir(dir, (e3, list) => {
-            if (e3) return rej(e3);
-            const entries = (list || []).filter((x) => x.filename !== '.' && x.filename !== '..');
-            let i = 0;
-            const next = () => {
-              if (i >= entries.length) {
-                return s.rmdir(dir, (e4) => (e4 ? rej(e4) : res()));
-              }
-              const name = entries[i++].filename;
-              const child = dir === '/' ? `/${name}` : `${dir}/${name}`;
-              s.stat(child, (e5, st2) => {
-                if (e5) return rej(e5);
-                const childDir = (st2.mode & 0o170000) === 0o040000;
-                const done = (e6) => (e6 ? rej(e6) : next());
-                if (childDir) rmdirRecursive(child).then(() => next()).catch(rej);
-                else s.unlink(child, done);
-              });
-            };
-            next();
-          });
-        });
-      rmdirRecursive(p)
-        .then(() => resolve({ ok: true, path: p }))
-        .catch(reject);
+  if (!isDir) {
+    return new Promise((resolve, reject) => {
+      s.unlink(p, (e) => (e ? reject(e) : resolve()));
     });
-  });
+  }
+  const rmdirRecursive = (dir) =>
+    new Promise((res, rej) => {
+      s.readdir(dir, (e3, list) => {
+        if (e3) return rej(e3);
+        const entries = (list || []).filter((x) => x.filename !== '.' && x.filename !== '..');
+        let i = 0;
+        const next = () => {
+          if (i >= entries.length) {
+            return s.rmdir(dir, (e4) => (e4 ? rej(e4) : res()));
+          }
+          const name = entries[i++].filename;
+          const child = dir === '/' ? `/${name}` : `${dir}/${name}`;
+          s.stat(child, (e5, st2) => {
+            if (e5) return rej(e5);
+            const childDir = (st2.mode & 0o170000) === 0o040000;
+            const done = (e6) => (e6 ? rej(e6) : next());
+            if (childDir) rmdirRecursive(child).then(() => next()).catch(rej);
+            else s.unlink(child, done);
+          });
+        };
+        next();
+      });
+    });
+  return rmdirRecursive(p);
+}
+
+async function removePath(remotePath) {
+  const p = normalizeRemotePath(remotePath);
+  if (p === '/') throw new Error('不能删除根目录');
+
+  let st;
+  try {
+    st = await sftpStat(p);
+  } catch (e) {
+    throw e;
+  }
+  const isDir = (st.mode & 0o170000) === 0o040000;
+
+  // 优先在服务端 rm，一次命令删整棵目录树
+  try {
+    const cmd = isDir
+      ? `rm -rf -- ${shellQuotePosix(p)}`
+      : `rm -f -- ${shellQuotePosix(p)}`;
+    await execRemote(cmd);
+    return { ok: true, path: p, method: 'exec' };
+  } catch (_) {
+    await removePathSftp(p, isDir);
+    return { ok: true, path: p, method: 'sftp' };
+  }
 }
 
 // —— 上传 / 下载 / 建目录 ——
@@ -362,6 +454,149 @@ async function uploadLocalFile(localPath, remotePath) {
   };
 }
 
+/**
+ * 文件夹快速上传：本机 tar.gz 经 SSH 管道在远端解压（比 SFTP 逐文件快得多）
+ */
+async function uploadLocalDirViaTar(localDir, remoteParentDir) {
+  cancelActiveUpload();
+  const absLocal = path.resolve(localDir);
+  if (!fs.existsSync(absLocal) || !fs.statSync(absLocal).isDirectory()) {
+    throw new Error('不是本地文件夹');
+  }
+  const baseName = path.basename(absLocal);
+  const parent = path.dirname(absLocal);
+  const remoteParent = normalizeRemotePath(remoteParentDir);
+  const remoteRoot =
+    remoteParent === '/' ? `/${baseName}` : `${remoteParent}/${baseName}`.replace(/\/+/g, '/');
+
+  await ensureRemoteDir(remoteParent);
+
+  return new Promise((resolve, reject) => {
+    const c = withClient();
+    const extractCmd = `tar xzf - -C ${shellQuotePosix(remoteParent)}`;
+    const TAR_UPLOAD_TIMEOUT_MS = 30 * 60 * 1000;
+
+    c.exec(extractCmd, (err, stream) => {
+      if (err) return reject(err);
+
+      const tarProc = spawn('tar', ['czf', '-', '-C', parent, baseName], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      let remoteErr = '';
+      let tarErr = '';
+      let remoteExit = null;
+      let tarClosed = false;
+      let streamClosed = false;
+      let settled = false;
+
+      const buildResult = () => {
+        const files = [];
+        let totalSize = 0;
+        walkLocalFilesSync(absLocal, (abs, rel) => {
+          const rp = rel
+            ? `${remoteRoot}/${rel}`.replace(/\/+/g, '/')
+            : remoteRoot;
+          const st = fs.statSync(abs);
+          files.push({
+            path: normalizeRemotePath(rp),
+            localPath: abs,
+            size: st.size,
+          });
+          totalSize += st.size;
+        });
+        return {
+          ok: true,
+          remoteRoot: normalizeRemotePath(remoteRoot),
+          path: normalizeRemotePath(remoteRoot),
+          realPath: normalizeRemotePath(remoteRoot),
+          dir: remoteParent,
+          kind: 'dir',
+          fileCount: files.length,
+          size: totalSize,
+          files,
+          method: 'tar',
+        };
+      };
+
+      const finish = (e, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        activeUploadAbort = null;
+        try {
+          tarProc.kill('SIGKILL');
+        } catch (_) {}
+        if (e) reject(e);
+        else resolve(result);
+      };
+
+      const tryFinishSuccess = () => {
+        if (settled || !tarClosed || !streamClosed) return;
+        const code = remoteExit;
+        if (code != null && code !== 0) {
+          finish(new Error(remoteErr.trim() || `远端解压失败 (exit ${code})`));
+          return;
+        }
+        finish(null, buildResult());
+      };
+
+      const timer = setTimeout(() => {
+        finish(new Error('文件夹上传超时（30 分钟）'));
+      }, TAR_UPLOAD_TIMEOUT_MS);
+
+      activeUploadAbort = () => {
+        finish(new Error('上传已取消'));
+      };
+
+      // 必须消费远端 stdout，否则管道阻塞会导致 channel 永不 close
+      stream.stdout.on('data', () => {});
+      stream.stderr.on('data', (d) => {
+        remoteErr += d.toString();
+      });
+      tarProc.stderr.on('data', (d) => {
+        tarErr += d.toString();
+      });
+
+      tarProc.on('error', (e) => {
+        if (e.code === 'ENOENT') {
+          finish(new Error('本机未找到 tar 命令，无法快速上传文件夹'));
+        } else {
+          finish(e);
+        }
+      });
+
+      tarProc.stdout.on('error', () => {});
+      stream.stdin.on('error', () => {});
+
+      tarProc.stdout.pipe(stream.stdin);
+
+      tarProc.on('close', (code) => {
+        if (code !== 0 && !settled) {
+          finish(new Error(tarErr.trim() || `本地打包失败 (exit ${code})`));
+          return;
+        }
+        tarClosed = true;
+        try {
+          stream.stdin.end();
+        } catch (_) {}
+        tryFinishSuccess();
+      });
+
+      stream.on('exit', (code) => {
+        remoteExit = code;
+      });
+
+      stream.on('close', (code) => {
+        if (settled) return;
+        if (remoteExit == null && code != null) remoteExit = code;
+        streamClosed = true;
+        tryFinishSuccess();
+      });
+    });
+  });
+}
+
 function mkdir(remotePath) {
   const s = withSftp();
   const p = normalizeRemotePath(remotePath);
@@ -406,6 +641,16 @@ function uniqueLocalPath(dir, baseName) {
   return path.join(dir, `${stem}-${Date.now()}${ext}`);
 }
 
+function uniqueLocalDir(dir, folderName) {
+  let candidate = path.join(dir, folderName);
+  if (!fs.existsSync(candidate)) return candidate;
+  for (let i = 1; i < 1000; i++) {
+    candidate = path.join(dir, `${folderName} (${i})`);
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(dir, `${folderName}-${Date.now()}`);
+}
+
 function getByStream(remote, localPath) {
   const s = withSftp();
   return new Promise((resolve, reject) => {
@@ -433,17 +678,15 @@ function getByStream(remote, localPath) {
 }
 
 /**
- * 下载远程文件到本机目录
+ * 下载单个远程文件到指定本机路径（父目录会自动创建）
  */
-async function downloadRemoteFile(remotePath, localDir) {
+async function downloadRemoteFileTo(remotePath, localPath) {
   const remote = normalizeRemotePath(remotePath);
   const st = await sftpStat(remote);
   if ((st.mode & 0o170000) === 0o040000) {
-    throw new Error('暂不支持下载文件夹，请选文件');
+    throw new Error('期望文件');
   }
-  const baseName = path.posix.basename(remote) || 'download.bin';
-  fs.mkdirSync(localDir, { recursive: true });
-  const localPath = uniqueLocalPath(localDir, baseName);
+  fs.mkdirSync(path.dirname(localPath), { recursive: true });
   const s = withSftp();
   await new Promise((resolve, reject) => {
     s.fastGet(remote, localPath, (err) => {
@@ -458,13 +701,104 @@ async function downloadRemoteFile(remotePath, localDir) {
     } catch (_) {}
     throw new Error(`下载校验失败: 本地 ${localStat.size} 字节 ≠ 远端 ${st.size} 字节`);
   }
+  return { localPath, size: localStat.size, remotePath: remote };
+}
+
+async function walkRemoteFiles(remoteDir, onFile, relBase = '') {
+  const { items } = await listDir(remoteDir);
+  for (const item of items) {
+    if (item.isLink) continue;
+    const rel = relBase ? `${relBase}/${item.name}` : item.name;
+    if (item.isDir) {
+      await walkRemoteFiles(item.path, onFile, rel);
+    } else {
+      await onFile(item.path, rel, item.size);
+    }
+  }
+}
+
+/**
+ * 下载远程文件夹到本机目录（保留内部结构）
+ * @param {(info: { remotePath: string, rel: string, localPath: string, index: number, total: number }) => void} [onProgress]
+ */
+async function downloadRemoteFolder(remotePath, localDir, onProgress) {
+  const remote = normalizeRemotePath(remotePath);
+  const st = await sftpStat(remote);
+  if ((st.mode & 0o170000) !== 0o040000) {
+    throw new Error('期望文件夹');
+  }
+  const folderName = path.posix.basename(remote) || 'folder';
+  fs.mkdirSync(localDir, { recursive: true });
+  const localRoot = uniqueLocalDir(localDir, folderName);
+  fs.mkdirSync(localRoot, { recursive: true });
+
+  const jobs = [];
+  await walkRemoteFiles(remote, async (remoteFile, rel) => {
+    jobs.push({ remoteFile, rel });
+  });
+
+  const files = [];
+  let totalSize = 0;
+  const total = jobs.length;
+  for (let i = 0; i < jobs.length; i++) {
+    const { remoteFile, rel } = jobs[i];
+    const localPath = path.join(localRoot, rel.split('/').join(path.sep));
+    if (onProgress) {
+      onProgress({
+        remotePath: remoteFile,
+        rel,
+        localPath,
+        index: i + 1,
+        total,
+      });
+    }
+    const r = await downloadRemoteFileTo(remoteFile, localPath);
+    files.push(r);
+    totalSize += r.size;
+  }
+
   return {
     ok: true,
     remotePath: remote,
-    localPath,
-    size: localStat.size,
-    fileName: path.basename(localPath),
+    localPath: localRoot,
+    isDir: true,
+    fileCount: files.length,
+    size: totalSize,
+    files,
+    fileName: path.basename(localRoot),
   };
+}
+
+/**
+ * 下载远程文件或文件夹到本机目录
+ * @param {(info: object) => void} [onProgress] 文件夹下载时逐文件回调
+ */
+async function downloadRemotePath(remotePath, localDir, onProgress) {
+  const remote = normalizeRemotePath(remotePath);
+  const st = await sftpStat(remote);
+  if ((st.mode & 0o170000) === 0o040000) {
+    return downloadRemoteFolder(remote, localDir, onProgress);
+  }
+  const baseName = path.posix.basename(remote) || 'download.bin';
+  fs.mkdirSync(localDir, { recursive: true });
+  const localPath = uniqueLocalPath(localDir, baseName);
+  const r = await downloadRemoteFileTo(remote, localPath);
+  return {
+    ok: true,
+    remotePath: remote,
+    localPath: r.localPath,
+    isDir: false,
+    fileCount: 1,
+    size: r.size,
+    fileName: path.basename(r.localPath),
+  };
+}
+
+/**
+ * 下载远程文件到本机目录（兼容旧名；亦支持文件夹）
+ */
+async function downloadRemoteFile(remotePath, localDir, onProgress) {
+  return downloadRemotePath(remotePath, localDir, onProgress);
 }
 
 const MEDIA_MIME = {
@@ -619,9 +953,12 @@ module.exports = {
   writeFile,
   removePath,
   uploadLocalFile,
+  uploadLocalDirViaTar,
+  cancelActiveUpload,
   mkdir,
   ensureRemoteDir,
   downloadRemoteFile,
+  downloadRemotePath,
   isMediaPath,
   downloadMedia,
   statMedia,

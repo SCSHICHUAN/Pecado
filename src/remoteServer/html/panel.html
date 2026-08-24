@@ -55,17 +55,26 @@
     <!-- 下载到 | 文件（同一行） -->
     <div class="rs-transfer-row">
       <div class="rs-path-bar rs-path-bar-inline">
-        <span class="rs-path-bar-label">下载到</span>
-        <input id="rs-download-dir" type="text" class="rs-path-bar-input" spellcheck="false" readonly title="本机保存目录">
-        <button type="button" class="rs-btn" id="rs-pick-download-dir">选择…</button>
+        <button type="button" class="rs-btn rs-transfer-btn" id="rs-pick-download-dir" title="选择本机保存目录">下载到</button>
+        <div class="rs-path-bar-value">
+          <span
+            class="rs-path-bar-text is-empty"
+            id="rs-download-dir"
+            data-placeholder="点击「下载到」选择目录"
+            title="本机保存目录"
+          ></span>
+        </div>
       </div>
       <div class="rs-path-bar rs-path-bar-inline rs-upload-bar" id="rs-upload-bar">
-        <span class="rs-path-bar-label">文件</span>
+        <button type="button" class="rs-btn rs-transfer-btn" id="rs-pick-upload-files" title="选择要上传的文件或文件夹">文件</button>
         <div class="rs-upload-path-wrap" id="rs-upload-drop">
-          <input id="rs-upload-dir" type="text" class="rs-path-bar-input" spellcheck="false" readonly placeholder="拖拽文件或文件夹到此处">
+          <span
+            class="rs-path-bar-text is-empty"
+            id="rs-upload-dir"
+            data-placeholder="点击「文件」或拖拽到此处"
+          ></span>
           <span class="rs-upload-drop-hint" id="rs-upload-drop-hint">拖拽到路径</span>
         </div>
-        <button type="button" class="rs-btn" id="rs-pick-upload-files">选择…</button>
       </div>
     </div>
     <div class="rs-toolbar">
@@ -116,8 +125,14 @@
         </div>
       </div>
     </div>
-    <div class="rs-footer">
-      <span class="rs-msg" id="rs-browser-msg"></span>
+    <div class="rs-footer" id="rs-footer">
+      <div class="rs-footer-status">
+        <span class="rs-footer-spinner hidden" id="rs-footer-spinner" aria-hidden="true"></span>
+        <span class="rs-msg" id="rs-browser-msg"></span>
+      </div>
+      <div class="rs-progress hidden" id="rs-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+        <div class="rs-progress-fill" id="rs-progress-fill"></div>
+      </div>
     </div>
   </section>
 
