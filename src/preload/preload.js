@@ -140,6 +140,18 @@ try {
     remoteServerSaveTreeState: (payload) =>
       ipcRenderer.invoke(REMOTE_SERVER.SAVE_TREE_STATE, payload || {}),
     remoteServerCancelUpload: () => ipcRenderer.invoke(REMOTE_SERVER.CANCEL_UPLOAD),
+    onRemoteServerLog: (callback) => {
+      const ch = REMOTE_SERVER.LOG;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onRemoteServerLog', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
     getPathForFile: (file) => {
       try {
         return webUtils.getPathForFile(file);

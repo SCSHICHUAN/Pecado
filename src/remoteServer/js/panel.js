@@ -6,7 +6,7 @@
  */
 (function () {
   /** 与 mount.dataset.loaded 对齐；改 html/panel.html 时 +1 */
-  const PANEL_VERSION = '19';
+  const PANEL_VERSION = '20';
   let currentDir = '/';
   let selectedPath = '';
   let selectedIsDir = false;
@@ -25,6 +25,7 @@
   let editorUseFallback = false;
   let monacoLayoutBound = false;
   let editorLoading = false;
+  let sftpLogBound = false;
 
   /** 树/预览左右分割宽度（localStorage） */
   const RS_TREE_WIDTH_KEY = 'remoteServer.treeWidth';
@@ -292,6 +293,15 @@
     el.textContent = text || '';
     el.classList.toggle('is-error', kind === 'error');
     el.classList.toggle('is-ok', kind === 'ok');
+    // 单行底栏：过长时滚到末尾，便于看到最新完整路径
+    if (el.id === 'rs-browser-msg') {
+      const foot = el.closest?.('.rs-footer');
+      if (foot) {
+        requestAnimationFrame(() => {
+          foot.scrollLeft = foot.scrollWidth;
+        });
+      }
+    }
   }
 
   function setConnectedUi(connected, meta) {
@@ -389,7 +399,7 @@
     setUploadPathUi(display);
     persistUploadPath(list);
     if (display) {
-      setMsg($('rs-browser-msg'), '已选择上传路径，点击「上传」开始', 'ok');
+      setMsg($('rs-browser-msg'), '已选择文件，点击「上传」开始', 'ok');
     } else {
       setMsg($('rs-browser-msg'), '');
     }
@@ -932,9 +942,10 @@
     }
     setMsg($('rs-browser-msg'), '删除中…');
     try {
-      const res = await a.remoteServerDelete({ path: selectedPath, confirm: 'del' });
+      const deletedPath = selectedPath;
+      const res = await a.remoteServerDelete({ path: deletedPath, confirm: 'del' });
       if (!res?.ok) throw new Error(res?.error || '删除失败');
-      if (openFilePath === selectedPath) {
+      if (openFilePath === deletedPath) {
         openFilePath = '';
         dirty = false;
         clearEditorContent();
@@ -942,8 +953,16 @@
         if ($('rs-editor-path')) $('rs-editor-path').textContent = '未打开文件';
         if ($('rs-save')) $('rs-save').disabled = true;
       }
-      const parent = selectedPath.replace(/\/[^/]+\/?$/, '') || '/';
-      await refreshTree(parent === selectedPath ? '/' : parent);
+      const parent = parentPath(deletedPath);
+      expandedDirs.delete(deletedPath);
+      // 删掉自身后选中并预览上一级目录
+      selectedPath = parent;
+      selectedIsDir = true;
+      currentDir = parent;
+      if ($('rs-path')) $('rs-path').value = parent;
+      const expanded = [...expandedDirs].filter((p) => p !== deletedPath && !p.startsWith(`${deletedPath}/`));
+      expandedDirs = new Set(expanded);
+      await restoreTreeView(parent, expanded, { path: parent, isDir: true });
       setMsg($('rs-browser-msg'), '已删除', 'ok');
     } catch (e) {
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
@@ -951,10 +970,87 @@
   }
 
   async function handleUploadResult(res, dir) {
+    const target = normalizeRemotePath(res?.dir || dir || currentDir);
+
+    /** 上传文件 → 选中该文件；上传文件夹 → 选中该文件夹（目标目录下的顶层项） */
+    function pickUploadedSelection() {
+      if (res?.selection?.path) {
+        return {
+          path: normalizeRemotePath(res.selection.path),
+          isDir: Boolean(res.selection.isDir),
+        };
+      }
+
+      const details = Array.isArray(res?.details) ? res.details : [];
+      const items = details.length
+        ? details.map((d) => ({
+            path: normalizeRemotePath(d.realPath || d.path),
+            isDir: d.kind === 'dir',
+          }))
+        : (res?.uploaded || []).map((p) => ({
+            path: normalizeRemotePath(p),
+            isDir: false,
+          }));
+
+      if (!items.length) return { path: target, isDir: true };
+
+      function topUnderTarget(remotePath) {
+        const p = normalizeRemotePath(remotePath);
+        if (p === target) return null;
+        if (target === '/') {
+          const name = p.split('/').filter(Boolean)[0];
+          return name ? `/${name}` : null;
+        }
+        const prefix = `${target}/`;
+        if (!p.startsWith(prefix)) return null;
+        const name = p.slice(prefix.length).split('/')[0];
+        return name ? `${target}/${name}` : null;
+      }
+
+      const tops = new Map(); // topPath -> { nested: boolean, isDir: boolean }
+      for (const item of items) {
+        const top = topUnderTarget(item.path);
+        if (!top) continue;
+        const cur = tops.get(top) || { nested: false, isDir: false };
+        if (item.path !== top) cur.nested = true;
+        if (item.isDir || item.path === top) cur.isDir = item.isDir || cur.isDir;
+        if (item.path.startsWith(`${top}/`)) cur.nested = true;
+        tops.set(top, cur);
+      }
+
+      // 待上传项带相对路径（含 /）→ 文件夹上传
+      const pendingFolder = (pendingUploadEntries || []).some((e) =>
+        String(e.relativePath || '')
+          .replace(/\\/g, '/')
+          .includes('/')
+      );
+
+      if (tops.size === 1) {
+        const [[topPath, meta]] = [...tops.entries()];
+        if (meta.nested || meta.isDir || pendingFolder) {
+          return { path: topPath, isDir: true };
+        }
+        return { path: topPath, isDir: false };
+      }
+
+      // 多个顶层：优先第一个文件，否则第一个文件夹
+      const firstFile = items.find((i) => !i.isDir);
+      if (firstFile) return { path: firstFile.path, isDir: false };
+      const firstDir = items.find((i) => i.isDir);
+      if (firstDir) return { path: firstDir.path, isDir: true };
+      const firstTop = tops.keys().next().value;
+      return firstTop
+        ? { path: firstTop, isDir: true }
+        : { path: target, isDir: true };
+    }
+
     if (res?.cancelled) {
       if (res.ok && (res.uploaded || []).length) {
-        const target = res.dir || dir;
-        await refreshTree(target);
+        const sel = pickUploadedSelection();
+        selectedPath = sel.path;
+        selectedIsDir = sel.isDir;
+        const expanded = expandedDirs.size > 0 ? [...expandedDirs] : [];
+        await restoreTreeView(target, expanded, sel);
         setMsg($('rs-browser-msg'), res.warning || '上传已中断', 'error');
       } else {
         setMsg($('rs-browser-msg'), res.error || '上传已取消', 'error');
@@ -966,23 +1062,28 @@
       setMsg($('rs-browser-msg'), '已取消上传');
       return;
     }
-    const target = res.dir || dir;
-    await refreshTree(target);
+
+    const sel = pickUploadedSelection();
+    selectedPath = sel.path;
+    selectedIsDir = sel.isDir;
+    const expanded = expandedDirs.size > 0 ? [...expandedDirs] : [];
+    // 展开到目标并选中：文件选文件，文件夹选文件夹
+    await restoreTreeView(target, expanded, sel);
+
     const paths = (res.uploaded || []).join('，');
-    const warn = res.warning ? `（部分失败：${res.warning}）` : '';
+    const warn = res.warning ? `；部分失败：${res.warning}` : '';
     const countHint =
       res.fileCount != null
-        ? `共 ${res.fileCount} 个文件${res.dirCount ? `、${res.dirCount} 个空文件夹` : ''} · `
+        ? `${res.fileCount} 文件${res.dirCount ? `、${res.dirCount} 文件夹` : ''} · `
         : '';
     const detail = (res.details || [])
       .filter((d) => d.kind !== 'dir')
       .map((d) => `${d.realPath || d.path} (${d.size}B)`)
       .join('，');
     const summary = detail || paths || '(无)';
-    const shortSummary = summary.length > 240 ? `${summary.slice(0, 240)}…` : summary;
     setMsg(
       $('rs-browser-msg'),
-      `${countHint}已上传到 ${target}：${shortSummary}${warn}`,
+      `[SFTP] 完成 ${countHint}${target}：${summary}${warn}`,
       res.warning ? 'error' : 'ok'
     );
   }
@@ -1052,7 +1153,7 @@
     return entries;
   }
 
-  // —— 上传：暂存 → 上传 / 撤销；拖拽到「上传路径」 ——
+  // —— 上传：暂存 → 上传 / 撤销；拖拽到「文件」栏 ——
 
   function setUploadDropActive(active) {
     const wrap = $('rs-upload-drop');
@@ -1075,7 +1176,7 @@
     const dir = activeDir();
     currentDir = dir;
     if ($('rs-path')) $('rs-path').value = dir;
-    setMsg($('rs-browser-msg'), `正在上传到 ${dir} …`);
+    setMsg($('rs-browser-msg'), `[SFTP] 准备上传到 ${dir}`);
     setUploadBtnState(true);
     try {
       const hasRelative = list.some((ent) => ent.relativePath);
@@ -1300,6 +1401,19 @@
     }
     mount.dataset.eventsBound = '1';
     bindUploadPathDrop();
+    if (!sftpLogBound) {
+      const a = api();
+      if (a?.onRemoteServerLog) {
+        sftpLogBound = true;
+        a.onRemoteServerLog((payload) => {
+          const msg = payload?.message != null ? String(payload.message) : '';
+          if (!msg) return;
+          const kind =
+            payload?.kind === 'error' ? 'error' : payload?.kind === 'ok' ? 'ok' : undefined;
+          setMsg($('rs-browser-msg'), msg, kind);
+        });
+      }
+    }
     connectBtn.addEventListener('click', () => connect(false));
     $('rs-disconnect')?.addEventListener('click', () => disconnect());
     $('rs-refresh')?.addEventListener('click', () => refreshTree($('rs-path')?.value || currentDir));

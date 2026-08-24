@@ -2,7 +2,7 @@
   @file panel.html
   【功能】RemoteServer：SSH 登录 + 远程文件管理
   【加载】register GET_PANEL_HTML → panel.js loadPanelHtml；改结构须 bump PANEL_VERSION
-  【分区】登录卡 | 传输栏(下载到+上传路径) | 工具栏 | 树+分割条+预览(Monaco/媒体/文件夹)
+  【分区】登录卡 | 传输栏(下载到+文件) | 工具栏 | 树+分割条+预览(Monaco/媒体/文件夹)
 -->
 <div class="rs-shell">
   <!-- 顶栏：连接状态 / 断开 -->
@@ -52,7 +52,7 @@
 
   <!-- 已连接：传输路径 + 工具栏 + 树/预览 -->
   <section class="rs-browser hidden" id="rs-browser">
-    <!-- 下载到 | 上传路径（同一行） -->
+    <!-- 下载到 | 文件（同一行） -->
     <div class="rs-transfer-row">
       <div class="rs-path-bar rs-path-bar-inline">
         <span class="rs-path-bar-label">下载到</span>
@@ -60,7 +60,7 @@
         <button type="button" class="rs-btn" id="rs-pick-download-dir">选择…</button>
       </div>
       <div class="rs-path-bar rs-path-bar-inline rs-upload-bar" id="rs-upload-bar">
-        <span class="rs-path-bar-label">上传路径</span>
+        <span class="rs-path-bar-label">文件</span>
         <div class="rs-upload-path-wrap" id="rs-upload-drop">
           <input id="rs-upload-dir" type="text" class="rs-path-bar-input" spellcheck="false" readonly placeholder="拖拽文件或文件夹到此处">
           <span class="rs-upload-drop-hint" id="rs-upload-drop-hint">拖拽到路径</span>

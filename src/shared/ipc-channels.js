@@ -142,5 +142,7 @@ module.exports = {
     SAVE_TREE_STATE: 'remote-server-save-tree-state',
     CANCEL_UPLOAD: 'remote-server-cancel-upload',
     PICK_UPLOAD_FILES: 'remote-server-pick-upload-files',
+    /** main → renderer：SFTP 操作日志 { message, kind?: 'info'|'ok'|'error' } */
+    LOG: 'remote-server-log',
   },
 };

@@ -45,6 +45,21 @@ function errPayload(e) {
   };
 }
 
+/** 推送 SFTP/FTP 风格日志到渲染进程底栏 */
+function emitLog(sender, message, kind) {
+  if (!sender || typeof sender.send !== 'function') return;
+  try {
+    if (sender.isDestroyed?.()) return;
+    sender.send(REMOTE_SERVER.LOG, {
+      message: String(message || ''),
+      kind: kind === 'error' || kind === 'ok' ? kind : 'info',
+      at: Date.now(),
+    });
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 function resolveParentWindow(getMainWindowFn) {
   let win = typeof getMainWindowFn === 'function' ? getMainWindowFn() : null;
   if (win && !win.isDestroyed()) return win;
@@ -57,15 +72,24 @@ function resolveParentWindow(getMainWindowFn) {
 /**
  * 将本机文件/文件夹上传到远端 targetDir。
  * localEntries 带 relativePath 时按相对路径拼远端；否则按 basename / 整目录 walk。
+ * @param {Electron.WebContents | null} sender 用于推送 LOG
  */
-async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
+async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries, sender) {
   uploadCancelRequested = false;
   const jobs = buildUploadJobs(targetDir, localPaths, localEntries);
   const uploaded = [];
   const errors = [];
+  const total = jobs.filter((j) => !j.error).length;
+  let done = 0;
+
+  emitLog(
+    sender,
+    `[SFTP] 开始上传 → ${session.normalizeRemotePath(targetDir)}（${total} 项）`
+  );
 
   for (const job of jobs) {
     if (uploadCancelRequested) {
+      emitLog(sender, '[SFTP] 上传已取消', 'error');
       if (!uploaded.length) {
         return {
           ok: false,
@@ -84,14 +108,39 @@ async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
         fileCount: uploaded.filter((u) => u.kind !== 'dir').length,
         dirCount: uploaded.filter((u) => u.kind === 'dir').length,
         warning: '上传已中断',
+        selection: (() => {
+          const firstFile = uploaded.find((u) => u.kind !== 'dir');
+          const first = firstFile || uploaded[0];
+          const p = session.normalizeRemotePath(first.realPath || first.path);
+          // 中断时若已有嵌套路径，尽量选顶层文件夹
+          const target = session.normalizeRemotePath(targetDir);
+          const prefix = target === '/' ? '/' : `${target}/`;
+          const rest =
+            target === '/'
+              ? p.replace(/^\//, '')
+              : p.startsWith(prefix)
+                ? p.slice(prefix.length)
+                : '';
+          if (rest.includes('/')) {
+            const name = rest.split('/')[0];
+            return {
+              path: target === '/' ? `/${name}` : `${target}/${name}`,
+              isDir: true,
+            };
+          }
+          return { path: p, isDir: first.kind === 'dir' };
+        })(),
       };
     }
     if (job.error) {
       errors.push(job.error);
+      emitLog(sender, `[SFTP] 跳过 ${job.error}`, 'error');
       continue;
     }
     if (job.mkdirOnly) {
       try {
+        done += 1;
+        emitLog(sender, `[SFTP] MKDIR ${job.remotePath}（${done}/${total}）`);
         await session.ensureRemoteDir(job.remotePath);
         const parent = path.posix.dirname(job.remotePath) || '/';
         uploaded.push({
@@ -101,9 +150,11 @@ async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
           dir: session.normalizeRemotePath(parent),
           kind: 'dir',
         });
+        emitLog(sender, `[SFTP] OK MKDIR ${job.remotePath}`, 'ok');
       } catch (e) {
         const msg = e && e.message ? e.message : String(e);
         errors.push(`${path.posix.basename(job.remotePath)}: ${msg}`);
+        emitLog(sender, `[SFTP] FAIL MKDIR ${job.remotePath}: ${msg}`, 'error');
       }
       continue;
     }
@@ -114,6 +165,11 @@ async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
       if (remoteDir && remoteDir !== '/') {
         await session.ensureRemoteDir(remoteDir);
       }
+      done += 1;
+      emitLog(
+        sender,
+        `[SFTP] PUT ${job.localPath} → ${job.remotePath}（${done}/${total}）`
+      );
       console.log('[remote-server] uploading', job.localPath, '→', job.remotePath);
       const put = await session.uploadLocalFile(job.localPath, job.remotePath);
       console.log(
@@ -131,14 +187,21 @@ async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
         dir: put.dir || targetDir,
         kind: 'file',
       });
+      emitLog(
+        sender,
+        `[SFTP] OK ${put.realPath || put.path} ${put.size}B`,
+        'ok'
+      );
     } catch (e) {
       const msg = e && e.message ? e.message : String(e);
       console.error('[remote-server] upload failed', job.remotePath, msg);
       errors.push(`${name}: ${msg}`);
+      emitLog(sender, `[SFTP] FAIL ${job.remotePath}: ${msg}`, 'error');
     }
   }
 
   if (!uploaded.length) {
+    emitLog(sender, `[SFTP] 上传失败：${errors.join('；') || '没有可上传的文件'}`, 'error');
     return {
       ok: false,
       error: errors.length ? errors.join('；') : '没有可上传的文件',
@@ -148,6 +211,80 @@ async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
   const firstDir = uploaded[0].dir || session.normalizeRemotePath(targetDir);
   const fileCount = uploaded.filter((u) => u.kind !== 'dir').length;
   const dirCount = uploaded.filter((u) => u.kind === 'dir').length;
+  const warn = errors.length ? `；部分失败：${errors.join('；')}` : '';
+  emitLog(
+    sender,
+    `[SFTP] 完成 ${fileCount} 文件${dirCount ? `、${dirCount} 文件夹` : ''} → ${firstDir}${warn}`,
+    errors.length ? 'error' : 'ok'
+  );
+
+  /** 选中策略：单文件选文件；文件夹（含子路径）选顶层目录 */
+  function selectionFromUpload() {
+    const target = session.normalizeRemotePath(targetDir);
+    const tops = new Map();
+    const consider = (remotePath, asDir) => {
+      const p = session.normalizeRemotePath(remotePath);
+      if (!p || p === target) return;
+      let top;
+      let nested = false;
+      if (target === '/') {
+        const parts = p.split('/').filter(Boolean);
+        if (!parts.length) return;
+        top = `/${parts[0]}`;
+        nested = parts.length > 1 || asDir;
+      } else {
+        const prefix = `${target}/`;
+        if (!p.startsWith(prefix)) return;
+        const rest = p.slice(prefix.length);
+        const parts = rest.split('/').filter(Boolean);
+        if (!parts.length) return;
+        top = `${target}/${parts[0]}`;
+        nested = parts.length > 1 || asDir;
+      }
+      const cur = tops.get(top) || { nested: false };
+      if (nested) cur.nested = true;
+      tops.set(top, cur);
+    };
+
+    for (const job of jobs) {
+      if (job.error) continue;
+      if (job.mkdirOnly) {
+        consider(job.remotePath, true);
+        continue;
+      }
+      const rp = job.remotePath;
+      const targetNorm = session.normalizeRemotePath(targetDir);
+      const prefix = targetNorm === '/' ? '/' : `${targetNorm}/`;
+      const rel =
+        targetNorm === '/'
+          ? String(rp || '').replace(/^\//, '')
+          : String(rp || '').startsWith(prefix)
+            ? String(rp).slice(prefix.length)
+            : '';
+      consider(rp, rel.includes('/'));
+    }
+    for (const u of uploaded) {
+      consider(u.realPath || u.path, u.kind === 'dir');
+    }
+
+    if (tops.size === 1) {
+      const [[topPath, meta]] = [...tops.entries()];
+      return { path: topPath, isDir: Boolean(meta.nested) };
+    }
+    const firstFile = uploaded.find((u) => u.kind !== 'dir');
+    if (firstFile) {
+      return {
+        path: session.normalizeRemotePath(firstFile.realPath || firstFile.path),
+        isDir: false,
+      };
+    }
+    const first = uploaded[0];
+    return {
+      path: session.normalizeRemotePath(first.realPath || first.path),
+      isDir: first.kind === 'dir',
+    };
+  }
+
   return {
     ok: true,
     uploaded: uploaded.map((u) => u.realPath || u.path),
@@ -156,6 +293,7 @@ async function uploadLocalPathsToRemote(targetDir, localPaths, localEntries) {
     fileCount,
     dirCount,
     warning: errors.length ? errors.join('；') : '',
+    selection: selectionFromUpload(),
   };
 }
 
@@ -316,18 +454,22 @@ function register(ipcMain, getMainWindowFn) {
           ? String(payload.password)
           : cfg.password;
       const port = parseInt(String(payload.port != null ? payload.port : cfg.port), 10) || 22;
+      emitLog(_evt.sender, `[SFTP] 连接 ${username}@${host}:${port} …`);
       const status = await session.connect({ host, port, username, password });
       writeConfig({ host, port, username, password, lastPath: cfg.lastPath || '/' });
+      emitLog(_evt.sender, `[SFTP] 已连接 ${username}@${host}:${port}`, 'ok');
       return { ok: true, ...status, saved: true };
     } catch (e) {
+      emitLog(_evt.sender, `[SFTP] 连接失败：${e && e.message ? e.message : e}`, 'error');
       return errPayload(e);
     }
   });
 
-  ipcMain.handle(REMOTE_SERVER.DISCONNECT, async () => {
+  ipcMain.handle(REMOTE_SERVER.DISCONNECT, async (_evt) => {
     try {
       mediaStream.clearTickets();
       session.disconnect();
+      emitLog(_evt.sender, '[SFTP] 已断开', 'ok');
       return { ok: true, connected: false };
     } catch (e) {
       return errPayload(e);
@@ -372,9 +514,12 @@ function register(ipcMain, getMainWindowFn) {
         return { ok: false, error: '删除需输入 del 确认' };
       }
       const remotePath = String(payload.path || '');
+      emitLog(_evt.sender, `[SFTP] RM ${remotePath}`);
       const res = await session.removePath(remotePath);
+      emitLog(_evt.sender, `[SFTP] OK RM ${remotePath}`, 'ok');
       return { ok: true, ...res };
     } catch (e) {
+      emitLog(_evt.sender, `[SFTP] FAIL RM：${e && e.message ? e.message : e}`, 'error');
       return errPayload(e);
     }
   });
@@ -410,6 +555,7 @@ function register(ipcMain, getMainWindowFn) {
         });
         if (picked.canceled || !picked.filePaths?.length) {
           console.log('[remote-server] upload cancelled');
+          emitLog(_evt.sender, '[SFTP] 已取消选择文件', 'error');
           return { ok: true, cancelled: true, uploaded: [] };
         }
         localPaths = picked.filePaths;
@@ -421,9 +567,10 @@ function register(ipcMain, getMainWindowFn) {
         );
       }
 
-      return await uploadLocalPathsToRemote(targetDir, localPaths, localEntries);
+      return await uploadLocalPathsToRemote(targetDir, localPaths, localEntries, _evt.sender);
     } catch (e) {
       console.error('[remote-server] upload error', e);
+      emitLog(_evt.sender, `[SFTP] 上传异常：${e && e.message ? e.message : e}`, 'error');
       return errPayload(e);
     }
   });
@@ -434,9 +581,12 @@ function register(ipcMain, getMainWindowFn) {
       const name = String(payload.name || '').trim().replace(/[\\/]/g, '');
       if (!name) return { ok: false, error: '文件夹名不能为空' };
       const remote = parent === '/' ? `/${name}` : `${parent}/${name}`;
+      emitLog(_evt.sender, `[SFTP] MKDIR ${remote}`);
       await session.mkdir(remote);
+      emitLog(_evt.sender, `[SFTP] OK MKDIR ${remote}`, 'ok');
       return { ok: true, path: remote };
     } catch (e) {
+      emitLog(_evt.sender, `[SFTP] FAIL MKDIR：${e && e.message ? e.message : e}`, 'error');
       return errPayload(e);
     }
   });
@@ -485,9 +635,16 @@ function register(ipcMain, getMainWindowFn) {
       if (!remotePath) return { ok: false, error: '请选择要下载的文件' };
       const cfg = readConfig();
       const downloadDir = cfg.downloadDir;
+      emitLog(_evt.sender, `[SFTP] GET ${remotePath} → ${downloadDir}`);
       const res = await session.downloadRemoteFile(remotePath, downloadDir);
+      emitLog(
+        _evt.sender,
+        `[SFTP] OK GET ${res.localPath || remotePath}${res.size != null ? ` ${res.size}B` : ''}`,
+        'ok'
+      );
       return { ok: true, ...res, downloadDir };
     } catch (e) {
+      emitLog(_evt.sender, `[SFTP] FAIL GET：${e && e.message ? e.message : e}`, 'error');
       return errPayload(e);
     }
   });
@@ -582,8 +739,9 @@ function register(ipcMain, getMainWindowFn) {
     }
   });
 
-  ipcMain.handle(REMOTE_SERVER.CANCEL_UPLOAD, async () => {
+  ipcMain.handle(REMOTE_SERVER.CANCEL_UPLOAD, async (_evt) => {
     uploadCancelRequested = true;
+    emitLog(_evt.sender, '[SFTP] 正在取消上传…', 'error');
     return { ok: true };
   });
 
