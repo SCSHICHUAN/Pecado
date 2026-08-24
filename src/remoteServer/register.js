@@ -838,26 +838,66 @@ function register(ipcMain, getMainWindowFn) {
       if (!remotePath) return { ok: false, error: '请选择要下载的文件或文件夹' };
       const cfg = readConfig();
       const downloadDir = cfg.downloadDir;
-      emitLog(_evt.sender, `[SFTP] GET ${remotePath} → ${downloadDir}`);
+      emitLog(
+        _evt.sender,
+        `[SFTP] GET ${remotePath} → ${downloadDir}`,
+        'info',
+        progressMeta(0, 1, 'download', true)
+      );
       const res = await session.downloadRemotePath(remotePath, downloadDir, (info) => {
-        if (info.total > 1) {
-          emitLog(
-            _evt.sender,
-            `[SFTP] GET ${info.remotePath}（${info.index}/${info.total}）`
-          );
+        const total = Math.max(1, Number(info.total) || 1);
+        const index = Math.max(0, Number(info.index) || 0);
+        let msg;
+        if (info.method === 'tar') {
+          msg = index >= total ? `[SFTP] TAR GET ${remotePath}` : `[SFTP] TAR GET ${remotePath}…`;
+        } else if (total > 1) {
+          msg = `[SFTP] GET ${info.remotePath}（${index}/${total}）`;
+        } else {
+          msg = `[SFTP] GET ${remotePath}…`;
         }
-      });
-      if (res.isDir) {
         emitLog(
           _evt.sender,
-          `[SFTP] OK GET ${res.localPath} · ${res.fileCount} 文件 · ${res.size}B`,
-          'ok'
+          msg,
+          'info',
+          progressMeta(
+            index,
+            total,
+            'download',
+            info.method === 'tar' || (total <= 1 && index < 1)
+          )
+        );
+      });
+      if (res.cancelled) {
+        if (res.ok && (res.fileCount > 0 || res.localPath)) {
+          emitLog(
+            _evt.sender,
+            `[SFTP] GET 已中断 · ${res.localPath || remotePath} · ${res.fileCount || 0} 文件`,
+            'error',
+            progressMeta(res.fileCount || 0, Math.max(1, res.fileCount || 1), 'download')
+          );
+        } else {
+          emitLog(_evt.sender, '[SFTP] 下载已取消', 'error');
+        }
+        return { ...res, downloadDir };
+      }
+      if (res.isDir) {
+        const total = Math.max(1, Number(res.fileCount) || 1);
+        const okMsg =
+          res.method === 'tar'
+            ? `[SFTP] OK TAR GET ${res.localPath} · ${res.fileCount} 文件 · ${res.size}B`
+            : `[SFTP] OK GET ${res.localPath} · ${res.fileCount} 文件 · ${res.size}B`;
+        emitLog(
+          _evt.sender,
+          okMsg,
+          'ok',
+          progressMeta(total, total, 'download')
         );
       } else {
         emitLog(
           _evt.sender,
           `[SFTP] OK GET ${res.localPath || remotePath}${res.size != null ? ` ${res.size}B` : ''}`,
-          'ok'
+          'ok',
+          progressMeta(1, 1, 'download')
         );
       }
       return { ok: true, ...res, downloadDir };
@@ -965,6 +1005,12 @@ function register(ipcMain, getMainWindowFn) {
     uploadCancelRequested = true;
     session.cancelActiveUpload();
     emitLog(_evt.sender, '[SFTP] 正在取消上传…', 'error');
+    return { ok: true };
+  });
+
+  ipcMain.handle(REMOTE_SERVER.CANCEL_DOWNLOAD, async (_evt) => {
+    session.cancelActiveDownload();
+    emitLog(_evt.sender, '[SFTP] 正在取消下载…', 'error');
     return { ok: true };
   });
 

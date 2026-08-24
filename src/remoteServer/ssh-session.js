@@ -17,6 +17,9 @@ let sftp = null;
 let connectedMeta = null;
 /** @type {(() => void) | null} */
 let activeUploadAbort = null;
+/** @type {(() => void) | null} */
+let activeDownloadAbort = null;
+let downloadCancelRequested = false;
 
 function cancelActiveUpload() {
   if (activeUploadAbort) {
@@ -24,6 +27,28 @@ function cancelActiveUpload() {
       activeUploadAbort();
     } catch (_) {}
     activeUploadAbort = null;
+  }
+}
+
+function resetDownloadCancel() {
+  downloadCancelRequested = false;
+  activeDownloadAbort = null;
+}
+
+function cancelActiveDownload() {
+  downloadCancelRequested = true;
+  if (activeDownloadAbort) {
+    try {
+      activeDownloadAbort();
+    } catch (_) {}
+  }
+}
+
+function throwIfDownloadCancelled() {
+  if (downloadCancelRequested) {
+    const err = new Error('下载已取消');
+    err.code = 'DOWNLOAD_CANCELLED';
+    throw err;
   }
 }
 
@@ -657,9 +682,19 @@ function getByStream(remote, localPath) {
     const ws = fs.createWriteStream(localPath);
     const rs = s.createReadStream(remote);
     let settled = false;
+    const cleanup = () => {
+      activeDownloadAbort = null;
+    };
     const fail = (e) => {
       if (settled) return;
       settled = true;
+      cleanup();
+      try {
+        rs.destroy();
+      } catch (_) {}
+      try {
+        ws.destroy();
+      } catch (_) {}
       try {
         fs.unlinkSync(localPath);
       } catch (_) {}
@@ -668,8 +703,10 @@ function getByStream(remote, localPath) {
     const ok = () => {
       if (settled) return;
       settled = true;
+      cleanup();
       resolve();
     };
+    activeDownloadAbort = () => fail(new Error('下载已取消'));
     rs.on('error', fail);
     ws.on('error', fail);
     ws.on('finish', ok);
@@ -681,6 +718,7 @@ function getByStream(remote, localPath) {
  * 下载单个远程文件到指定本机路径（父目录会自动创建）
  */
 async function downloadRemoteFileTo(remotePath, localPath) {
+  throwIfDownloadCancelled();
   const remote = normalizeRemotePath(remotePath);
   const st = await sftpStat(remote);
   if ((st.mode & 0o170000) === 0o040000) {
@@ -689,11 +727,22 @@ async function downloadRemoteFileTo(remotePath, localPath) {
   fs.mkdirSync(path.dirname(localPath), { recursive: true });
   const s = withSftp();
   await new Promise((resolve, reject) => {
+    activeDownloadAbort = () => {
+      downloadCancelRequested = true;
+    };
     s.fastGet(remote, localPath, (err) => {
+      activeDownloadAbort = null;
+      if (downloadCancelRequested) {
+        try {
+          fs.unlinkSync(localPath);
+        } catch (_) {}
+        return reject(new Error('下载已取消'));
+      }
       if (!err) return resolve();
       getByStream(remote, localPath).then(resolve).catch(reject);
     });
   });
+  throwIfDownloadCancelled();
   const localStat = fs.statSync(localPath);
   if (Number(localStat.size) !== Number(st.size)) {
     try {
@@ -702,6 +751,162 @@ async function downloadRemoteFileTo(remotePath, localPath) {
     throw new Error(`下载校验失败: 本地 ${localStat.size} 字节 ≠ 远端 ${st.size} 字节`);
   }
   return { localPath, size: localStat.size, remotePath: remote };
+}
+
+function buildDownloadCancelledResult(partial) {
+  const files = partial.files || [];
+  const hasFiles = files.length > 0;
+  return {
+    ok: hasFiles,
+    cancelled: true,
+    error: hasFiles ? undefined : '下载已取消',
+    remotePath: partial.remotePath,
+    localPath: partial.localPath,
+    isDir: Boolean(partial.isDir),
+    fileCount: files.length,
+    size: partial.size || 0,
+    files,
+    fileName: partial.fileName,
+    warning: hasFiles ? '下载已中断' : undefined,
+  };
+}
+
+function clearLocalDirContents(dirPath) {
+  const abs = path.resolve(dirPath);
+  if (!fs.existsSync(abs)) return;
+  for (const ent of fs.readdirSync(abs)) {
+    fs.rmSync(path.join(abs, ent), { recursive: true, force: true });
+  }
+}
+
+function collectLocalDownloadFiles(localRoot, remoteDir) {
+  const remote = normalizeRemotePath(remoteDir);
+  const absLocal = path.resolve(localRoot);
+  const files = [];
+  let totalSize = 0;
+  walkLocalFilesSync(absLocal, (abs, rel) => {
+    const rp = rel ? `${remote}/${rel}`.replace(/\/+/g, '/') : remote;
+    const st = fs.statSync(abs);
+    files.push({
+      localPath: abs,
+      path: normalizeRemotePath(rp),
+      remotePath: normalizeRemotePath(rp),
+      size: st.size,
+    });
+    totalSize += st.size;
+  });
+  return { files, totalSize };
+}
+
+/**
+ * 文件夹快速下载：远端 tar.gz 经 SSH 管道在本机解压（比 SFTP 逐文件快得多）
+ */
+async function downloadRemoteDirViaTar(remoteDir, localRoot) {
+  const remote = normalizeRemotePath(remoteDir);
+  const absLocal = path.resolve(localRoot);
+  fs.mkdirSync(absLocal, { recursive: true });
+
+  return new Promise((resolve, reject) => {
+    const c = withClient();
+    const packCmd = `tar czf - -C ${shellQuotePosix(remote)} .`;
+    const TAR_DOWNLOAD_TIMEOUT_MS = 30 * 60 * 1000;
+
+    c.exec(packCmd, (err, stream) => {
+      if (err) return reject(err);
+
+      const tarProc = spawn('tar', ['xzf', '-', '-C', absLocal], {
+        stdio: ['pipe', 'ignore', 'pipe'],
+      });
+
+      let remoteErr = '';
+      let tarErr = '';
+      let remoteExit = null;
+      let tarClosed = false;
+      let streamClosed = false;
+      let settled = false;
+
+      const buildResult = () => {
+        const { files, totalSize } = collectLocalDownloadFiles(absLocal, remote);
+        return {
+          ok: true,
+          fileCount: files.length,
+          size: totalSize,
+          files,
+          method: 'tar',
+        };
+      };
+
+      const finish = (e, result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        activeDownloadAbort = null;
+        try {
+          tarProc.kill('SIGKILL');
+        } catch (_) {}
+        if (e) reject(e);
+        else resolve(result);
+      };
+
+      const tryFinishSuccess = () => {
+        if (settled || !tarClosed || !streamClosed) return;
+        if (remoteExit != null && remoteExit !== 0) {
+          finish(new Error(remoteErr.trim() || `远端打包失败 (exit ${remoteExit})`));
+          return;
+        }
+        finish(null, buildResult());
+      };
+
+      const timer = setTimeout(() => {
+        finish(new Error('文件夹下载超时（30 分钟）'));
+      }, TAR_DOWNLOAD_TIMEOUT_MS);
+
+      activeDownloadAbort = () => {
+        finish(new Error('下载已取消'));
+      };
+
+      stream.stderr.on('data', (d) => {
+        remoteErr += d.toString();
+      });
+      tarProc.stderr.on('data', (d) => {
+        tarErr += d.toString();
+      });
+
+      tarProc.on('error', (e) => {
+        if (e.code === 'ENOENT') {
+          finish(new Error('本机未找到 tar 命令，无法快速下载文件夹'));
+        } else {
+          finish(e);
+        }
+      });
+
+      stream.stdout.on('error', () => {});
+      tarProc.stdin.on('error', () => {});
+
+      stream.stdout.pipe(tarProc.stdin);
+
+      stream.on('exit', (code) => {
+        remoteExit = code;
+      });
+
+      stream.on('close', () => {
+        streamClosed = true;
+        try {
+          tarProc.stdin.end();
+        } catch (_) {}
+        tryFinishSuccess();
+      });
+
+      tarProc.on('close', (code) => {
+        if (code !== 0 && !settled) {
+          finish(new Error(tarErr.trim() || `本地解压失败 (exit ${code})`));
+          return;
+        }
+        tarClosed = true;
+        tryFinishSuccess();
+      });
+    });
+  });
 }
 
 async function walkRemoteFiles(remoteDir, onFile, relBase = '') {
@@ -718,8 +923,78 @@ async function walkRemoteFiles(remoteDir, onFile, relBase = '') {
 }
 
 /**
- * 下载远程文件夹到本机目录（保留内部结构）
- * @param {(info: { remotePath: string, rel: string, localPath: string, index: number, total: number }) => void} [onProgress]
+ * 下载远程文件夹到本机目录（SFTP 逐文件，TAR 失败时的回退）
+ */
+async function downloadRemoteFolderViaSftp(remotePath, localRoot, onProgress) {
+  const remote = normalizeRemotePath(remotePath);
+  const jobs = [];
+  await walkRemoteFiles(remote, async (remoteFile, rel) => {
+    jobs.push({ remoteFile, rel });
+  });
+
+  const files = [];
+  let totalSize = 0;
+  const total = jobs.length;
+  if (onProgress && total > 0) {
+    onProgress({
+      remotePath: remote,
+      rel: '',
+      localPath: localRoot,
+      index: 0,
+      total,
+      method: 'sftp',
+    });
+  }
+  for (let i = 0; i < jobs.length; i++) {
+    throwIfDownloadCancelled();
+    const { remoteFile, rel } = jobs[i];
+    const localPath = path.join(localRoot, rel.split('/').join(path.sep));
+    if (onProgress) {
+      onProgress({
+        remotePath: remoteFile,
+        rel,
+        localPath,
+        index: i + 1,
+        total,
+        method: 'sftp',
+      });
+    }
+    try {
+      const r = await downloadRemoteFileTo(remoteFile, localPath);
+      files.push(r);
+      totalSize += r.size;
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      if (downloadCancelRequested || msg === '下载已取消' || e.code === 'DOWNLOAD_CANCELLED') {
+        return buildDownloadCancelledResult({
+          remotePath: remote,
+          localPath: localRoot,
+          isDir: true,
+          files,
+          size: totalSize,
+          fileName: path.basename(localRoot),
+        });
+      }
+      throw e;
+    }
+  }
+
+  return {
+    ok: true,
+    remotePath: remote,
+    localPath: localRoot,
+    isDir: true,
+    fileCount: files.length,
+    size: totalSize,
+    files,
+    fileName: path.basename(localRoot),
+    method: 'sftp',
+  };
+}
+
+/**
+ * 下载远程文件夹到本机目录（优先 TAR 管道，失败回退 SFTP 逐文件）
+ * @param {(info: object) => void} [onProgress]
  */
 async function downloadRemoteFolder(remotePath, localDir, onProgress) {
   const remote = normalizeRemotePath(remotePath);
@@ -732,41 +1007,71 @@ async function downloadRemoteFolder(remotePath, localDir, onProgress) {
   const localRoot = uniqueLocalDir(localDir, folderName);
   fs.mkdirSync(localRoot, { recursive: true });
 
-  const jobs = [];
-  await walkRemoteFiles(remote, async (remoteFile, rel) => {
-    jobs.push({ remoteFile, rel });
+  let fileCount = 0;
+  await walkRemoteFiles(remote, async () => {
+    fileCount += 1;
   });
-
-  const files = [];
-  let totalSize = 0;
-  const total = jobs.length;
-  for (let i = 0; i < jobs.length; i++) {
-    const { remoteFile, rel } = jobs[i];
-    const localPath = path.join(localRoot, rel.split('/').join(path.sep));
-    if (onProgress) {
-      onProgress({
-        remotePath: remoteFile,
-        rel,
-        localPath,
-        index: i + 1,
-        total,
-      });
-    }
-    const r = await downloadRemoteFileTo(remoteFile, localPath);
-    files.push(r);
-    totalSize += r.size;
+  if (fileCount === 0) {
+    return {
+      ok: true,
+      remotePath: remote,
+      localPath: localRoot,
+      isDir: true,
+      fileCount: 0,
+      size: 0,
+      files: [],
+      fileName: path.basename(localRoot),
+      method: 'sftp',
+    };
   }
 
-  return {
-    ok: true,
-    remotePath: remote,
-    localPath: localRoot,
-    isDir: true,
-    fileCount: files.length,
-    size: totalSize,
-    files,
-    fileName: path.basename(localRoot),
-  };
+  try {
+    if (onProgress) {
+      onProgress({
+        remotePath: remote,
+        rel: '',
+        localPath: localRoot,
+        index: 0,
+        total: 1,
+        method: 'tar',
+      });
+    }
+    const tarResult = await downloadRemoteDirViaTar(remote, localRoot);
+    if (onProgress) {
+      onProgress({
+        remotePath: remote,
+        rel: '',
+        localPath: localRoot,
+        index: 1,
+        total: 1,
+        method: 'tar',
+      });
+    }
+    return {
+      ok: true,
+      remotePath: remote,
+      localPath: localRoot,
+      isDir: true,
+      fileName: path.basename(localRoot),
+      ...tarResult,
+    };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (downloadCancelRequested || msg === '下载已取消' || e.code === 'DOWNLOAD_CANCELLED') {
+      const partial = collectLocalDownloadFiles(localRoot, remote);
+      return buildDownloadCancelledResult({
+        remotePath: remote,
+        localPath: localRoot,
+        isDir: true,
+        files: partial.files,
+        size: partial.totalSize,
+        fileName: path.basename(localRoot),
+      });
+    }
+    clearLocalDirContents(localRoot);
+    console.log('[remote-server] TAR download failed, fallback SFTP:', msg);
+    return downloadRemoteFolderViaSftp(remote, localRoot, onProgress);
+  }
 }
 
 /**
@@ -774,24 +1079,43 @@ async function downloadRemoteFolder(remotePath, localDir, onProgress) {
  * @param {(info: object) => void} [onProgress] 文件夹下载时逐文件回调
  */
 async function downloadRemotePath(remotePath, localDir, onProgress) {
+  resetDownloadCancel();
   const remote = normalizeRemotePath(remotePath);
   const st = await sftpStat(remote);
   if ((st.mode & 0o170000) === 0o040000) {
     return downloadRemoteFolder(remote, localDir, onProgress);
   }
+  throwIfDownloadCancelled();
   const baseName = path.posix.basename(remote) || 'download.bin';
   fs.mkdirSync(localDir, { recursive: true });
   const localPath = uniqueLocalPath(localDir, baseName);
-  const r = await downloadRemoteFileTo(remote, localPath);
-  return {
-    ok: true,
-    remotePath: remote,
-    localPath: r.localPath,
-    isDir: false,
-    fileCount: 1,
-    size: r.size,
-    fileName: path.basename(r.localPath),
-  };
+  try {
+    const r = await downloadRemoteFileTo(remote, localPath);
+    return {
+      ok: true,
+      remotePath: remote,
+      localPath: r.localPath,
+      isDir: false,
+      fileCount: 1,
+      size: r.size,
+      fileName: path.basename(r.localPath),
+    };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (downloadCancelRequested || msg === '下载已取消' || e.code === 'DOWNLOAD_CANCELLED') {
+      try {
+        fs.unlinkSync(localPath);
+      } catch (_) {}
+      return {
+        ok: false,
+        cancelled: true,
+        error: '下载已取消',
+        remotePath: remote,
+        isDir: false,
+      };
+    }
+    throw e;
+  }
 }
 
 /**
@@ -955,6 +1279,8 @@ module.exports = {
   uploadLocalFile,
   uploadLocalDirViaTar,
   cancelActiveUpload,
+  cancelActiveDownload,
+  resetDownloadCancel,
   mkdir,
   ensureRemoteDir,
   downloadRemoteFile,

@@ -196,7 +196,11 @@
   flex-shrink: 0;
 }
 
-/* 下载到 / 文件：纯文本路径展示（非 input） */
+#rs-pick-upload-files {
+  min-width: 76px;
+}
+
+/* 下载到 / 上传文件：纯文本路径展示（非 input） */
 .rs-path-bar-value {
   flex: 1;
   min-width: 0;
@@ -396,10 +400,7 @@
   min-height: 28px;
   width: 100%;
   box-sizing: border-box;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -413,6 +414,7 @@
 }
 
 .rs-footer-spinner {
+  box-sizing: border-box;
   width: 12px;
   height: 12px;
   border: 2px solid #3c3c3c;
@@ -464,13 +466,11 @@
   display: block;
   flex: 1 1 auto;
   min-width: 0;
-  width: max-content;
-  min-width: 100%;
-  max-width: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   word-break: normal;
   overflow-wrap: normal;
-  text-overflow: clip;
 }
 
 .rs-footer::-webkit-scrollbar {
@@ -628,7 +628,7 @@ body.rs-split-resizing * {
   overflow: auto;
   flex: 1;
   min-height: 0;
-  padding: 6px 0;
+  padding: 6px 4px;
   font-size: 13px;
   user-select: none;
   scrollbar-gutter: stable;
@@ -649,12 +649,14 @@ body.rs-split-resizing * {
 }
 
 .rs-tree-spinner {
+  box-sizing: border-box;
   width: 12px;
   height: 12px;
   border: 2px solid #3c3c3c;
   border-top-color: #0b5fff;
   border-radius: 50%;
   flex: 0 0 auto;
+  transform-origin: center;
   animation: rs-tree-spin 0.7s linear infinite;
 }
 
@@ -675,6 +677,7 @@ body.rs-split-resizing * {
   padding: 4px 10px;
   cursor: pointer;
   white-space: nowrap;
+  overflow: visible;
 }
 
 .rs-item:hover {
@@ -702,7 +705,7 @@ body.rs-split-resizing * {
   opacity: 0.92;
 }
 
-.rs-browser.rs-transfer-busy .rs-toolbar .rs-btn:not(#rs-upload) {
+.rs-browser.rs-transfer-busy .rs-toolbar .rs-btn:not(#rs-upload):not(#rs-download) {
   pointer-events: none;
 }
 
@@ -713,10 +716,22 @@ body.rs-split-resizing * {
 }
 
 .rs-item .rs-twist {
-  width: 14px;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
   text-align: center;
   color: #888;
-  flex: 0 0 auto;
+  flex: 0 0 18px;
+  line-height: 1;
+}
+
+.rs-item.is-busy .rs-twist,
+.rs-item.is-locating .rs-twist {
+  overflow: visible;
 }
 
 .rs-item .rs-name {

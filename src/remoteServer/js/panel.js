@@ -6,7 +6,7 @@
  */
 (function () {
   /** 与 mount.dataset.loaded 对齐；改 html/panel.html 时 +1 */
-  const PANEL_VERSION = '25';
+  const PANEL_VERSION = '27';
   let currentDir = '/';
   let selectedPath = '';
   let selectedIsDir = false;
@@ -19,6 +19,7 @@
   let pendingUploadEntries = [];
   let expandedDirs = new Set();
   let uploadRunning = false;
+  let downloadRunning = false;
   /** 上传/删除进行中：锁定树与工具栏，父目录显示菊花 */
   let transferState = null;
   /** Monaco 实例；代码文件预览高亮；失败则回退 textarea */
@@ -351,12 +352,7 @@
       }
     }
 
-    const foot = msg.closest?.('.rs-footer');
-    if (foot) {
-      requestAnimationFrame(() => {
-        foot.scrollLeft = foot.scrollWidth;
-      });
-    }
+    msg.title = display;
   }
 
   function defaultTwistForRow(row) {
@@ -395,7 +391,6 @@
     const lockIds = [
       'rs-refresh',
       'rs-up',
-      'rs-download',
       'rs-mkdir',
       'rs-delete',
       'rs-pick-download-dir',
@@ -403,8 +398,13 @@
     ];
     for (const id of lockIds) {
       const btn = $(id);
-      if (btn) btn.disabled = locked || (id === 'rs-delete' && !selectedPath) || (id === 'rs-download' && !selectedPath);
+      if (btn) {
+        btn.disabled =
+          locked ||
+          (id === 'rs-delete' && !selectedPath);
+      }
     }
+    updateSelectionUi();
     const pathInput = $('rs-path');
     if (pathInput) pathInput.disabled = locked;
     const uploadDrop = $('rs-upload-drop');
@@ -469,7 +469,7 @@
   }
 
   function setUploadPathUi(text) {
-    setPathBarText($('rs-upload-dir'), text, '点击「文件」或拖拽到此处');
+    setPathBarText($('rs-upload-dir'), text, '点击「上传文件」或拖拽到此处');
   }
 
   function folderRootFromEntries(entries) {
@@ -909,6 +909,16 @@
     btn.classList.toggle('rs-btn-danger', running);
   }
 
+  function setDownloadBtnState(running) {
+    downloadRunning = running;
+    const btn = $('rs-download');
+    if (!btn) return;
+    btn.textContent = running ? '撤销' : '下载';
+    btn.classList.toggle('rs-btn-danger', running);
+    if (running) btn.disabled = false;
+    else updateSelectionUi();
+  }
+
   function formatSize(n) {
     const x = Number(n) || 0;
     if (x < 1024) return `${x} B`;
@@ -920,7 +930,7 @@
     const delBtn = $('rs-delete');
     const dlBtn = $('rs-download');
     if (delBtn) delBtn.disabled = !selectedPath;
-    if (dlBtn) dlBtn.disabled = !selectedPath;
+    if (dlBtn) dlBtn.disabled = !selectedPath && !downloadRunning;
   }
 
   function markSelected(path) {
@@ -1039,11 +1049,28 @@
   }
 
   async function refreshTree(dirPath) {
+    if (refreshTree._running) return;
+    refreshTree._running = true;
+    setTransferLock(true);
+    const target = normalizeRemotePath(dirPath || currentDir || '/');
     const expanded = expandedDirs.size > 0 ? [...expandedDirs] : undefined;
-    await restoreTreeView(dirPath || currentDir, expanded, {
-      path: selectedPath || dirPath || currentDir,
-      isDir: selectedIsDir,
-    });
+    try {
+      await restoreTreeView(
+        target,
+        expanded,
+        {
+          path: selectedPath || target,
+          isDir: selectedIsDir,
+        },
+        {
+          locateSelection: true,
+          skipStatus: true,
+        }
+      );
+    } finally {
+      refreshTree._running = false;
+      setTransferLock(false);
+    }
   }
 
   // —— 预览：文件夹统计 / 媒体 / 打开文件 ——
@@ -1345,12 +1372,6 @@
     return `[SFTP] 上传成功：${itemPath} → ${dest}${warn}`;
   }
 
-  async function clearUploadStaging() {
-    pendingUploadEntries = [];
-    setUploadPathUi('');
-    await persistUploadPath([]);
-  }
-
   async function handleUploadResult(res, dir) {
     const target = normalizeRemotePath(res?.dir || dir || currentDir);
 
@@ -1434,7 +1455,6 @@
         const msg = formatUploadSuccessMsg(res, target, sel);
         setMsg($('rs-browser-msg'), `${msg} · 已中断`, 'error');
         await refreshParentDirNode(target, sel, { locateSelection: true });
-        await clearUploadStaging();
       } else {
         setMsg($('rs-browser-msg'), res.error || '上传已取消', 'error');
       }
@@ -1451,8 +1471,6 @@
     selectedIsDir = sel.isDir;
     const successMsg = formatUploadSuccessMsg(res, target, sel);
     const successKind = res.warning ? 'error' : 'ok';
-    // 立刻反馈成功并清空暂存，避免等待树刷新时界面无反应
-    await clearUploadStaging();
     setFooterMsg(successMsg, { kind: successKind, loading: false });
 
     try {
@@ -1543,7 +1561,7 @@
     return entries;
   }
 
-  // —— 上传：暂存 → 上传 / 撤销；拖拽到「文件」栏 ——
+  // —— 上传：暂存 → 上传 / 撤销；拖拽到「上传文件」栏 ——
 
   function setUploadDropActive(active) {
     const wrap = $('rs-upload-drop');
@@ -1687,34 +1705,60 @@
   async function downloadSelected() {
     const a = api();
     if (!a?.remoteServerDownload || !selectedPath) return;
-    setMsg(
-      $('rs-browser-msg'),
-      selectedIsDir
-        ? `[SFTP] 正在下载文件夹 ${selectedPath} …`
-        : `[SFTP] 正在下载 ${selectedPath} …`
-    );
-    const dlBtn = $('rs-download');
-    if (dlBtn) dlBtn.disabled = true;
+    if (downloadRunning) {
+      await a?.remoteServerCancelDownload?.();
+      setFooterMsg('正在取消下载…', {
+        loading: true,
+        progress: { indeterminate: true, phase: 'download' },
+      });
+      return;
+    }
+    const remotePath = selectedPath;
+    const isDir = selectedIsDir;
+    beginTransfer({
+      phase: 'download',
+      parentPath: remotePath,
+      message: isDir
+        ? `[SFTP] 正在下载文件夹 ${remotePath} …`
+        : `[SFTP] 正在下载 ${remotePath} …`,
+      progress: { done: 0, total: 1, indeterminate: true, phase: 'download' },
+    });
+    setDownloadBtnState(true);
     try {
-      const res = await a.remoteServerDownload({ path: selectedPath });
+      const res = await a.remoteServerDownload({ path: remotePath });
+      if (res?.cancelled) {
+        if (res.ok && res.isDir && res.localPath) {
+          setFooterMsg(
+            `[SFTP] 文件夹下载已中断：${res.localPath}（${res.fileCount} 个文件，${formatSize(res.size)}）`,
+            { kind: 'error', loading: false }
+          );
+        } else if (res.ok && res.localPath) {
+          setFooterMsg(`[SFTP] 已下载到 ${res.localPath}（${formatSize(res.size)}） · 已中断`, {
+            kind: 'error',
+            loading: false,
+          });
+        } else {
+          setFooterMsg(res.error || '下载已取消', { kind: 'error', loading: false });
+        }
+        return;
+      }
       if (!res?.ok) throw new Error(res?.error || '下载失败');
       if (res.isDir) {
-        setMsg(
-          $('rs-browser-msg'),
+        setFooterMsg(
           `[SFTP] 文件夹已下载到 ${res.localPath}（${res.fileCount} 个文件，${formatSize(res.size)}）`,
-          'ok'
+          { kind: 'ok', loading: false }
         );
       } else {
-        setMsg(
-          $('rs-browser-msg'),
+        setFooterMsg(
           `[SFTP] 已下载到 ${res.localPath}（${formatSize(res.size)}）`,
-          'ok'
+          { kind: 'ok', loading: false }
         );
       }
     } catch (e) {
-      setMsg($('rs-browser-msg'), e.message || String(e), 'error');
+      setFooterMsg(e.message || String(e), { kind: 'error', loading: false });
     } finally {
-      updateSelectionUi();
+      endTransfer();
+      setDownloadBtnState(false);
     }
   }
 

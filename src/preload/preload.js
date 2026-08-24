@@ -140,6 +140,7 @@ try {
     remoteServerSaveTreeState: (payload) =>
       ipcRenderer.invoke(REMOTE_SERVER.SAVE_TREE_STATE, payload || {}),
     remoteServerCancelUpload: () => ipcRenderer.invoke(REMOTE_SERVER.CANCEL_UPLOAD),
+    remoteServerCancelDownload: () => ipcRenderer.invoke(REMOTE_SERVER.CANCEL_DOWNLOAD),
     onRemoteServerLog: (callback) => {
       const ch = REMOTE_SERVER.LOG;
       const fn = (_evt, payload) => {
