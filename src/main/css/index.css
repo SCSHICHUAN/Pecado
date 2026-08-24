@@ -191,6 +191,7 @@ body {
 
 .content-area > .main-panel,
 .content-area > .workflow-panel-mount,
+.content-area > .remote-server-panel-mount,
 .content-area > .git-panel-mount,
 .content-area > #panel-codx {
     grid-row: 1;
@@ -201,6 +202,7 @@ body {
 
 .content-area .main-panel.hidden,
 .content-area .workflow-panel-mount.hidden,
+.content-area .remote-server-panel-mount.hidden,
 .content-area .git-panel-mount.hidden,
 .content-area #panel-codx.hidden {
     display: none;
@@ -240,8 +242,9 @@ body.app-view-codx #app-bottom-tools-chat {
     display: flex;
 }
 
-/* Workflow 暂无底部面板 / 快捷区，整栏隐藏 */
+/* Workflow / RemoteServer 暂无底部面板，整栏隐藏 */
 body.app-view-workflow .app-bottom-bar,
+body.app-view-remote-server .app-bottom-bar,
 /* Git 页右侧栏固定展示，无需底部弹窗按钮 */
 body.app-view-git .app-bottom-bar {
     display: none;

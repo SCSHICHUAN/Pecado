@@ -18,7 +18,7 @@
  */
 module.exports = {
   APP: {
-    /** main → renderer：{ view: 'chat' | 'workflow' | 'git' } 切换主内容区 */
+    /** main → renderer：{ view: 'chat' | 'workflow' | 'git' | 'remote-server' } 切换主内容区 */
     NAVIGATE_VIEW: 'app-navigate-view',
   },
   SETTINGS: {
@@ -119,5 +119,28 @@ module.exports = {
     NODE_ACTION: 'git-node-action',
     /** invoke：{ command, projectRoot? } → 用户确认后执行 shell 命令 */
     RUN_SHELL: 'git-run-shell',
+  },
+  /** RemoteServer：SSH/SFTP 远程文件管理（详见 src/remoteServer/README.md） */
+  REMOTE_SERVER: {
+    GET_PANEL_HTML: 'remote-server-get-panel-html',
+    GET_STATE: 'remote-server-get-state',
+    CONNECT: 'remote-server-connect',
+    DISCONNECT: 'remote-server-disconnect',
+    LIST_DIR: 'remote-server-list-dir',
+    READ_FILE: 'remote-server-read-file',
+    WRITE_FILE: 'remote-server-write-file',
+    DELETE: 'remote-server-delete',
+    UPLOAD: 'remote-server-upload',
+    MKDIR: 'remote-server-mkdir',
+    PREVIEW_MEDIA: 'remote-server-preview-media',
+    DOWNLOAD: 'remote-server-download',
+    PICK_DOWNLOAD_DIR: 'remote-server-pick-download-dir',
+    SET_DOWNLOAD_DIR: 'remote-server-set-download-dir',
+    PICK_UPLOAD_DIR: 'remote-server-pick-upload-dir',
+    SET_UPLOAD_DIR: 'remote-server-set-upload-dir',
+    SET_UPLOAD_PATH: 'remote-server-set-upload-path',
+    SAVE_TREE_STATE: 'remote-server-save-tree-state',
+    CANCEL_UPLOAD: 'remote-server-cancel-upload',
+    PICK_UPLOAD_FILES: 'remote-server-pick-upload-files',
   },
 };

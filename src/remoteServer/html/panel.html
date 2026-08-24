@@ -1,0 +1,135 @@
+<!--
+  @file panel.html
+  【功能】RemoteServer：SSH 登录 + 远程文件管理
+  【加载】register GET_PANEL_HTML → panel.js loadPanelHtml；改结构须 bump PANEL_VERSION
+  【分区】登录卡 | 传输栏(下载到+上传路径) | 工具栏 | 树+分割条+预览(Monaco/媒体/文件夹)
+-->
+<div class="rs-shell">
+  <!-- 顶栏：连接状态 / 断开 -->
+  <header class="rs-header" id="rs-header">
+    <div class="rs-header-text">
+      <div class="rs-title">RemoteServer</div>
+      <div class="rs-subtitle" id="rs-status">未连接</div>
+    </div>
+    <div class="rs-header-actions">
+      <button type="button" class="rs-btn" id="rs-disconnect" hidden>断开</button>
+    </div>
+  </header>
+
+  <!-- 未连接：居中登录 -->
+  <section class="rs-login" id="rs-login">
+    <div class="rs-login-card">
+      <div class="rs-login-brand">
+        <div class="rs-login-logo">🖥️</div>
+        <h2 class="rs-login-title">RemoteServer</h2>
+        <p class="rs-login-sub">SSH 登录远端服务器</p>
+      </div>
+      <div class="rs-login-form">
+        <div class="rs-field">
+          <label for="rs-host">主机</label>
+          <input id="rs-host" type="text" placeholder="stanserver.cn" spellcheck="false" autocomplete="off">
+        </div>
+        <div class="rs-field-row">
+          <div class="rs-field rs-field-grow">
+            <label for="rs-user">用户名</label>
+            <input id="rs-user" type="text" placeholder="root" spellcheck="false" autocomplete="off">
+          </div>
+          <div class="rs-field rs-field-port">
+            <label for="rs-port">端口</label>
+            <input id="rs-port" type="number" min="1" max="65535" value="22">
+          </div>
+        </div>
+        <div class="rs-field">
+          <label for="rs-pass">密码</label>
+          <input id="rs-pass" type="password" placeholder="密码" autocomplete="off">
+        </div>
+        <button type="button" class="rs-btn rs-btn-primary rs-btn-block" id="rs-connect">登录</button>
+        <p class="rs-msg rs-login-msg" id="rs-login-msg"></p>
+      </div>
+      <p class="rs-login-foot">例：<code>ssh root@stanserver.cn</code> · 登录信息保存在本机配置</p>
+    </div>
+  </section>
+
+  <!-- 已连接：传输路径 + 工具栏 + 树/预览 -->
+  <section class="rs-browser hidden" id="rs-browser">
+    <!-- 下载到 | 上传路径（同一行） -->
+    <div class="rs-transfer-row">
+      <div class="rs-path-bar rs-path-bar-inline">
+        <span class="rs-path-bar-label">下载到</span>
+        <input id="rs-download-dir" type="text" class="rs-path-bar-input" spellcheck="false" readonly title="本机保存目录">
+        <button type="button" class="rs-btn" id="rs-pick-download-dir">选择…</button>
+      </div>
+      <div class="rs-path-bar rs-path-bar-inline rs-upload-bar" id="rs-upload-bar">
+        <span class="rs-path-bar-label">上传路径</span>
+        <div class="rs-upload-path-wrap" id="rs-upload-drop">
+          <input id="rs-upload-dir" type="text" class="rs-path-bar-input" spellcheck="false" readonly placeholder="拖拽文件或文件夹到此处">
+          <span class="rs-upload-drop-hint" id="rs-upload-drop-hint">拖拽到路径</span>
+        </div>
+        <button type="button" class="rs-btn" id="rs-pick-upload-files">选择…</button>
+      </div>
+    </div>
+    <div class="rs-toolbar">
+      <div class="rs-path-row">
+        <button type="button" class="rs-btn" id="rs-up" title="上级目录">↑</button>
+        <input id="rs-path" type="text" spellcheck="false" value="/">
+        <button type="button" class="rs-btn" id="rs-refresh">刷新</button>
+      </div>
+      <div class="rs-toolbar-actions">
+        <button type="button" class="rs-btn" id="rs-download" disabled>下载</button>
+        <button type="button" class="rs-btn" id="rs-upload">上传</button>
+        <button type="button" class="rs-btn" id="rs-mkdir">新建文件夹</button>
+        <button type="button" class="rs-btn rs-btn-danger" id="rs-delete" disabled>删除</button>
+      </div>
+    </div>
+    <div class="rs-body">
+      <div class="rs-tree-panel" id="rs-tree-panel">
+        <div class="rs-tree" id="rs-tree" role="tree"></div>
+      </div>
+      <div
+        class="rs-split-resizer"
+        id="rs-split-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整文件树与预览宽度"
+        tabindex="-1"
+      ></div>
+      <div class="rs-editor-wrap" id="rs-editor-wrap">
+        <div class="rs-editor-head">
+          <span id="rs-editor-path">未打开文件</span>
+          <button type="button" class="rs-btn rs-btn-primary" id="rs-save" disabled>保存</button>
+        </div>
+        <div class="rs-media hidden" id="rs-media">
+          <img id="rs-media-img" class="hidden" alt="预览图片" />
+          <video id="rs-media-video" class="hidden" controls playsinline></video>
+          <audio id="rs-media-audio" class="hidden" controls></audio>
+          <iframe id="rs-media-pdf" class="hidden" title="PDF 预览"></iframe>
+          <div class="rs-media-hint" id="rs-media-hint"></div>
+        </div>
+        <div class="rs-folder-preview hidden" id="rs-folder-preview">
+          <div class="rs-folder-preview-icon">📁</div>
+          <div class="rs-folder-preview-path" id="rs-folder-preview-path"></div>
+          <div class="rs-folder-preview-stats" id="rs-folder-preview-stats"></div>
+        </div>
+        <div class="rs-editor-body">
+          <textarea id="rs-editor" spellcheck="false" placeholder="点击文件可编辑；图片/音视频会在此预览…" disabled></textarea>
+          <div id="rs-monaco-host" class="hidden" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+    <div class="rs-footer">
+      <span class="rs-msg" id="rs-browser-msg"></span>
+    </div>
+  </section>
+
+  <div class="rs-modal hidden" id="rs-modal" aria-hidden="true">
+    <div class="rs-modal-card">
+      <div class="rs-modal-title" id="rs-modal-title">确认</div>
+      <p class="rs-modal-desc" id="rs-modal-desc"></p>
+      <input class="rs-modal-input" id="rs-modal-input" type="text" spellcheck="false" autocomplete="off">
+      <div class="rs-modal-actions">
+        <button type="button" class="rs-btn" id="rs-modal-cancel">取消</button>
+        <button type="button" class="rs-btn rs-btn-primary" id="rs-modal-ok">确定</button>
+      </div>
+    </div>
+  </div>
+</div>

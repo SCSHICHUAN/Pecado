@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="../css/index.css">
   <link rel="stylesheet" href="../../pecado/css/index.css">
   <link rel="stylesheet" href="../../workflow/css/index.css">
+  <link rel="stylesheet" href="../../remoteServer/css/index.css">
   <link rel="stylesheet" href="../../gitgraph/css/index.css">
   <link rel="stylesheet" href="../../codX/css/index.css">
   <script>window.require = { paths: { vs: '../../../node_modules/monaco-editor/min/vs' } };</script>
@@ -37,6 +38,10 @@
         <div class="function-item" id="nav-workflow" data-view="workflow">
           <div class="function-icon">⚡</div>
           <div>Workflow</div>
+        </div>
+        <div class="function-item" id="nav-remote-server" data-view="remote-server">
+          <div class="function-icon">🖥️</div>
+          <div>RemoteServer</div>
         </div>
         <div class="function-item" id="nav-git" data-view="git">
           <div class="function-icon">🌿</div>
@@ -102,6 +107,7 @@
       </div>
     </div>
     <div id="panel-workflow" class="workflow-panel-mount hidden"></div>
+    <div id="panel-remote-server" class="remote-server-panel-mount hidden"></div>
     <div id="panel-git" class="git-panel-mount hidden"></div>
     <div id="panel-codx" class="hidden" aria-label="CodX 编程">
       <div class="codx-shell" id="codx-shell">
@@ -260,6 +266,7 @@
   <script src="../../pecado/js/log-preview.js"></script>
   <script src="../../pecado/js/skill-log-panel.js"></script>
   <script src="../../workflow/js/panel.js"></script>
+  <script src="../../remoteServer/js/panel.js"></script>
     <script src="../../gitgraph/js/git-chat.js"></script>
     <script src="../../gitgraph/js/index.js"></script>
   <script src="../../codX/js/monaco-loader.js"></script>

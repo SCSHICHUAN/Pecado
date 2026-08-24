@@ -39,6 +39,7 @@
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.1",
     "monaco-editor": "^0.55.1",
+    "ssh2": "^1.17.0",
     "xcode": "^3.0.1"
   }
 }

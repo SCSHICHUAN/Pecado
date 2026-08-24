@@ -348,6 +348,7 @@
   function resolvePrevView() {
     if (document.body.classList.contains('app-view-git')) return 'git';
     if (document.body.classList.contains('app-view-workflow')) return 'workflow';
+    if (document.body.classList.contains('app-view-remote-server')) return 'remote-server';
     return 'chat';
   }
 
@@ -539,9 +540,15 @@
     document.body.dataset.codxPrevView = prevView;
     active = true;
     document.body.classList.add('app-view-codx');
-    document.body.classList.remove('app-view-chat', 'app-view-git', 'app-view-workflow');
+    document.body.classList.remove(
+      'app-view-chat',
+      'app-view-git',
+      'app-view-workflow',
+      'app-view-remote-server'
+    );
     $('panel-chat')?.classList.add('hidden');
     $('panel-workflow')?.classList.add('hidden');
+    $('panel-remote-server')?.classList.add('hidden');
     $('panel-git')?.classList.add('hidden');
     $('panel-codx')?.classList.remove('hidden');
     document.querySelector('.sidebar')?.classList.add('hidden');

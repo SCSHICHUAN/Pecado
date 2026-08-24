@@ -201,15 +201,23 @@
   function setMainPanelVisible(view) {
     const chatPanel = $('panel-chat');
     const workflowPanel = $('panel-workflow');
+    const remoteServerPanel = $('panel-remote-server');
     const gitPanel = $('panel-git');
     const codxPanel = $('panel-codx');
     gitPanelOpen = view === 'git';
     chatPanelOpen = view === 'chat';
     if (chatPanel) chatPanel.classList.toggle('hidden', view !== 'chat');
     if (workflowPanel) workflowPanel.classList.toggle('hidden', view !== 'workflow');
+    if (remoteServerPanel) remoteServerPanel.classList.toggle('hidden', view !== 'remote-server');
     if (gitPanel) gitPanel.classList.toggle('hidden', view !== 'git');
     if (codxPanel) codxPanel.classList.add('hidden');
-    document.body.classList.remove('app-view-chat', 'app-view-git', 'app-view-workflow', 'app-view-codx');
+    document.body.classList.remove(
+      'app-view-chat',
+      'app-view-git',
+      'app-view-workflow',
+      'app-view-remote-server',
+      'app-view-codx'
+    );
     document.body.classList.add(`app-view-${view}`);
     document.querySelectorAll('.app-bottom-tools[data-app-view]').forEach((el) => {
       const active = el.dataset.appView === view;
@@ -226,7 +234,9 @@
     const onCodx = document.body.classList.contains('app-view-codx');
     const onGit = gitPanelOpen;
     const onChat = chatPanelOpen && !onCodx;
-    const onWorkflow = !onGit && !onChat && !onCodx;
+    const onWorkflow =
+      document.body.classList.contains('app-view-workflow') ||
+      document.body.classList.contains('app-view-remote-server');
     let pressed = false;
     if (onCodx) pressed = Boolean(window.__codxDockOpen?.());
     else if (onChat) pressed = Boolean(window.SkillLogPanel?.isOpen?.());
@@ -379,9 +389,11 @@
   function setActiveNav(view) {
     const pecado = $('nav-pecado');
     const workflow = $('nav-workflow');
+    const remoteServer = $('nav-remote-server');
     const git = $('nav-git');
     if (pecado) pecado.classList.toggle('active', view === 'chat');
     if (workflow) workflow.classList.toggle('active', view === 'workflow');
+    if (remoteServer) remoteServer.classList.toggle('active', view === 'remote-server');
     if (git) git.classList.toggle('active', view === 'git');
     // Coding 是独立视图，不与 chat/workflow/git 互斥
     const coding = $('nav-coding');
@@ -392,12 +404,18 @@
     if (gitFocusActive && view !== 'git') {
       exitGitFocusFromCodx();
     }
-    const target = view === 'git' || view === 'workflow' ? view : 'chat';
+    const target =
+      view === 'git' || view === 'workflow' || view === 'remote-server' ? view : 'chat';
     setActiveNav(target);
     setMainPanelVisible(target);
 
     if (target === 'workflow') {
       window.WorkflowPanel?.init?.();
+      return;
+    }
+
+    if (target === 'remote-server') {
+      window.RemoteServerPanel?.init?.();
       return;
     }
 
@@ -2245,6 +2263,7 @@
   function setupSidebar() {
     $('nav-pecado')?.addEventListener('click', () => showView('chat'));
     $('nav-workflow')?.addEventListener('click', () => showView('workflow'));
+    $('nav-remote-server')?.addEventListener('click', () => showView('remote-server'));
     $('nav-git')?.addEventListener('click', () => showView('git'));
     $('nav-coding')?.addEventListener('click', async () => {
       try {
@@ -2401,7 +2420,7 @@
     if (!api || typeof api.onNavigateView !== 'function') return;
     api.onNavigateView((payload) => {
       const view = String(payload?.view || '').trim();
-      if (view === 'git' || view === 'chat' || view === 'workflow') {
+      if (view === 'git' || view === 'chat' || view === 'workflow' || view === 'remote-server') {
         showView(view).catch((e) => console.error('[git-ui] navigate', e));
       }
     });

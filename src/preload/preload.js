@@ -22,9 +22,9 @@
  *   onSettingsConfigChanged(callback)    → listen SETTINGS.CONFIG_CHANGED
  *   renderMarkdown(src)                  → HTML string（本地 markdown-it，不经 IPC）
  */
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 const { markdownToHtml } = require('../markdown/markdown-html');
-const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW, SKILL, CODX } = require('../shared/ipc-channels');
+const { QQ_MUSIC, VOLC_ARK, MCP_FS, GIT, SETTINGS, APP, WORKFLOW, SKILL, CODX, REMOTE_SERVER } = require('../shared/ipc-channels');
 const { platform, IS_DARWIN, HAS_XCODE } = require('../shared/platform');
 
 try {
@@ -118,6 +118,35 @@ try {
     workflowListSimulators: () => ipcRenderer.invoke(WORKFLOW.LIST_SIMULATORS),
     workflowGetSimulator: () => ipcRenderer.invoke(WORKFLOW.GET_SIMULATOR),
     workflowSaveSimulator: (payload) => ipcRenderer.invoke(WORKFLOW.SAVE_SIMULATOR, payload || {}),
+    remoteServerGetPanelHtml: () => ipcRenderer.invoke(REMOTE_SERVER.GET_PANEL_HTML),
+    remoteServerGetState: () => ipcRenderer.invoke(REMOTE_SERVER.GET_STATE),
+    remoteServerConnect: (payload) => ipcRenderer.invoke(REMOTE_SERVER.CONNECT, payload || {}),
+    remoteServerDisconnect: () => ipcRenderer.invoke(REMOTE_SERVER.DISCONNECT),
+    remoteServerListDir: (payload) => ipcRenderer.invoke(REMOTE_SERVER.LIST_DIR, payload || {}),
+    remoteServerReadFile: (payload) => ipcRenderer.invoke(REMOTE_SERVER.READ_FILE, payload || {}),
+    remoteServerWriteFile: (payload) => ipcRenderer.invoke(REMOTE_SERVER.WRITE_FILE, payload || {}),
+    remoteServerDelete: (payload) => ipcRenderer.invoke(REMOTE_SERVER.DELETE, payload || {}),
+    remoteServerUpload: (payload) => ipcRenderer.invoke(REMOTE_SERVER.UPLOAD, payload || {}),
+    remoteServerMkdir: (payload) => ipcRenderer.invoke(REMOTE_SERVER.MKDIR, payload || {}),
+    remoteServerPreviewMedia: (payload) =>
+      ipcRenderer.invoke(REMOTE_SERVER.PREVIEW_MEDIA, payload || {}),
+    remoteServerDownload: (payload) => ipcRenderer.invoke(REMOTE_SERVER.DOWNLOAD, payload || {}),
+    remoteServerPickDownloadDir: () => ipcRenderer.invoke(REMOTE_SERVER.PICK_DOWNLOAD_DIR),
+    remoteServerSetDownloadDir: (payload) =>
+      ipcRenderer.invoke(REMOTE_SERVER.SET_DOWNLOAD_DIR, payload || {}),
+    remoteServerPickUploadFiles: () => ipcRenderer.invoke(REMOTE_SERVER.PICK_UPLOAD_FILES),
+    remoteServerSetUploadPath: (payload) =>
+      ipcRenderer.invoke(REMOTE_SERVER.SET_UPLOAD_PATH, payload || {}),
+    remoteServerSaveTreeState: (payload) =>
+      ipcRenderer.invoke(REMOTE_SERVER.SAVE_TREE_STATE, payload || {}),
+    remoteServerCancelUpload: () => ipcRenderer.invoke(REMOTE_SERVER.CANCEL_UPLOAD),
+    getPathForFile: (file) => {
+      try {
+        return webUtils.getPathForFile(file);
+      } catch (_) {
+        return '';
+      }
+    },
     onSettingsConfigChanged: (callback) => {
       const ch = SETTINGS.CONFIG_CHANGED;
       const fn = (_evt, payload) => {

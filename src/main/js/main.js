@@ -45,6 +45,7 @@ const commands = require('../../commands/js/register');
 const mcpFilesystemIpc = require('../../mcp-filesystem/ipc');
 const gitgraph = require('../../gitgraph/js/register');
 const workflowRegister = require('../../workflow/register');
+const remoteServerRegister = require('../../remoteServer/register');
 const settings = require('../../settings/js/register');
 const codxIpc = require('../../codX/ipc');
 const windowState = require('./window-state');
@@ -130,6 +131,7 @@ app.whenReady().then(async () => {
   mcpFilesystemIpc.register(ipcMain, () => mainWindowRef);
   gitgraph.register(ipcMain);
   workflowRegister.register(ipcMain, () => mainWindowRef);
+  remoteServerRegister.register(ipcMain, () => mainWindowRef);
   codxIpc.register(ipcMain);
   settings.setupApplicationMenu(() => mainWindowRef);
 
@@ -153,4 +155,5 @@ app.on('window-all-closed', function () {
 
 app.on('will-quit', () => {
   workflowRegister.shutdown();
+  remoteServerRegister.shutdown();
 });
