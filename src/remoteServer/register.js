@@ -1014,6 +1014,62 @@ function register(ipcMain, getMainWindowFn) {
     return { ok: true };
   });
 
+  /* —— 远端交互 Shell（PTY）/ 一次性 exec —— */
+  ipcMain.handle(REMOTE_SERVER.SHELL_EXEC, async (_evt, payload = {}) => {
+    try {
+      if (!session.isConnected()) return { ok: false, error: '未连接服务器' };
+      const command = String(payload.command ?? '');
+      const cwd = session.normalizeRemotePath(payload.cwd || '/');
+      const res = await session.execShellCommand({ command, cwd });
+      return res;
+    } catch (e) {
+      return errPayload(e);
+    }
+  });
+
+  ipcMain.handle(REMOTE_SERVER.SHELL_OPEN, async (evt, payload = {}) => {
+    try {
+      if (!session.isConnected()) return { ok: false, error: '未连接服务器' };
+      const res = await session.openInteractiveShell(
+        {
+          cols: payload.cols,
+          rows: payload.rows,
+          cwd: payload.cwd,
+        },
+        evt.sender
+      );
+      return res;
+    } catch (e) {
+      return errPayload(e);
+    }
+  });
+
+  ipcMain.handle(REMOTE_SERVER.SHELL_WRITE, async (_evt, payload = {}) => {
+    try {
+      if (!session.isConnected()) return { ok: false, error: '未连接服务器' };
+      return session.writeInteractiveShell(payload.data, payload.encoding);
+    } catch (e) {
+      return errPayload(e);
+    }
+  });
+
+  ipcMain.handle(REMOTE_SERVER.SHELL_RESIZE, async (_evt, payload = {}) => {
+    try {
+      return session.resizeInteractiveShell(payload.cols, payload.rows);
+    } catch (e) {
+      return errPayload(e);
+    }
+  });
+
+  ipcMain.handle(REMOTE_SERVER.SHELL_CLOSE, async () => {
+    try {
+      session.closeInteractiveShell();
+      return { ok: true };
+    } catch (e) {
+      return errPayload(e);
+    }
+  });
+
   ipcMain.handle(REMOTE_SERVER.PICK_UPLOAD_DIR, async () => {
     try {
       const win = resolveParentWindow(getMainWindowFn);

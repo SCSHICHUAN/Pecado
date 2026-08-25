@@ -1,17 +1,34 @@
 /**
  * @file panel.js
- * 【功能】RemoteServer 渲染层：登录、文件树、Monaco/媒体预览、上传下载
+ * 【功能】RemoteServer 渲染层：登录、文件树、Monaco/媒体预览、上传下载、交互 Shell（xterm）
  * 【入口】window.RemoteServerPanel.init() ← gitgraph showView('remote-server')
  * 【版本】PANEL_VERSION 与挂载 HTML 绑定；改 panel.html 须递增以免沿用旧 DOM
+ * 【Shell】工具栏 Shell 开关 → SSH PTY（主进程）+ xterm.js；地址条「切换」cd 到选中目录
  */
 (function () {
   /** 与 mount.dataset.loaded 对齐；改 html/panel.html 时 +1 */
-  const PANEL_VERSION = '27';
+  const PANEL_VERSION = '36';
   let currentDir = '/';
   let selectedPath = '';
   let selectedIsDir = false;
   let openFilePath = '';
-  let dirty = false;
+  /**
+   * 多文件本地草稿：path → { baseline, draft }
+   * 可跨目录编辑；仅 draft!==baseline 时树节点显示「未保存」
+   * 点「刷新」清空并重新从服务器同步
+   */
+  const fileDrafts = new Map();
+  /* —— 交互 Shell（xterm ↔ SSH PTY）—— */
+  let termOpen = false;
+  let termCwd = '/';
+  /** 远端 PTY 是否已建立（open 成功且未 exit） */
+  let termSessionActive = false;
+  /** @type {import('@xterm/xterm').Terminal | null} */
+  let termInstance = null;
+  let termFit = null;
+  let termDataOff = null;
+  let termExitOff = null;
+  let termResizeObs = null;
   let autoConnectTried = false;
   let modalResolver = null;
   let mediaMode = false;
@@ -224,9 +241,7 @@
       });
       codeEditor.onDidChangeModelContent(() => {
         if (!openFilePath || mediaMode || editorLoading) return;
-        dirty = true;
-        const saveBtn = $('rs-save');
-        if (saveBtn) saveBtn.disabled = false;
+        syncDirtyFromEditor();
       });
       if (!monacoLayoutBound && window.ResizeObserver) {
         monacoLayoutBound = true;
@@ -248,6 +263,7 @@
   }
 
   async function setEditorContent(content, remotePath) {
+    const text = content || '';
     const lang = guessLanguage(remotePath);
     if (isCodePath(remotePath)) {
       const ed = await ensureMonacoEditor();
@@ -260,9 +276,10 @@
         }
         monacoRef.editor.setModelLanguage(ed.getModel(), lang);
         editorLoading = true;
-        ed.setValue(content || '');
+        ed.setValue(text);
         editorLoading = false;
         ed.updateOptions({ readOnly: false });
+        updateSaveFab();
         return;
       }
     }
@@ -270,8 +287,9 @@
     const ta = $('rs-editor');
     if (ta) {
       ta.disabled = false;
-      ta.value = content || '';
+      ta.value = text;
     }
+    updateSaveFab();
   }
 
   function api() {
@@ -443,10 +461,12 @@
     const header = $('rs-header');
     const status = $('rs-status');
     const disc = $('rs-disconnect');
+    const transfer = $('rs-header-transfer');
     if (login) login.classList.toggle('hidden', connected);
     if (browser) browser.classList.toggle('hidden', !connected);
     if (header) header.classList.toggle('rs-header--login', !connected);
     if (disc) disc.hidden = !connected;
+    if (transfer) transfer.hidden = !connected;
     if (status) {
       if (connected) {
         status.textContent = `已连接 ${meta?.username || ''}@${meta?.host || ''}:${meta?.port || 22}`;
@@ -662,26 +682,33 @@
     }
   }
 
-  /** 定位前显示菊花，滚到视口 1/3 后再结束 */
+  /** 定位前显示菊花，滚到视口 1/3 后再结束；无行（如 root `/`）也必须关掉遮罩 */
   async function scrollToSelectionWithLoading(activeRow, selectPath) {
-    if (!activeRow) return;
     const itemPath = normalizeRemotePath(selectPath);
+    // root `/` 没有对应 .rs-item；选中项丢失时也不应留下 is-loading 锁死点击
+    if (!activeRow || itemPath === '/') {
+      hideTreePanelLoading();
+      return;
+    }
     const containerDir = parentPath(itemPath);
     setTreeNodeBusy(containerDir, true);
     setTreeRowLocating(activeRow, true);
     showTreePanelLoading('定位选中项…');
-    if (transferState) {
-      setFooterMsg(`定位 ${itemPath}…`, {
-        loading: true,
-        progress: { indeterminate: true, phase: transferState.phase || 'upload' },
-      });
+    try {
+      if (transferState) {
+        setFooterMsg(`定位 ${itemPath}…`, {
+          loading: true,
+          progress: { indeterminate: true, phase: transferState.phase || 'upload' },
+        });
+      }
+      await waitForPaint();
+      await scrollTreeItemIntoView(activeRow, 1 / 3);
+      await waitForPaint();
+    } finally {
+      setTreeRowLocating(activeRow, false);
+      setTreeNodeBusy(containerDir, false);
+      hideTreePanelLoading();
     }
-    await waitForPaint();
-    await scrollTreeItemIntoView(activeRow, 1 / 3);
-    await waitForPaint();
-    setTreeRowLocating(activeRow, false);
-    setTreeNodeBusy(containerDir, false);
-    hideTreePanelLoading();
   }
 
   // —— 文件树：展开 / 恢复 / 内联加载 ——
@@ -810,7 +837,6 @@
 
       if (locateSelection) {
         await scrollToSelectionWithLoading(activeRow, selectPath);
-        panelLoadingShown = false;
       } else if (activeRow) {
         await scrollTreeItemIntoView(activeRow, 1 / 3);
       }
@@ -822,7 +848,8 @@
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
       if (rethrow) throw e;
     } finally {
-      if (panelLoadingShown) hideTreePanelLoading();
+      // 无论是否找到选中行，都必须清掉遮罩，否则树会一直 pointer-events:none
+      if (panelLoadingShown || locateSelection) hideTreePanelLoading();
     }
   }
 
@@ -861,6 +888,8 @@
 
       const expandChain = ancestorChain(selectPath);
       for (let i = 0; i < expandChain.length; i++) {
+        // `/` 是树根容器，没有对应目录行，跳过
+        if (expandChain[i] === '/') continue;
         await expandTreeDir(expandChain[i]);
       }
 
@@ -881,7 +910,6 @@
 
       if (locateSelection) {
         await scrollToSelectionWithLoading(activeRow, selectPath);
-        panelLoadingShown = false;
       } else if (activeRow) {
         await scrollTreeItemIntoView(activeRow, 1 / 3);
       }
@@ -897,7 +925,8 @@
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
       if (opts && opts.rethrow) throw e;
     } finally {
-      if (panelLoadingShown) hideTreePanelLoading();
+      // 选中 `/` 或行不存在时 scrollToSelection 会提前返回，仍须清遮罩
+      if (panelLoadingShown || locateSelection) hideTreePanelLoading();
     }
   }
 
@@ -924,6 +953,66 @@
     if (x < 1024) return `${x} B`;
     if (x < 1024 * 1024) return `${(x / 1024).toFixed(1)} KB`;
     return `${(x / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function isDraftDirty(path) {
+    if (!path) return false;
+    const e = fileDrafts.get(normalizeRemotePath(path));
+    return Boolean(e && e.draft !== e.baseline);
+  }
+
+  /** 把当前编辑器内容写回对应文件的本地草稿（不弹窗） */
+  function flushOpenEditorToDraft() {
+    if (!openFilePath || mediaMode || editorLoading || isMediaPath(openFilePath)) return;
+    const p = normalizeRemotePath(openFilePath);
+    const content = getEditorContent();
+    let e = fileDrafts.get(p);
+    if (!e) {
+      e = { baseline: content, draft: content };
+    } else {
+      e.draft = content;
+    }
+    if (e.draft === e.baseline) fileDrafts.delete(p);
+    else fileDrafts.set(p, e);
+  }
+
+  function discardAllDrafts() {
+    fileDrafts.clear();
+  }
+
+  function markFileSavedLocally(path) {
+    if (!path) return;
+    fileDrafts.delete(normalizeRemotePath(path));
+  }
+
+  function removeDraft(path) {
+    if (!path) return;
+    fileDrafts.delete(normalizeRemotePath(path));
+  }
+
+  function syncDirtyFromEditor() {
+    flushOpenEditorToDraft();
+    updateSaveFab();
+  }
+
+  function updateTreeUnsavedMarker() {
+    const tree = $('rs-tree');
+    if (!tree) return;
+    tree.querySelectorAll('.rs-item').forEach((el) => {
+      const p = el.dataset.path;
+      el.classList.toggle('is-unsaved', Boolean(p && isDraftDirty(p)));
+    });
+  }
+
+  function updateSaveFab() {
+    const wrap = $('rs-save-fab-wrap');
+    const saveBtn = $('rs-save');
+    const editing =
+      Boolean(openFilePath) && !mediaMode && !isMediaPath(openFilePath || '');
+    const show = editing && isDraftDirty(openFilePath);
+    if (wrap) wrap.hidden = !show;
+    if (saveBtn) saveBtn.disabled = !show;
+    updateTreeUnsavedMarker();
   }
 
   function updateSelectionUi() {
@@ -1010,9 +1099,10 @@
       row.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (transferState) return;
-        selectedIsDir = Boolean(item.isDir);
-        markSelected(item.path);
         if (item.isDir) {
+          flushOpenEditorToDraft();
+          selectedIsDir = true;
+          markSelected(item.path);
           const open = children.hidden;
           if (open) {
             twist.textContent = '▾';
@@ -1038,6 +1128,8 @@
           persistTreeState();
           await showFolderPreview(item.path);
         } else {
+          selectedIsDir = false;
+          markSelected(item.path);
           await openFile(item.path);
           persistTreeState();
         }
@@ -1046,10 +1138,20 @@
       container.appendChild(row);
       container.appendChild(children);
     }
+    updateTreeUnsavedMarker();
   }
 
   async function refreshTree(dirPath) {
     if (refreshTree._running) return;
+    // 刷新：丢弃全部本地草稿，重新从服务器同步
+    discardAllDrafts();
+    openFilePath = '';
+    mediaMode = false;
+    clearEditorContent();
+    hideCodeEditorSurface();
+    hideFolderPreview();
+    $('rs-media')?.classList.add('hidden');
+    updateSaveFab();
     refreshTree._running = true;
     setTransferLock(true);
     const target = normalizeRemotePath(dirPath || currentDir || '/');
@@ -1073,6 +1175,50 @@
     }
   }
 
+  /** 收起全部展开节点，回到根目录列表，且不选中任何项 */
+  async function collapseTreeToRoot() {
+    if (transferState) return;
+    flushOpenEditorToDraft();
+    const tree = $('rs-tree');
+    if (!tree) return;
+
+    expandedDirs = new Set();
+    tree.querySelectorAll('.rs-children').forEach((el) => {
+      el.hidden = true;
+      el.innerHTML = '';
+    });
+    tree.querySelectorAll('.rs-item.is-dir .rs-twist').forEach((twist) => {
+      twist.textContent = '▸';
+    });
+
+    currentDir = '/';
+    if ($('rs-path')) $('rs-path').value = '/';
+    selectedIsDir = false;
+    markSelected('');
+
+    openFilePath = '';
+    mediaMode = false;
+    stopMedia();
+    hideFolderPreview();
+    hideCodeEditorSurface();
+    clearEditorContent();
+    $('rs-media')?.classList.add('hidden');
+    updateSaveFab();
+
+    // 根列表若为空则加载；否则只保持当前根级显示
+    if (!tree.querySelector('.rs-item')) {
+      try {
+        await loadDirInto(tree, '/', 0);
+      } catch (e) {
+        setMsg($('rs-browser-msg'), e.message || String(e), 'error');
+        return;
+      }
+    }
+
+    await persistTreeState();
+    setMsg($('rs-browser-msg'), '已关闭全部展开', 'ok');
+  }
+
   // —— 预览：文件夹统计 / 媒体 / 打开文件 ——
 
   function hideFolderPreview() {
@@ -1080,14 +1226,14 @@
   }
 
   function showFolderPreviewPane() {
+    flushOpenEditorToDraft();
     mediaMode = false;
     stopMedia();
     hideCodeEditorSurface();
     $('rs-media')?.classList.add('hidden');
     $('rs-folder-preview')?.classList.remove('hidden');
-    if ($('rs-save')) $('rs-save').disabled = true;
     openFilePath = '';
-    dirty = false;
+    updateSaveFab();
   }
 
   async function showFolderPreview(dirPath) {
@@ -1095,10 +1241,7 @@
     if (!a?.remoteServerListDir) return;
     const p = normalizeRemotePath(dirPath);
     showFolderPreviewPane();
-    if ($('rs-editor-path')) $('rs-editor-path').textContent = p;
-    const pathEl = $('rs-folder-preview-path');
     const statsEl = $('rs-folder-preview-stats');
-    if (pathEl) pathEl.textContent = p;
     if (statsEl) statsEl.textContent = '统计中…';
     try {
       const res = await a.remoteServerListDir({ path: p });
@@ -1156,17 +1299,18 @@
       const ta = $('rs-editor');
       if (ta && openFilePath) ta.disabled = false;
     }
-    if ($('rs-save')) $('rs-save').disabled = !openFilePath || !dirty;
+    updateSaveFab();
   }
 
   function showMediaPane(kind, fileUrl, meta) {
+    flushOpenEditorToDraft();
     mediaMode = true;
     stopMedia();
     hideFolderPreview();
     hideCodeEditorSurface();
+    openFilePath = openFilePath || '';
+    updateSaveFab();
     const media = $('rs-media');
-    const saveBtn = $('rs-save');
-    if (saveBtn) saveBtn.disabled = true;
     if (!media) return;
     media.classList.remove('hidden');
     const img = $('rs-media-img');
@@ -1197,23 +1341,22 @@
   async function openFile(remotePath) {
     const a = api();
     if (!a) return;
-    if (dirty && openFilePath && openFilePath !== remotePath && !mediaMode) {
-      const ok = window.confirm(`文件 ${openFilePath} 有未保存修改，丢弃并打开新文件？`);
-      if (!ok) return;
+    const target = normalizeRemotePath(remotePath);
+    // 切到其他文件时才落盘草稿；同文件重开不覆盖
+    if (openFilePath && normalizeRemotePath(openFilePath) !== target) {
+      flushOpenEditorToDraft();
     }
 
-    if (isMediaPath(remotePath)) {
+    if (isMediaPath(target)) {
       if (!a.remoteServerPreviewMedia) {
         setMsg($('rs-browser-msg'), '预览 API 不可用，请重启应用', 'error');
         return;
       }
       setMsg($('rs-browser-msg'), '下载媒体预览中…');
       try {
-        const res = await a.remoteServerPreviewMedia({ path: remotePath });
+        const res = await a.remoteServerPreviewMedia({ path: target });
         if (!res?.ok) throw new Error(res?.error || '预览失败');
-        openFilePath = res.path;
-        dirty = false;
-        if ($('rs-editor-path')) $('rs-editor-path').textContent = res.path;
+        openFilePath = normalizeRemotePath(res.path);
         showMediaPane(res.kind, res.fileUrl, { ...res, mode: res.mode || 'stream' });
         const modeHint = res.mode === 'stream' ? '（流式播放，无需整文件下载）' : '';
         setMsg($('rs-browser-msg'), `正在预览 ${res.path}${modeHint}`, 'ok');
@@ -1223,18 +1366,30 @@
       return;
     }
 
+    // 已有本地未保存草稿：直接打开草稿，不覆盖
+    const existing = fileDrafts.get(target);
+    if (existing && existing.draft !== existing.baseline) {
+      openFilePath = target;
+      showTextEditor();
+      await setEditorContent(existing.draft, target);
+      updateSaveFab();
+      setMsg($('rs-browser-msg'), `已打开 ${target}`, 'ok');
+      return;
+    }
+
     if (!a.remoteServerReadFile) return;
     setMsg($('rs-browser-msg'), '读取文件…');
     try {
-      const res = await a.remoteServerReadFile({ path: remotePath });
+      const res = await a.remoteServerReadFile({ path: target });
       if (!res?.ok) throw new Error(res?.error || '读取失败');
-      openFilePath = res.path;
-      dirty = false;
+      const p = normalizeRemotePath(res.path);
+      const text = res.content || '';
+      fileDrafts.set(p, { baseline: text, draft: text });
+      openFilePath = p;
       showTextEditor();
-      await setEditorContent(res.content || '', res.path);
-      if ($('rs-editor-path')) $('rs-editor-path').textContent = res.path;
-      if ($('rs-save')) $('rs-save').disabled = true;
-      setMsg($('rs-browser-msg'), `已打开 ${res.path}`, 'ok');
+      await setEditorContent(text, p);
+      updateSaveFab();
+      setMsg($('rs-browser-msg'), `已打开 ${p}`, 'ok');
     } catch (e) {
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
     }
@@ -1243,13 +1398,14 @@
   async function saveFile() {
     const a = api();
     if (!a?.remoteServerWriteFile || !openFilePath) return;
+    flushOpenEditorToDraft();
     const content = getEditorContent();
     setMsg($('rs-browser-msg'), '保存中…');
     try {
       const res = await a.remoteServerWriteFile({ path: openFilePath, content });
       if (!res?.ok) throw new Error(res?.error || '保存失败');
-      dirty = false;
-      if ($('rs-save')) $('rs-save').disabled = true;
+      markFileSavedLocally(openFilePath);
+      updateSaveFab();
       setMsg($('rs-browser-msg'), `已保存 ${openFilePath}`, 'ok');
     } catch (e) {
       setMsg($('rs-browser-msg'), e.message || String(e), 'error');
@@ -1335,12 +1491,10 @@
       if (!res?.ok) throw new Error(res?.error || '删除失败');
       if (openFilePath === deletedPath) {
         openFilePath = '';
-        dirty = false;
         clearEditorContent();
         hideCodeEditorSurface();
-        if ($('rs-editor-path')) $('rs-editor-path').textContent = '未打开文件';
-        if ($('rs-save')) $('rs-save').disabled = true;
       }
+      removeDraft(deletedPath);
       expandedDirs.delete(deletedPath);
       // 删掉自身后选中并预览上一级目录
       selectedPath = parent;
@@ -1833,6 +1987,9 @@
   }
 
   async function disconnect() {
+    discardAllDrafts();
+    openFilePath = '';
+    await closeTermShell();
     const a = api();
     try {
       await a?.remoteServerDisconnect?.();
@@ -1861,6 +2018,336 @@
     sftpLogBound = true;
   }
 
+  function shellQuotePosix(p) {
+    return `'${String(p).replace(/'/g, `'\\''`)}'`;
+  }
+
+  /** 打开 Shell / 点「切换」时的目标目录：优先当前文件父目录，否则选中项 */
+  function shellDefaultCwd() {
+    if (openFilePath && !isMediaPath(openFilePath)) {
+      return parentPath(openFilePath);
+    }
+    if (selectedPath) {
+      if (selectedIsDir) return normalizeRemotePath(selectedPath);
+      return parentPath(selectedPath);
+    }
+    return normalizeRemotePath(activeDir() || currentDir || '/');
+  }
+
+  function setTermCwdUi(cwd) {
+    termCwd = normalizeRemotePath(cwd || '/');
+    const el = $('rs-term-cwd');
+    if (el) {
+      el.textContent = termCwd;
+      el.title = termCwd;
+    }
+  }
+
+  function decodeShellPayload(payload) {
+    if (!payload) return '';
+    if (payload.encoding === 'base64') {
+      const bin = atob(String(payload.data || ''));
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+    return String(payload.data ?? '');
+  }
+
+  function bindTermIpc() {
+    const a = api();
+    if (!a) return;
+    if (termDataOff) {
+      try {
+        termDataOff();
+      } catch (_) {}
+      termDataOff = null;
+    }
+    if (termExitOff) {
+      try {
+        termExitOff();
+      } catch (_) {}
+      termExitOff = null;
+    }
+    if (a.onRemoteServerShellData) {
+      termDataOff = a.onRemoteServerShellData((payload) => {
+        if (!termInstance) return;
+        try {
+          termInstance.write(decodeShellPayload(payload));
+        } catch (_) {}
+      });
+    }
+    if (a.onRemoteServerShellExit) {
+      termExitOff = a.onRemoteServerShellExit(() => {
+        termSessionActive = false;
+        if (termInstance) {
+          try {
+            termInstance.writeln('\r\n\x1b[90m[shell closed]\x1b[0m');
+          } catch (_) {}
+        }
+      });
+    }
+  }
+
+  function disposeTermXterm() {
+    if (termResizeObs) {
+      try {
+        termResizeObs.disconnect();
+      } catch (_) {}
+      termResizeObs = null;
+    }
+    if (termInstance) {
+      try {
+        termInstance.dispose();
+      } catch (_) {}
+    }
+    termInstance = null;
+    termFit = null;
+  }
+
+  /**
+   * 动态加载 xterm：须暂时去掉 Monaco 的 AMD define，否则 UMD 不挂到 window。
+   * index.html 已在 loader 前静态引入；此处作兜底。
+   */
+  function loadXtermScripts() {
+    return new Promise((resolve, reject) => {
+      if (window.Terminal && (window.FitAddon?.FitAddon || window.FitAddon)) {
+        resolve();
+        return;
+      }
+      const prevDefine = window.define;
+      try {
+        // 避开 Monaco AMD，强制 UMD 挂到 globalThis
+        window.define = undefined;
+      } catch (_) {}
+      const base = '../../../node_modules';
+      const load = (src) =>
+        new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = () => res();
+          s.onerror = () => rej(new Error(`加载失败: ${src}`));
+          document.head.appendChild(s);
+        });
+      load(`${base}/@xterm/xterm/lib/xterm.js`)
+        .then(() => load(`${base}/@xterm/addon-fit/lib/addon-fit.js`))
+        .then(() => {
+          try {
+            window.define = prevDefine;
+          } catch (_) {}
+          resolve();
+        })
+        .catch((e) => {
+          try {
+            window.define = prevDefine;
+          } catch (_) {}
+          reject(e);
+        });
+    });
+  }
+
+  async function ensureTermXterm() {
+    if (termInstance) return termInstance;
+    if (!window.Terminal || !(window.FitAddon?.FitAddon || window.FitAddon)) {
+      await loadXtermScripts();
+    }
+    const TerminalCtor = window.Terminal;
+    const FitMod = window.FitAddon;
+    const FitCtor = FitMod?.FitAddon || FitMod;
+    if (!TerminalCtor || !FitCtor) {
+      throw new Error('xterm 未加载，请重启应用');
+    }
+    const host = $('rs-term-xterm');
+    if (!host) throw new Error('终端容器缺失');
+    termInstance = new TerminalCtor({
+      cursorBlink: true,
+      fontSize: 14,
+      fontFamily: "Courier, 'Courier New', monospace",
+      letterSpacing: 0,
+      lineHeight: 1.35,
+      theme: {
+        background: '#1a1a1a',
+        foreground: '#d4d4d4',
+        cursor: '#aeafad',
+        selectionBackground: '#264f78',
+      },
+      allowTransparency: false,
+      scrollback: 5000,
+    });
+    termFit = new FitCtor();
+    termInstance.loadAddon(termFit);
+    termInstance.open(host);
+    termInstance.onData((data) => {
+      if (!termSessionActive) return;
+      const a = api();
+      void a?.remoteServerShellWrite?.({ data });
+    });
+    if (typeof ResizeObserver !== 'undefined') {
+      termResizeObs = new ResizeObserver(() => {
+        if (termOpen) fitTermAndNotify();
+      });
+      termResizeObs.observe(host);
+    }
+    // 字体就绪后再 fit，避免度量偏差导致字间距空洞
+    const refit = () => {
+      try {
+        fitTermAndNotify();
+      } catch (_) {}
+    };
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(refit).catch(() => {});
+    }
+    setTimeout(refit, 50);
+    return termInstance;
+  }
+
+  function fitTermAndNotify() {
+    if (!termInstance || !termFit || !termOpen) return;
+    try {
+      termFit.fit();
+    } catch (_) {}
+    if (!termSessionActive) return;
+    const a = api();
+    void a?.remoteServerShellResize?.({
+      cols: termInstance.cols,
+      rows: termInstance.rows,
+    });
+  }
+
+  function setTermOpen(open) {
+    termOpen = Boolean(open);
+    const pane = $('rs-term-pane');
+    const stack = $('rs-preview-stack');
+    const btn = $('rs-shell-toggle');
+    if (pane) pane.classList.toggle('hidden', !termOpen);
+    if (stack) stack.classList.toggle('is-term-open', termOpen);
+    if (btn) btn.classList.toggle('is-active', termOpen);
+    try {
+      codeEditor?.layout?.();
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
+  async function openTermShell() {
+    const a = api();
+    if (!a?.remoteServerShellOpen) {
+      setFooterMsg('Shell API 不可用，请重启应用', { kind: 'error' });
+      return;
+    }
+    setTermCwdUi(shellDefaultCwd());
+    setTermOpen(true);
+    bindTermIpc();
+    try {
+      await ensureTermXterm();
+    } catch (e) {
+      setFooterMsg(e.message || String(e), { kind: 'error' });
+      setTermOpen(false);
+      return;
+    }
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    fitTermAndNotify();
+    try {
+      const res = await a.remoteServerShellOpen({
+        cols: termInstance?.cols || 80,
+        rows: termInstance?.rows || 24,
+        cwd: termCwd,
+      });
+      if (!res?.ok) throw new Error(res?.error || '打开 Shell 失败');
+      termSessionActive = true;
+      if (res.cwd) setTermCwdUi(res.cwd);
+      fitTermAndNotify();
+      termInstance?.focus();
+    } catch (e) {
+      termSessionActive = false;
+      setFooterMsg(e.message || String(e), { kind: 'error' });
+    }
+  }
+
+  async function closeTermShell({ dispose = true } = {}) {
+    const a = api();
+    termSessionActive = false;
+    try {
+      await a?.remoteServerShellClose?.();
+    } catch (_) {}
+    setTermOpen(false);
+    if (dispose) disposeTermXterm();
+  }
+
+  function toggleTermShell() {
+    if (termOpen) void closeTermShell();
+    else void openTermShell();
+  }
+
+  async function switchTermCwd() {
+    const next = shellDefaultCwd();
+    setTermCwdUi(next);
+    if (!termSessionActive) {
+      if (termOpen) await openTermShell();
+      return;
+    }
+    const a = api();
+    try {
+      await a?.remoteServerShellWrite?.({
+        data: `cd ${shellQuotePosix(next)}\n`,
+      });
+      termInstance?.focus();
+    } catch (e) {
+      setFooterMsg(e.message || String(e), { kind: 'error' });
+    }
+  }
+
+  function setupTermResizer() {
+    const mount = document.getElementById('panel-remote-server');
+    if (!mount || mount.dataset.termResizerBound === '1') return;
+    const handle = $('rs-term-resizer');
+    const pane = $('rs-term-pane');
+    const stack = $('rs-preview-stack');
+    const shell = mount.querySelector('.rs-shell');
+    if (!handle || !pane || !stack || !shell) return;
+    mount.dataset.termResizerBound = '1';
+
+    const applyHeight = (h) => {
+      const stackH = stack.getBoundingClientRect().height || 400;
+      const maxH = Math.max(140, Math.floor(stackH * 0.7));
+      const next = Math.min(maxH, Math.max(120, Math.round(h)));
+      shell.style.setProperty('--rs-term-height', `${next}px`);
+      return next;
+    };
+
+    let startY = 0;
+    let startH = 0;
+
+    const onMove = (e) => {
+      applyHeight(startH + (startY - e.clientY));
+    };
+
+    const onUp = () => {
+      handle.classList.remove('is-dragging');
+      document.body.classList.remove('rs-term-resizing');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      try {
+        codeEditor?.layout?.();
+      } catch (_) {
+        /* ignore */
+      }
+      fitTermAndNotify();
+    };
+
+    handle.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      if (e.target?.closest?.('button')) return;
+      e.preventDefault();
+      startY = e.clientY;
+      startH = pane.getBoundingClientRect().height || 220;
+      handle.classList.add('is-dragging');
+      document.body.classList.add('rs-term-resizing');
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
   function bindUi() {
     const mount = document.getElementById('panel-remote-server');
     if (!mount || mount.dataset.eventsBound === '1') return;
@@ -1876,7 +2363,9 @@
     connectBtn.addEventListener('click', () => connect(false));
     $('rs-disconnect')?.addEventListener('click', () => disconnect());
     $('rs-refresh')?.addEventListener('click', () => refreshTree($('rs-path')?.value || currentDir));
-    $('rs-up')?.addEventListener('click', () => refreshTree(parentPath($('rs-path')?.value || currentDir)));
+    $('rs-shell-toggle')?.addEventListener('click', () => toggleTermShell());
+    $('rs-term-switch')?.addEventListener('click', () => void switchTermCwd());
+    $('rs-up')?.addEventListener('click', () => collapseTreeToRoot());
     $('rs-path')?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') refreshTree($('rs-path').value || '/');
     });
@@ -1888,8 +2377,8 @@
     $('rs-delete')?.addEventListener('click', () => deleteSelected());
     $('rs-save')?.addEventListener('click', () => saveFile());
     $('rs-editor')?.addEventListener('input', () => {
-      dirty = true;
-      if ($('rs-save')) $('rs-save').disabled = !openFilePath;
+      if (!openFilePath || mediaMode) return;
+      syncDirtyFromEditor();
     });
     ['rs-host', 'rs-port', 'rs-user', 'rs-pass'].forEach((id) => {
       $(id)?.addEventListener('keydown', (e) => {
@@ -1910,6 +2399,7 @@
       if (e.target === $('rs-modal')) closeModal(null);
     });
     setupSplitResizer();
+    setupTermResizer();
   }
 
   function readTreeWidthPref() {
@@ -2050,12 +2540,31 @@
     if (!a?.remoteServerGetPanelHtml) throw new Error('RemoteServer API 不可用');
     const res = await a.remoteServerGetPanelHtml();
     if (!res?.ok) throw new Error(res?.error || '加载面板失败');
+    try {
+      await api()?.remoteServerShellClose?.();
+    } catch (_) {}
+    termSessionActive = false;
+    disposeTermXterm();
+    if (termDataOff) {
+      try {
+        termDataOff();
+      } catch (_) {}
+      termDataOff = null;
+    }
+    if (termExitOff) {
+      try {
+        termExitOff();
+      } catch (_) {}
+      termExitOff = null;
+    }
     mount.innerHTML = res.html;
     mount.dataset.loaded = PANEL_VERSION;
     mount.dataset.eventsBound = '';
     mount.dataset.splitResizerBound = '';
+    mount.dataset.termResizerBound = '';
     sftpLogBound = false;
     splitResizeCtx = null;
+    termOpen = false;
   }
 
   async function init() {

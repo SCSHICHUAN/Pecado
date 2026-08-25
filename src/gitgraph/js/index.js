@@ -406,6 +406,7 @@
     }
     const target =
       view === 'git' || view === 'workflow' || view === 'remote-server' ? view : 'chat';
+
     setActiveNav(target);
     setMainPanelVisible(target);
 

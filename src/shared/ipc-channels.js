@@ -143,6 +143,20 @@ module.exports = {
     CANCEL_UPLOAD: 'remote-server-cancel-upload',
     CANCEL_DOWNLOAD: 'remote-server-cancel-download',
     PICK_UPLOAD_FILES: 'remote-server-pick-upload-files',
+    /** invoke：{ command, cwd } → 远端一次性 shell 执行（兼容） */
+    SHELL_EXEC: 'remote-server-shell-exec',
+    /** invoke：{ cols, rows, cwd } → 打开交互式 PTY shell */
+    SHELL_OPEN: 'remote-server-shell-open',
+    /** invoke：{ data } → 写入 shell */
+    SHELL_WRITE: 'remote-server-shell-write',
+    /** invoke：{ cols, rows } → 调整 PTY 尺寸 */
+    SHELL_RESIZE: 'remote-server-shell-resize',
+    /** invoke：关闭交互 shell */
+    SHELL_CLOSE: 'remote-server-shell-close',
+    /** main → renderer：{ data } shell 输出 */
+    SHELL_DATA: 'remote-server-shell-data',
+    /** main → renderer：shell 结束 */
+    SHELL_EXIT: 'remote-server-shell-exit',
     /** main → renderer：SFTP 操作日志 { message, kind?: 'info'|'ok'|'error' } */
     LOG: 'remote-server-log',
   },

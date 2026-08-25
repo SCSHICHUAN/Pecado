@@ -141,6 +141,37 @@ try {
       ipcRenderer.invoke(REMOTE_SERVER.SAVE_TREE_STATE, payload || {}),
     remoteServerCancelUpload: () => ipcRenderer.invoke(REMOTE_SERVER.CANCEL_UPLOAD),
     remoteServerCancelDownload: () => ipcRenderer.invoke(REMOTE_SERVER.CANCEL_DOWNLOAD),
+    /** 远端交互 Shell：PTY open/write/resize/close + data/exit 订阅 */
+    remoteServerShellExec: (payload) => ipcRenderer.invoke(REMOTE_SERVER.SHELL_EXEC, payload || {}),
+    remoteServerShellOpen: (payload) => ipcRenderer.invoke(REMOTE_SERVER.SHELL_OPEN, payload || {}),
+    remoteServerShellWrite: (payload) => ipcRenderer.invoke(REMOTE_SERVER.SHELL_WRITE, payload || {}),
+    remoteServerShellResize: (payload) =>
+      ipcRenderer.invoke(REMOTE_SERVER.SHELL_RESIZE, payload || {}),
+    remoteServerShellClose: () => ipcRenderer.invoke(REMOTE_SERVER.SHELL_CLOSE),
+    onRemoteServerShellData: (callback) => {
+      const ch = REMOTE_SERVER.SHELL_DATA;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onRemoteServerShellData', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
+    onRemoteServerShellExit: (callback) => {
+      const ch = REMOTE_SERVER.SHELL_EXIT;
+      const fn = (_evt, payload) => {
+        try {
+          callback(payload);
+        } catch (e) {
+          console.error('[preload] onRemoteServerShellExit', e);
+        }
+      };
+      ipcRenderer.on(ch, fn);
+      return () => ipcRenderer.removeListener(ch, fn);
+    },
     onRemoteServerLog: (callback) => {
       const ch = REMOTE_SERVER.LOG;
       const fn = (_evt, payload) => {

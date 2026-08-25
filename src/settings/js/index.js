@@ -1033,10 +1033,10 @@ saveBtn.addEventListener('click', async () => {
       return;
     }
     if (!payload.llmApiKey) {
-      setStatus('请填写 API Key', true);
+    setStatus('请填写 API Key', true);
       apiKeyEl?.focus();
-      return;
-    }
+    return;
+  }
     if (!payload.llmModel) {
       setStatus('请填写 Model', true);
       modelEl?.focus();
@@ -1062,7 +1062,7 @@ saveBtn.addEventListener('click', async () => {
       } else if (activePanel === 'llm') {
         setStatus('已切换并保存当前 LLM 配置', false);
       } else {
-        setStatus(`已保存至 ${formatConfigDirDisplay(result.configDir || '')}`, false);
+      setStatus(`已保存至 ${formatConfigDirDisplay(result.configDir || '')}`, false);
       }
     } else {
       setStatus(result?.error || '保存失败', true);

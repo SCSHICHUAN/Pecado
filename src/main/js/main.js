@@ -54,10 +54,21 @@ loadEnvFromSearchRoots(getDefaultSearchRoots());
 
 const RENDERER_HTML = path.join(__dirname, '..', 'html', 'index.html');
 const PRELOAD_SCRIPT = path.join(__dirname, '..', '..', 'preload', 'preload.js');
-const APP_ICON = path.join(__dirname, '..', '..', '..', 'assets', 'icons', 'icon.png');
+const ICONS_DIR = path.join(__dirname, '..', '..', '..', 'assets', 'icons');
 
+/** Windows 任务栏/窗口优先 .ico；macOS Dock 可用 png；打包 exe 图标见 electron-builder win.icon */
 function resolveAppIcon() {
-  return fs.existsSync(APP_ICON) ? APP_ICON : undefined;
+  const candidates =
+    process.platform === 'win32'
+      ? ['icon.ico', 'icon.png']
+      : process.platform === 'darwin'
+        ? ['icon.png', 'icon.icns', 'icon.ico']
+        : ['icon.png', 'icon.ico'];
+  for (const name of candidates) {
+    const p = path.join(ICONS_DIR, name);
+    if (fs.existsSync(p)) return p;
+  }
+  return undefined;
 }
 
 /** @type {import('electron').BrowserWindow | null} */

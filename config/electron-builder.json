@@ -12,6 +12,7 @@
     "!release/**",
     "!dist/**"
   ],
+  "afterPack": "./scripts/afterPack-win-icon.js",
   "mac": {
     "target": "dir",
     "category": "Utility",
@@ -20,7 +21,7 @@
   },
   "win": {
     "target": "dir",
-    "icon": "assets/icons/icon.png",
+    "icon": "assets/icons/icon.ico",
     "signAndEditExecutable": false
   },
   "linux": {

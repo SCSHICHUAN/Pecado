@@ -1,15 +1,39 @@
 <!--
   @file panel.html
-  【功能】RemoteServer：SSH 登录 + 远程文件管理
+  【功能】RemoteServer：SSH 登录 + 远程文件管理 + 交互 Shell
   【加载】register GET_PANEL_HTML → panel.js loadPanelHtml；改结构须 bump PANEL_VERSION
-  【分区】登录卡 | 传输栏(下载到+上传文件) | 工具栏 | 树+分割条+预览(Monaco/媒体/文件夹)
+  【分区】顶栏 | 登录卡 | 工具栏 | 树+分割条+预览/Shell（预览下可开 xterm）
 -->
 <div class="rs-shell">
-  <!-- 顶栏：连接状态 / 断开 -->
+  <!-- 顶栏：连接状态 / 下载到 / 上传文件 / 断开 -->
   <header class="rs-header" id="rs-header">
     <div class="rs-header-text">
       <div class="rs-title">RemoteServer</div>
       <div class="rs-subtitle" id="rs-status">未连接</div>
+    </div>
+    <div class="rs-header-transfer" id="rs-header-transfer" hidden>
+      <div class="rs-path-bar rs-path-bar-inline">
+        <button type="button" class="rs-btn rs-transfer-btn" id="rs-pick-download-dir" title="选择本机保存目录">下载到</button>
+        <div class="rs-path-bar-value">
+          <span
+            class="rs-path-bar-text is-empty"
+            id="rs-download-dir"
+            data-placeholder="点击「下载到」选择目录"
+            title="本机保存目录"
+          ></span>
+        </div>
+      </div>
+      <div class="rs-path-bar rs-path-bar-inline rs-upload-bar" id="rs-upload-bar">
+        <button type="button" class="rs-btn rs-transfer-btn" id="rs-pick-upload-files" title="选择要上传的文件或文件夹">上传文件</button>
+        <div class="rs-upload-path-wrap" id="rs-upload-drop">
+          <span
+            class="rs-path-bar-text is-empty"
+            id="rs-upload-dir"
+            data-placeholder="点击「上传文件」或拖拽到此处"
+          ></span>
+          <span class="rs-upload-drop-hint" id="rs-upload-drop-hint">拖拽到路径</span>
+        </div>
+      </div>
     </div>
     <div class="rs-header-actions">
       <button type="button" class="rs-btn" id="rs-disconnect" hidden>断开</button>
@@ -50,38 +74,14 @@
     </div>
   </section>
 
-  <!-- 已连接：传输路径 + 工具栏 + 树/预览 -->
+  <!-- 已连接：工具栏 + 树/预览 -->
   <section class="rs-browser hidden" id="rs-browser">
-    <!-- 下载到 | 上传文件（同一行） -->
-    <div class="rs-transfer-row">
-      <div class="rs-path-bar rs-path-bar-inline">
-        <button type="button" class="rs-btn rs-transfer-btn" id="rs-pick-download-dir" title="选择本机保存目录">下载到</button>
-        <div class="rs-path-bar-value">
-          <span
-            class="rs-path-bar-text is-empty"
-            id="rs-download-dir"
-            data-placeholder="点击「下载到」选择目录"
-            title="本机保存目录"
-          ></span>
-        </div>
-      </div>
-      <div class="rs-path-bar rs-path-bar-inline rs-upload-bar" id="rs-upload-bar">
-        <button type="button" class="rs-btn rs-transfer-btn" id="rs-pick-upload-files" title="选择要上传的文件或文件夹">上传文件</button>
-        <div class="rs-upload-path-wrap" id="rs-upload-drop">
-          <span
-            class="rs-path-bar-text is-empty"
-            id="rs-upload-dir"
-            data-placeholder="点击「上传文件」或拖拽到此处"
-          ></span>
-          <span class="rs-upload-drop-hint" id="rs-upload-drop-hint">拖拽到路径</span>
-        </div>
-      </div>
-    </div>
     <div class="rs-toolbar">
       <div class="rs-path-row">
-        <button type="button" class="rs-btn" id="rs-up" title="上级目录">↑</button>
+        <button type="button" class="rs-btn" id="rs-up" title="关闭所有展开，回到根目录">关闭</button>
         <input id="rs-path" type="text" spellcheck="false" value="/">
         <button type="button" class="rs-btn" id="rs-refresh">刷新</button>
+        <button type="button" class="rs-btn" id="rs-shell-toggle" title="打开/关闭远端 Shell">Shell</button>
       </div>
       <div class="rs-toolbar-actions">
         <button type="button" class="rs-btn" id="rs-download" disabled>下载</button>
@@ -103,25 +103,46 @@
         tabindex="-1"
       ></div>
       <div class="rs-editor-wrap" id="rs-editor-wrap">
-        <div class="rs-editor-head">
-          <span id="rs-editor-path">未打开文件</span>
-          <button type="button" class="rs-btn rs-btn-primary" id="rs-save" disabled>保存</button>
-        </div>
-        <div class="rs-media hidden" id="rs-media">
-          <img id="rs-media-img" class="hidden" alt="预览图片" />
-          <video id="rs-media-video" class="hidden" controls playsinline></video>
-          <audio id="rs-media-audio" class="hidden" controls></audio>
-          <iframe id="rs-media-pdf" class="hidden" title="PDF 预览"></iframe>
-          <div class="rs-media-hint" id="rs-media-hint"></div>
-        </div>
-        <div class="rs-folder-preview hidden" id="rs-folder-preview">
-          <div class="rs-folder-preview-icon">📁</div>
-          <div class="rs-folder-preview-path" id="rs-folder-preview-path"></div>
-          <div class="rs-folder-preview-stats" id="rs-folder-preview-stats"></div>
-        </div>
-        <div class="rs-editor-body">
-          <textarea id="rs-editor" spellcheck="false" placeholder="点击文件可编辑；图片/音视频会在此预览…" disabled></textarea>
-          <div id="rs-monaco-host" class="hidden" aria-hidden="true"></div>
+        <div class="rs-preview-stack" id="rs-preview-stack">
+          <div class="rs-preview-main" id="rs-preview-main">
+            <div class="rs-media hidden" id="rs-media">
+              <img id="rs-media-img" class="hidden" alt="预览图片" />
+              <video id="rs-media-video" class="hidden" controls playsinline></video>
+              <audio id="rs-media-audio" class="hidden" controls></audio>
+              <iframe id="rs-media-pdf" class="hidden" title="PDF 预览"></iframe>
+              <div class="rs-media-hint" id="rs-media-hint"></div>
+            </div>
+            <div class="rs-folder-preview hidden" id="rs-folder-preview">
+              <div class="rs-folder-preview-icon">📁</div>
+              <div class="rs-folder-preview-stats" id="rs-folder-preview-stats"></div>
+            </div>
+            <div class="rs-editor-body">
+              <textarea id="rs-editor" spellcheck="false" placeholder="点击文件可编辑；图片/音视频会在此预览…" disabled></textarea>
+              <div id="rs-monaco-host" class="hidden" aria-hidden="true"></div>
+            </div>
+            <div class="rs-save-fab-wrap" id="rs-save-fab-wrap" hidden>
+              <button type="button" class="rs-btn rs-btn-primary rs-save-fab" id="rs-save">保存</button>
+            </div>
+          </div>
+          <!-- Shell：地址条兼作预览/终端分割与高度拖动手柄；下方为 xterm -->
+          <div class="rs-term-pane hidden" id="rs-term-pane">
+            <div class="rs-term" id="rs-term">
+              <div
+                class="rs-term-head"
+                id="rs-term-resizer"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="调整预览与 Shell 高度"
+                title="拖动调整高度"
+              >
+                <span class="rs-term-cwd" id="rs-term-cwd" title="当前目录">/</span>
+                <button type="button" class="rs-btn" id="rs-term-switch" title="切换到当前选中目录">
+                  切换
+                </button>
+              </div>
+              <div class="rs-term-xterm" id="rs-term-xterm" aria-label="Shell"></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

@@ -1,8 +1,9 @@
 /**
  * @file ssh-session.js
  * 【功能】RemoteServer SSH/SFTP 会话（主进程单例）
- * 【职责】连接/断开、列目录、读写删、上传下载、媒体元信息
+ * 【职责】连接/断开、列目录、读写删、上传下载、媒体元信息、交互式 Shell PTY
  * 【调用】register.js；媒体流式预览经 getSftpHandle → media-stream-server
+ * 【Shell】openInteractiveShell → ssh2 client.shell；输出经 SHELL_DATA 推到渲染进程 xterm
  */
 const fs = require('fs');
 const { spawn } = require('child_process');
@@ -149,6 +150,171 @@ function execRemote(command) {
   });
 }
 
+/** 在远端 cwd 下一次性执行命令（兼容旧 SHELL_EXEC；面板现用交互 PTY） */
+function execShellCommand({ command, cwd } = {}) {
+  const c = withClient();
+  const dir = normalizeRemotePath(cwd || '/');
+  const cmd = String(command ?? '');
+  const script = [
+    `cd ${shellQuotePosix(dir)} || exit 1`,
+    cmd,
+    `printf '\\n__RS_META__:%s:%s' "$?" "$(pwd)"`,
+  ].join('\n');
+
+  return new Promise((resolve, reject) => {
+    c.exec(`/bin/bash -lc ${shellQuotePosix(script)}`, (err, stream) => {
+      if (err) return reject(err);
+      let stderr = '';
+      let stdout = '';
+      stream.on('close', () => {
+        let exitCode = 0;
+        let nextCwd = dir;
+        let body = stdout;
+        const marker = '\n__RS_META__:';
+        const idx = body.lastIndexOf(marker);
+        if (idx >= 0) {
+          const meta = body.slice(idx + marker.length).trim();
+          body = body.slice(0, idx);
+          const m = /^(\d+):(.*)$/.exec(meta);
+          if (m) {
+            exitCode = parseInt(m[1], 10) || 0;
+            const pwd = String(m[2] || '').trim();
+            if (pwd) nextCwd = normalizeRemotePath(pwd);
+          }
+        }
+        resolve({
+          ok: true,
+          stdout: body,
+          stderr,
+          exitCode,
+          cwd: nextCwd,
+        });
+      });
+      stream.on('data', (d) => {
+        stdout += d.toString();
+      });
+      stream.stderr.on('data', (d) => {
+        stderr += d.toString();
+      });
+    });
+  });
+}
+
+/**
+ * 交互式 SSH PTY（ssh2 client.shell）；单连接仅允许一个会话。
+ * silent=true：换开会话时不通知渲染进程 EXIT（避免闪一下 closed）。
+ */
+let shellStream = null;
+/** @type {import('electron').WebContents | null} */
+let shellSender = null;
+
+function closeInteractiveShell({ silent } = {}) {
+  const stream = shellStream;
+  const sender = shellSender;
+  shellStream = null;
+  shellSender = null;
+  if (stream) {
+    try {
+      stream.removeAllListeners('data');
+      stream.removeAllListeners('close');
+    } catch (_) {}
+    try {
+      stream.end();
+    } catch (_) {}
+    try {
+      stream.destroy?.();
+    } catch (_) {}
+  }
+  if (!silent && sender && !sender.isDestroyed()) {
+    try {
+      const { REMOTE_SERVER } = require('../shared/ipc-channels');
+      sender.send(REMOTE_SERVER.SHELL_EXIT, { reason: 'closed' });
+    } catch (_) {}
+  }
+}
+
+/**
+ * 打开远端交互 shell，并 cd 到 cwd。
+ * 输出 base64 推送 SHELL_DATA，避免 IPC 丢二进制/控制序列。
+ */
+function openInteractiveShell({ cols, rows, cwd } = {}, webContents) {
+  const c = withClient();
+  closeInteractiveShell({ silent: true });
+  const dir = normalizeRemotePath(cwd || '/');
+  const cCols = Math.max(2, parseInt(String(cols || 80), 10) || 80);
+  const cRows = Math.max(1, parseInt(String(rows || 24), 10) || 24);
+
+  return new Promise((resolve, reject) => {
+    c.shell(
+      {
+        term: 'xterm-256color',
+        cols: cCols,
+        rows: cRows,
+      },
+      (err, stream) => {
+        if (err) return reject(err);
+        shellStream = stream;
+        shellSender = webContents || null;
+        const { REMOTE_SERVER } = require('../shared/ipc-channels');
+
+        stream.on('data', (chunk) => {
+          if (!shellSender || shellSender.isDestroyed()) return;
+          try {
+            shellSender.send(REMOTE_SERVER.SHELL_DATA, {
+              encoding: 'base64',
+              data: Buffer.from(chunk).toString('base64'),
+            });
+          } catch (_) {}
+        });
+
+        stream.on('close', () => {
+          if (shellStream !== stream) return;
+          shellStream = null;
+          shellSender = null;
+          if (webContents && !webContents.isDestroyed()) {
+            try {
+              webContents.send(REMOTE_SERVER.SHELL_EXIT, { reason: 'remote' });
+            } catch (_) {}
+          }
+        });
+
+        try {
+          stream.write(`cd ${shellQuotePosix(dir)}\n`);
+        } catch (_) {}
+
+        resolve({ ok: true, cwd: dir, cols: cCols, rows: cRows });
+      }
+    );
+  });
+}
+
+function writeInteractiveShell(data, encoding) {
+  if (!shellStream) {
+    const err = new Error('Shell 未打开');
+    err.code = 'SHELL_CLOSED';
+    throw err;
+  }
+  if (encoding === 'base64') {
+    shellStream.write(Buffer.from(String(data || ''), 'base64'));
+  } else {
+    shellStream.write(String(data ?? ''));
+  }
+  return { ok: true };
+}
+
+function resizeInteractiveShell(cols, rows) {
+  if (!shellStream) return { ok: false, error: 'Shell 未打开' };
+  const cCols = Math.max(2, parseInt(String(cols || 80), 10) || 80);
+  const cRows = Math.max(1, parseInt(String(rows || 24), 10) || 24);
+  try {
+    // ssh2: setWindow(rows, cols, height, width)
+    shellStream.setWindow(cRows, cCols, 0, 0);
+  } catch (e) {
+    return { ok: false, error: e.message || String(e) };
+  }
+  return { ok: true, cols: cCols, rows: cRows };
+}
+
 function sftpStat(remotePath) {
   const s = withSftp();
   const p = normalizeRemotePath(remotePath);
@@ -177,6 +343,9 @@ function sftpReaddirNames(remotePath) {
 }
 
 function disconnect() {
+  try {
+    closeInteractiveShell();
+  } catch (_) {}
   try {
     if (sftp) sftp.end();
   } catch (_) {}
@@ -1289,5 +1458,10 @@ module.exports = {
   downloadMedia,
   statMedia,
   getSftpHandle,
+  execShellCommand,
+  openInteractiveShell,
+  writeInteractiveShell,
+  resizeInteractiveShell,
+  closeInteractiveShell,
   MEDIA_MIME,
 };

@@ -20,6 +20,10 @@
   <link rel="stylesheet" href="../../remoteServer/css/index.css">
   <link rel="stylesheet" href="../../gitgraph/css/index.css">
   <link rel="stylesheet" href="../../codX/css/index.css">
+  <link rel="stylesheet" href="../../../node_modules/@xterm/xterm/css/xterm.css">
+  <!-- xterm 须在 Monaco AMD loader 之前加载，否则会走 define() 而不挂到 window -->
+  <script src="../../../node_modules/@xterm/xterm/lib/xterm.js"></script>
+  <script src="../../../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
   <script>window.require = { paths: { vs: '../../../node_modules/monaco-editor/min/vs' } };</script>
   <script src="../../../node_modules/monaco-editor/min/vs/loader.js"></script>
 </head>
