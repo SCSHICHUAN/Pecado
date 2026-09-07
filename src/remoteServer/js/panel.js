@@ -787,6 +787,7 @@
   async function refreshParentDirNode(parentDir, selection, opts = {}) {
     const skipPreview = opts.skipPreview;
     const locateSelection = Boolean(opts.locateSelection);
+    const skipScroll = Boolean(opts.skipScroll);
     const rethrow = opts.rethrow;
     const dir = normalizeRemotePath(parentDir || '/');
     const selectPath = normalizeRemotePath(selection?.path || dir);
@@ -835,10 +836,12 @@
       }
       await persistTreeState();
 
-      if (locateSelection) {
-        await scrollToSelectionWithLoading(activeRow, selectPath);
-      } else if (activeRow) {
-        await scrollTreeItemIntoView(activeRow, 1 / 3);
+      if (!skipScroll) {
+        if (locateSelection) {
+          await scrollToSelectionWithLoading(activeRow, selectPath);
+        } else if (activeRow) {
+          await scrollTreeItemIntoView(activeRow, 1 / 3);
+        }
       }
 
       if (!skipPreview) {
@@ -1032,6 +1035,26 @@
       if (on) selectedIsDir = el.dataset.isDir === '1';
     });
     updateSelectionUi();
+  }
+
+  /** 上传完成高亮：方框标记刚上传的顶层项（不改变当前选中） */
+  function clearJustUploadedMarks() {
+    const tree = $('rs-tree');
+    if (!tree) return;
+    tree.querySelectorAll('.rs-item.is-just-uploaded').forEach((el) => {
+      el.classList.remove('is-just-uploaded');
+    });
+  }
+
+  function markJustUploaded(paths) {
+    clearJustUploadedMarks();
+    const list = (paths || []).map((p) => normalizeRemotePath(p)).filter(Boolean);
+    if (!list.length) return;
+    const want = new Set(list);
+    for (const p of want) {
+      const row = findTreeItemRow(p);
+      if (row) row.classList.add('is-just-uploaded');
+    }
   }
 
   function showTreeLoading(container, depth) {
@@ -1528,28 +1551,33 @@
 
   async function handleUploadResult(res, dir) {
     const target = normalizeRemotePath(res?.dir || dir || currentDir);
+    // 上传完成：保持当前选中，只高亮刚上传的顶层项
+    const keepSelection = {
+      path: selectedPath || target,
+      isDir: selectedPath ? selectedIsDir : true,
+    };
 
-    /** 上传文件 → 选中该文件；上传文件夹 → 选中该文件夹（目标目录下的顶层项） */
-    function pickUploadedSelection() {
+    /** 目标目录下刚上传的顶层路径（文件或文件夹） */
+    function pickUploadedTops() {
+      const tops = new Set();
       if (res?.selection?.path) {
-        return {
-          path: normalizeRemotePath(res.selection.path),
-          isDir: Boolean(res.selection.isDir),
-        };
+        const p = normalizeRemotePath(res.selection.path);
+        const prefix = target === '/' ? '/' : `${target}/`;
+        if (target === '/') {
+          const name = p.split('/').filter(Boolean)[0];
+          if (name) tops.add(`/${name}`);
+        } else if (p === target) {
+          /* skip */
+        } else if (p.startsWith(prefix)) {
+          const name = p.slice(prefix.length).split('/')[0];
+          if (name) tops.add(`${target}/${name}`);
+        }
       }
 
       const details = Array.isArray(res?.details) ? res.details : [];
       const items = details.length
-        ? details.map((d) => ({
-            path: normalizeRemotePath(d.realPath || d.path),
-            isDir: d.kind === 'dir',
-          }))
-        : (res?.uploaded || []).map((p) => ({
-            path: normalizeRemotePath(p),
-            isDir: false,
-          }));
-
-      if (!items.length) return { path: target, isDir: true };
+        ? details.map((d) => normalizeRemotePath(d.realPath || d.path))
+        : (res?.uploaded || []).map((p) => normalizeRemotePath(p));
 
       function topUnderTarget(remotePath) {
         const p = normalizeRemotePath(remotePath);
@@ -1564,51 +1592,28 @@
         return name ? `${target}/${name}` : null;
       }
 
-      const tops = new Map(); // topPath -> { nested: boolean, isDir: boolean }
-      for (const item of items) {
-        const top = topUnderTarget(item.path);
-        if (!top) continue;
-        const cur = tops.get(top) || { nested: false, isDir: false };
-        if (item.path !== top) cur.nested = true;
-        if (item.isDir || item.path === top) cur.isDir = item.isDir || cur.isDir;
-        if (item.path.startsWith(`${top}/`)) cur.nested = true;
-        tops.set(top, cur);
+      for (const p of items) {
+        const top = topUnderTarget(p);
+        if (top) tops.add(top);
       }
-
-      // 待上传项带相对路径（含 /）→ 文件夹上传
-      const pendingFolder = (pendingUploadEntries || []).some((e) =>
-        String(e.relativePath || '')
-          .replace(/\\/g, '/')
-          .includes('/')
-      );
-
-      if (tops.size === 1) {
-        const [[topPath, meta]] = [...tops.entries()];
-        if (meta.nested || meta.isDir || pendingFolder) {
-          return { path: topPath, isDir: true };
-        }
-        return { path: topPath, isDir: false };
-      }
-
-      // 多个顶层：优先第一个文件，否则第一个文件夹
-      const firstFile = items.find((i) => !i.isDir);
-      if (firstFile) return { path: firstFile.path, isDir: false };
-      const firstDir = items.find((i) => i.isDir);
-      if (firstDir) return { path: firstDir.path, isDir: true };
-      const firstTop = tops.keys().next().value;
-      return firstTop
-        ? { path: firstTop, isDir: true }
-        : { path: target, isDir: true };
+      return [...tops];
     }
+
+    const uploadedTops = pickUploadedTops();
+    const msgSel = uploadedTops[0]
+      ? { path: uploadedTops[0], isDir: true }
+      : { path: target, isDir: true };
 
     if (res?.cancelled) {
       if (res.ok && (res.uploaded || []).length) {
-        const sel = pickUploadedSelection();
-        selectedPath = sel.path;
-        selectedIsDir = sel.isDir;
-        const msg = formatUploadSuccessMsg(res, target, sel);
+        const msg = formatUploadSuccessMsg(res, target, msgSel);
         setMsg($('rs-browser-msg'), `${msg} · 已中断`, 'error');
-        await refreshParentDirNode(target, sel, { locateSelection: true });
+        await refreshParentDirNode(target, keepSelection, {
+          skipPreview: true,
+          locateSelection: false,
+          skipScroll: true,
+        });
+        markJustUploaded(uploadedTops);
       } else {
         setMsg($('rs-browser-msg'), res.error || '上传已取消', 'error');
       }
@@ -1620,27 +1625,19 @@
       return;
     }
 
-    const sel = pickUploadedSelection();
-    selectedPath = sel.path;
-    selectedIsDir = sel.isDir;
-    const successMsg = formatUploadSuccessMsg(res, target, sel);
+    const successMsg = formatUploadSuccessMsg(res, target, msgSel);
     const successKind = res.warning ? 'error' : 'ok';
     setFooterMsg(successMsg, { kind: successKind, loading: false });
 
     try {
-      await refreshParentDirNode(target, sel, {
+      await refreshParentDirNode(target, keepSelection, {
         skipPreview: true,
         rethrow: true,
-        locateSelection: true,
+        locateSelection: false,
+        skipScroll: true,
       });
+      markJustUploaded(uploadedTops);
       setFooterMsg(successMsg, { kind: successKind, loading: false });
-      void previewSelection(sel.path, sel.isDir).catch((e) => {
-        setMsg(
-          $('rs-browser-msg'),
-          `${successMsg} · 预览失败：${e.message || String(e)}`,
-          'error'
-        );
-      });
     } catch (e) {
       setMsg(
         $('rs-browser-msg'),

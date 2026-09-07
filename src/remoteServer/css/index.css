@@ -719,6 +719,16 @@ body.rs-split-resizing * {
   background: #094771;
 }
 
+/* 刚上传完成：方框高亮（尺寸与选中条一致，颜色同选中条） */
+.rs-item.is-just-uploaded {
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1px #094771;
+}
+
+.rs-item.is-just-uploaded.is-selected {
+  box-shadow: inset 0 0 0 1px #4daafc;
+}
+
 .rs-item.is-unsaved .rs-name::after {
   content: ' · 未保存';
   color: #e6a23c;
